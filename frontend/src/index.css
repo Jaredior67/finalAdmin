@@ -88,6 +88,29 @@
   /* Fonts — Inter primary, Verdana as institutional fallback */
   --font-family: 'Inter', Verdana, Geneva, 'DejaVu Sans', Tahoma, sans-serif;
   --font-heading: 'Inter', Verdana, Geneva, 'DejaVu Sans', Tahoma, sans-serif;
+
+  /* Type scale (single source of truth — Phase 1).
+     Body 16px/1.5 weight 400; labels 500; table headers 12px uppercase 600;
+     bold 700 ONLY for page titles and stat numbers. */
+  --text-body: 16px;
+  --text-label: 13px;
+  --text-th: 12px;
+  --text-title: 27px;
+  --text-h2: 18px;
+  --text-h3: 16px;
+  --text-stat: 26px;
+  --weight-body: 400;
+  --weight-label: 500;
+  --weight-th: 600;
+  --weight-title: 700;
+
+  /* Spacing scale (8px base) */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+
+  /* Status colors are ONLY for ticket status and risk badges — never decorative. */
   --motion-fast: 140ms ease;
   --motion-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
