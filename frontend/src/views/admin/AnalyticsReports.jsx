@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BarChart3, TrendingUp, Clock, CheckCircle2, Download, Filter, RotateCcw } from 'lucide-react';
 import { useData } from '../../context/DataContext';
+import { FormField, TextInput, SelectInput } from '../../components/ui/FormField';
 
 export const AnalyticsReports = () => {
   const { requisitions, totalRequisitions, completedRepairs, monthlyRequestTotals, evaluations } = useData();
@@ -111,56 +112,48 @@ export const AnalyticsReports = () => {
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
-          <div>
-            <label className="form-label" htmlFor="report-date-from">Date from</label>
-            <input
+          <FormField label="Date from" htmlFor="report-date-from" style={{ marginBottom: 0 }}>
+            <TextInput
               id="report-date-from"
               type="date"
-              className="form-input"
               value={dateFrom}
               max={dateTo || undefined}
               onChange={(e) => setDateFrom(e.target.value)}
               style={{ height: '38px' }}
             />
-          </div>
-          <div>
-            <label className="form-label" htmlFor="report-date-to">Date to</label>
-            <input
+          </FormField>
+          <FormField label="Date to" htmlFor="report-date-to" style={{ marginBottom: 0 }}>
+            <TextInput
               id="report-date-to"
               type="date"
-              className="form-input"
               value={dateTo}
               min={dateFrom || undefined}
               onChange={(e) => setDateTo(e.target.value)}
               style={{ height: '38px' }}
             />
-          </div>
-          <div>
-            <label className="form-label" htmlFor="report-status">Status</label>
-            <select
+          </FormField>
+          <FormField label="Status" htmlFor="report-status" style={{ marginBottom: 0 }}>
+            <SelectInput
               id="report-status"
-              className="form-select"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               style={{ height: '38px', minWidth: '170px' }}
             >
               <option value="all">All statuses</option>
               {uniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="form-label" htmlFor="report-location">Location</label>
-            <select
+            </SelectInput>
+          </FormField>
+          <FormField label="Location" htmlFor="report-location" style={{ marginBottom: 0 }}>
+            <SelectInput
               id="report-location"
-              className="form-select"
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
               style={{ height: '38px', minWidth: '200px' }}
             >
               <option value="all">All locations</option>
               {uniqueLocations.map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
-          </div>
+            </SelectInput>
+          </FormField>
           {isFiltered && (
             <button type="button" className="btn btn-secondary btn-sm" onClick={resetFilters} style={{ height: '38px' }}>
               <RotateCcw size={14} /> Reset
