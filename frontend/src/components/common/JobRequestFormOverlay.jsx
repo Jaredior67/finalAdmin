@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Printer, X, FileText, Layers, Stamp, ArrowRight, ArrowLeft, ImagePlus, AlertCircle } from 'lucide-react';
 import { Modal } from './Modal';
+import { FormField, TextInput, TextArea, SelectInput } from '../ui/FormField';
 import { JobRequestPrintSheet } from './JobRequestPrintSheet';
 
 export const SCOPE_SECTIONS = [
@@ -23,8 +24,6 @@ const blankScope = () => ({
 
 // Large, easy-to-type controls (44px targets, 14.5px type).
 const inputStyle = { width: '100%', minHeight: '44px', padding: '11px 13px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '14.5px', color: '#0f172a', background: '#ffffff' };
-const inputErrorStyle = { ...inputStyle, borderColor: '#ef4444', background: '#fff8f8' };
-const fieldErrorStyle = { display: 'flex', alignItems: 'center', gap: '5px', marginTop: '5px', fontSize: '12px', color: '#dc2626', fontWeight: '600' };
 const labelStyle = { fontSize: '12px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px', display: 'block' };
 const sectionBox = { border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', background: '#ffffff' };
 const sectionTitle = { fontSize: '14px', fontWeight: '800', color: '#0f172a', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' };
@@ -261,38 +260,59 @@ export const JobRequestFormOverlay = ({
           <div style={{ ...sectionBox, background: '#f8fafc' }}>
             <div style={sectionTitle}><FileText size={17} color="#001f9c" /> 1 · Requester & Document Details</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
-              <div><label style={labelStyle}>Tracking Number (auto)</label><input value={trackingLabel} disabled style={{ ...inputStyle, background: '#f1f5f9', color: '#64748b' }} /></div>
-              <div><label style={labelStyle}>Date of Request *</label><input type="date" value={form.date} onChange={e => set({ date: e.target.value })} style={errors.date ? inputErrorStyle : inputStyle} />{errors.date && <div style={fieldErrorStyle}><AlertCircle size={13} /> {errors.date}</div>}</div>
-              <div><label style={labelStyle}>Name of Client *</label><input value={form.requestedBy} onChange={e => set({ requestedBy: e.target.value })} placeholder="e.g. Juan D. Cruz" style={errors.requestedBy ? inputErrorStyle : inputStyle} />{errors.requestedBy && <div style={fieldErrorStyle}><AlertCircle size={13} /> {errors.requestedBy}</div>}</div>
-              <div><label style={labelStyle}>Office of Client *</label><input value={form.office} onChange={e => set({ office: e.target.value })} placeholder="e.g. College of Engineering" style={errors.office ? inputErrorStyle : inputStyle} />{errors.office && <div style={fieldErrorStyle}><AlertCircle size={13} /> {errors.office}</div>}</div>
-              <div><label style={labelStyle}>Location / Room *</label><input value={form.location} onChange={e => set({ location: e.target.value })} placeholder="e.g. CEA Building - Room 302" style={errors.location ? inputErrorStyle : inputStyle} />{errors.location && <div style={fieldErrorStyle}><AlertCircle size={13} /> {errors.location}</div>}</div>
-              <div><label style={labelStyle}>Immediate Supervisor</label><input value={form.immediateSupervisor} onChange={e => set({ immediateSupervisor: e.target.value })} placeholder="Supervisor name" style={inputStyle} /></div>
-              <div><label style={labelStyle}>Contact Number</label><input value={form.contactNumber} onChange={e => set({ contactNumber: e.target.value })} placeholder="+63 ..." style={inputStyle} /></div>
-              <div><label style={labelStyle}>Main Category</label>
-                <select value={form.category} onChange={e => set({ category: e.target.value })} style={inputStyle}>
+              <FormField label="Tracking Number (auto)" htmlFor="jr-tracking" style={{ marginBottom: 0 }}>
+                <TextInput id="jr-tracking" value={trackingLabel} disabled style={{ background: '#f1f5f9', color: '#64748b' }} />
+              </FormField>
+              <FormField label="Date of Request" required htmlFor="jr-date" error={errors.date} style={{ marginBottom: 0 }}>
+                <TextInput id="jr-date" type="date" value={form.date} onChange={e => set({ date: e.target.value })} />
+              </FormField>
+              <FormField label="Name of Client" required htmlFor="jr-client" error={errors.requestedBy} style={{ marginBottom: 0 }}>
+                <TextInput id="jr-client" value={form.requestedBy} onChange={e => set({ requestedBy: e.target.value })} placeholder="e.g. Juan D. Cruz" />
+              </FormField>
+              <FormField label="Office of Client" required htmlFor="jr-office" error={errors.office} style={{ marginBottom: 0 }}>
+                <TextInput id="jr-office" value={form.office} onChange={e => set({ office: e.target.value })} placeholder="e.g. College of Engineering" />
+              </FormField>
+              <FormField label="Location / Room" required htmlFor="jr-location" error={errors.location} style={{ marginBottom: 0 }}>
+                <TextInput id="jr-location" value={form.location} onChange={e => set({ location: e.target.value })} placeholder="e.g. CEA Building - Room 302" />
+              </FormField>
+              <FormField label="Immediate Supervisor" htmlFor="jr-supervisor" style={{ marginBottom: 0 }}>
+                <TextInput id="jr-supervisor" value={form.immediateSupervisor} onChange={e => set({ immediateSupervisor: e.target.value })} placeholder="Supervisor name" />
+              </FormField>
+              <FormField label="Contact Number" htmlFor="jr-contact" style={{ marginBottom: 0 }}>
+                <TextInput id="jr-contact" value={form.contactNumber} onChange={e => set({ contactNumber: e.target.value })} placeholder="+63 ..." />
+              </FormField>
+              <FormField label="Main Category" htmlFor="jr-category" style={{ marginBottom: 0 }}>
+                <SelectInput id="jr-category" value={form.category} onChange={e => set({ category: e.target.value })}>
                   {['Drawing/Design', 'Physical Structures', 'Electrical', 'Mechanical', 'Water/Sanitary', 'Air Conditioning'].map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
+                </SelectInput>
+              </FormField>
             </div>
             <div style={{ marginTop: '12px' }}>
-              <label style={labelStyle}>Request Title / Subject *</label>
-              <input value={form.title} onChange={e => set({ title: e.target.value })} placeholder="Short subject of the job request" style={errors.details && !form.title.trim() ? inputErrorStyle : inputStyle} />
+              <FormField label="Request Title / Subject" required htmlFor="jr-title" style={{ marginBottom: 0 }}>
+                <TextInput id="jr-title" value={form.title} onChange={e => set({ title: e.target.value })} placeholder="Short subject of the job request" />
+              </FormField>
             </div>
             <div style={{ marginTop: '12px' }}>
-              <label style={labelStyle}>Overall Description *</label>
-              <textarea value={form.description} onChange={e => set({ description: e.target.value })} rows={3} placeholder="Describe the repair / maintenance / construction needed..." style={{ ...(errors.details ? inputErrorStyle : inputStyle), resize: 'vertical', lineHeight: 1.6 }} />
-              {errors.details && <div style={fieldErrorStyle}><AlertCircle size={13} /> {errors.details}</div>}
+              <FormField label="Overall Description" required htmlFor="jr-description" error={errors.details} style={{ marginBottom: 0 }}>
+                <TextArea id="jr-description" value={form.description} onChange={e => set({ description: e.target.value })} rows={3} placeholder="Describe the repair / maintenance / construction needed..." style={{ resize: 'vertical', lineHeight: 1.6 }} />
+              </FormField>
             </div>
             <div style={{ marginTop: '12px' }}>
-              <label style={labelStyle}>Defect Photo (optional)</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={e => handlePhotoSelect(e.target.files && e.target.files[0])}
-                style={{ ...inputStyle, padding: '9px 13px', cursor: 'pointer' }}
-              />
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>JPG or PNG up to 8 MB. A clear photo helps technicians assess the issue.</div>
-              {errors.photo && <div style={fieldErrorStyle}><AlertCircle size={13} /> {errors.photo}</div>}
+              <FormField
+                label="Defect Photo (optional)"
+                htmlFor="jr-photo"
+                hint="JPG or PNG up to 8 MB. A clear photo helps technicians assess the issue."
+                error={errors.photo}
+                style={{ marginBottom: 0 }}
+              >
+                <TextInput
+                  id="jr-photo"
+                  type="file"
+                  accept="image/*"
+                  onChange={e => handlePhotoSelect(e.target.files && e.target.files[0])}
+                  style={{ padding: '9px 13px', cursor: 'pointer' }}
+                />
+              </FormField>
               {photoPreview && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px' }}>
                   <img src={photoPreview} alt="Defect preview" style={{ width: '72px', height: '72px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
