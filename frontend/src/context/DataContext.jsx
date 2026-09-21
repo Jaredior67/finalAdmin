@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { useAuth } from './AuthContext';
+import { useToast } from '../components/ui/Toast';
 import {
   apiRegister,
   apiGetUsers,
@@ -690,6 +691,7 @@ const INITIAL_MESSAGES = [
 
 export const DataProvider = ({ children }) => {
   const { currentUser, isAdmin, isMaintenance, isFacultyOrStaff } = useAuth();
+  const { toast } = useToast();
   const [offices, setOffices] = useState(() => JSON.parse(localStorage.getItem('fixit_pdas_offices_v4') || JSON.stringify(INITIAL_OFFICES)));
   const [departments, setDepartments] = useState(() => JSON.parse(localStorage.getItem('fixit_pdas_departments_v4') || JSON.stringify(INITIAL_DEPARTMENTS)));
   const [requisitions, setRequisitions] = useState(() => {
@@ -1124,6 +1126,7 @@ export const DataProvider = ({ children }) => {
     };
 
     setRequisitions(prev => [entry, ...prev]);
+    toast(`Request ${requestId} submitted and queued for PDAS review.`);
 
     setNotifications(prev => [
       {
@@ -1168,6 +1171,7 @@ export const DataProvider = ({ children }) => {
       unread: true,
       targetRole: 'faculty_staff'
     }, ...prev]);
+    toast(`Request ${target.controlNo || target.id} placed under review.`, 'info');
   };
 
   const approveRequisition = (reqId, remarks = 'Approved by PDAS Director', technicianName = '') => {
@@ -1230,6 +1234,7 @@ export const DataProvider = ({ children }) => {
       },
       ...prev
     ]);
+    toast(isDispatched ? `Request ${refNo} approved and dispatched to ${technicianName}.` : `Request ${refNo} accepted — awaiting signed form.`);
     return true;
   };
 
@@ -1266,6 +1271,7 @@ export const DataProvider = ({ children }) => {
     };
 
     setApprovalHistory(prev => [newLog, ...prev]);
+    toast(`Request ${target.controlNo || target.id} disapproved.`, 'info');
   };
 
   const assignTechnician = (reqId, technicianName, techId = null) => {
@@ -1302,6 +1308,7 @@ export const DataProvider = ({ children }) => {
       },
       ...prev
     ]);
+    toast(`Request ${reqId} assigned to ${technicianName} and ongoing.`);
     return true;
   };
 
@@ -1491,6 +1498,7 @@ export const DataProvider = ({ children }) => {
       },
       ...prev
     ]);
+    toast(`Request ${target?.controlNo || reqId} updated to ${newStatus}.`);
   };
 
   const raiseMaintenanceFlag = (reqId, flagData) => {
@@ -1538,6 +1546,7 @@ export const DataProvider = ({ children }) => {
       unread: true,
       targetRole: 'admin'
     }, ...prev]);
+    toast(`Maintenance flag recorded on request ${target.controlNo || reqId}.`, 'info');
   };
 
   // Replacement / Irreparable Item Flagging Workflow
@@ -1630,6 +1639,7 @@ export const DataProvider = ({ children }) => {
       { id: `notif-${Date.now()}`, title: 'Signatures Confirmed', text: `${target.controlNo} physical signatures verified. Ticket approved for technician assignment.`, time: 'Just now', unread: true, targetRoles: ['faculty_staff', 'maintenance'] },
       ...prev
     ]);
+    toast(`Signed form confirmed — request ${target.controlNo || reqId} approved.`);
   };
 
   // Archive Requisition (non-destructive)
@@ -1663,6 +1673,7 @@ export const DataProvider = ({ children }) => {
       unread: true,
       targetRole: 'admin'
     }, ...prev]);
+    toast(`Request ${target.controlNo || reqId} archived.`, 'info');
   };
 
   // Unarchive (restore) a previously archived requisition
@@ -1675,6 +1686,7 @@ export const DataProvider = ({ children }) => {
         return r;
       })
     );
+    toast(`Request ${reqId} restored from archive.`, 'info');
   };
 
   // Submit ISO/IEC 25010 Evaluation
@@ -1709,6 +1721,7 @@ export const DataProvider = ({ children }) => {
       targetRole: 'admin'
     }, ...prev]);
 
+    toast(`Evaluation submitted for request ${target?.controlNo || reqId}. Thank you.`);
     return evalEntry;
   };
 
