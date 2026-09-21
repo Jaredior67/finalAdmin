@@ -1,0 +1,1 @@
+export { PrintLabels } from '../PrintLabels';

@@ -1,0 +1,55 @@
+# FixIt PDAS - Apache Configuration & URL Router
+# Supports http://localhost/FixIT, http://localhost/capstoneSystem, and Web Hosting
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # 1. Route assets to the compiled frontend/dist/assets folder
+  RewriteCond %{REQUEST_URI} !^.*/frontend/dist/assets/
+  RewriteRule ^assets/(.*)$ frontend/dist/assets/$1 [L,QSA]
+
+  # 2. Allow existing files and directories to be served directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # 3. Route root public files to frontend/dist if they exist there
+  RewriteCond %{REQUEST_URI} !^.*/frontend/dist/
+  RewriteCond frontend/dist/$1 -f
+  RewriteRule ^([^/]+)$ frontend/dist/$1 [L,QSA]
+
+  # 4. SPA Route Fallback - all application URLs route through index.php
+  RewriteRule ^(.*)$ index.php [L,QSA]
+</IfModule>
+
+# Security Protections: Prevent unauthorized public downloads of sensitive configuration and backend code
+<FilesMatch "^\.env|composer\.json|package\.json|package-lock\.json|\.git">
+  Order allow,deny
+  Deny from all
+</FilesMatch>
+
+<IfModule mod_authz_core.c>
+  <FilesMatch "^\.env|package(-lock)?\.json|\.git">
+    Require all denied
+  </FilesMatch>
+</IfModule>
+
+# Protect backend database and server source files from direct browser URL access
+RedirectMatch 403 ^/backend/database/.*$
+RedirectMatch 403 ^/backend/src/.*$
+RedirectMatch 403 ^/node_modules/.*$
+
+# MIME types and caching headers for frontend static assets
+<IfModule mod_mime.c>
+  AddType application/javascript js mjs
+  AddType text/css css
+  AddType image/svg+xml svg
+  AddType font/woff2 woff2
+</IfModule>
+
+<IfModule mod_headers.c>
+  # Enable CORS for fonts and assets
+  <FilesMatch "\.(ttf|ttc|otf|eot|woff|woff2|font.css|css|js)$">
+    Header set Access-Control-Allow-Origin "*"
+  </FilesMatch>
+</IfModule>

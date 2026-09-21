@@ -1,13 +1,15 @@
 {
-  "name": "finaladmin",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "name": "fixit-pdas-system",
+  "version": "1.0.0",
+  "description": "FixIt PDAS Facility and Maintenance Job Request Management System - ISAT U Dumangas Campus",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "oxlint",
-    "preview": "vite preview"
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix backend start",
+    "start:backend": "npm --prefix backend start",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev": "npm --prefix frontend run dev",
+    "lint": "npx oxlint backend/src frontend/src"
   },
   "dependencies": {
     "lucide-react": "^1.39.0",
@@ -15,8 +17,6 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
     "oxlint": "^1.79.0",
     "vite": "^8.2.2"
