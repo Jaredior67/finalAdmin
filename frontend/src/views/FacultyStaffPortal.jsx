@@ -33,6 +33,7 @@ import { PDASJobRequestFormDocument } from '../components/common/PDASJobRequestF
 import { JobRequestFormOverlay } from '../components/common/JobRequestFormOverlay';
 import { JobRequestPrintSheet } from '../components/common/JobRequestPrintSheet';
 import { PageHeader } from '../components/common/PageHeader';
+import { Pagination } from '../components/ui/Pagination';
 import { formatTicketDate } from '../components/common/TimeGreeting';
 import fixitLogo from '../assets/fixit-logo.png';
 
@@ -108,6 +109,17 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [tablePage, setTablePage] = useState(1);
+  const tablePageSize = 8;
+
+  // Reset table pagination whenever the tab or filters change
+  useEffect(() => { setTablePage(1); }, [activeTab, searchTerm, categoryFilter, urgencyFilter, statusFilter]);
+
+  const paginate = (list) => {
+    const totalPages = Math.max(1, Math.ceil(list.length / tablePageSize));
+    const safe = Math.min(Math.max(tablePage, 1), totalPages);
+    return { totalPages, safe, rows: list.slice((safe - 1) * tablePageSize, safe * tablePageSize) };
+  };
 
   // Dynamically derive campus buildings hierarchy from campusLocations
   const CAMPUS_BUILDINGS = useMemo(() => {
@@ -333,6 +345,9 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
        req.urgency === urgencyFilter);
     return matchesSearch && matchesCategory && matchesUrgency;
   }).sort(byDateDesc);
+
+  const pagedActive = paginate(filteredActiveTickets);
+  const pagedHistory = paginate(filteredHistoryTickets);
 
   // Export Requisitions to CSV
   const handleExportCSV = () => {
@@ -841,7 +856,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                     </td>
                   </tr>
                 ) : (
-                  filteredActiveTickets.map(req => (
+                  pagedActive.rows.map(req => (
                     <tr key={req.id}>
                       <td style={{ fontWeight: '700', color: '#001f9c' }}>
                         {req.controlNo || req.id}
@@ -911,10 +926,20 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
               </tbody>
             </table>
           </div>
+          <div style={{ padding: '0 24px 20px 24px' }}>
+            <Pagination
+              page={pagedActive.safe}
+              totalPages={pagedActive.totalPages}
+              onPageChange={setTablePage}
+              pageSize={tablePageSize}
+              total={filteredActiveTickets.length}
+              itemLabel="requests"
+            />
+          </div>
         </div>
       )}
 
-      {/* TAB 3: REQUISITION HISTORY & COMPLETED LOGS */}
+      {/* TAB 3: REQUEST HISTORY & COMPLETED LOGS */}
       {activeTab === 'faculty-history' && (
         <div className="content-card">
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '20px 24px' }}>
@@ -1013,7 +1038,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                     </td>
                   </tr>
                 ) : (
-                  filteredHistoryTickets.map(req => {
+                  pagedHistory.rows.map(req => {
                     const evalData = evaluations.find(e => e.reqId === req.id || e.controlNo === req.controlNo);
                     let avgRating = null;
                     if (evalData) {
@@ -1086,6 +1111,16 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                 )}
               </tbody>
             </table>
+          </div>
+          <div style={{ padding: '0 24px 20px 24px' }}>
+            <Pagination
+              page={pagedHistory.safe}
+              totalPages={pagedHistory.totalPages}
+              onPageChange={setTablePage}
+              pageSize={tablePageSize}
+              total={filteredHistoryTickets.length}
+              itemLabel="requests"
+            />
           </div>
         </div>
       )}

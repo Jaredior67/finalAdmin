@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, 
   Filter, 
@@ -23,6 +23,7 @@ import { Modal } from '../../components/common/Modal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { JobRequestFormOverlay } from '../../components/common/JobRequestFormOverlay';
 import { JobRequestPrintSheet } from '../../components/common/JobRequestPrintSheet';
+import { Pagination } from '../../components/ui/Pagination';
 
 export const JobRequests = ({ initialStatusTab = 'all' }) => {
   const { 
@@ -50,6 +51,10 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState(1);
   const [selectedReq, setSelectedReq] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [dispatchMessage, setDispatchMessage] = useState('');
@@ -129,6 +134,39 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
       const pB = priorityOrder[b.urgency] || 5;
       return pA - pB;
     });
+
+  // Reset to first page whenever the result set changes
+  useEffect(() => { setPage(1); }, [searchTerm, categoryFilter, urgencyFilter, activeStatusTab, pageSize]);
+
+  const sortValue = (req, key) => {
+    if (key === 'tracking') return String(req.controlNo || req.id || '');
+    if (key === 'urgency') return priorityOrder[req.urgency] || 5;
+    if (key === 'status') return String(req.status || '');
+    return '';
+  };
+
+  const toggleSort = (key) => {
+    if (sortKey !== key) { setSortKey(key); setSortDir(1); }
+    else if (sortDir === 1) { setSortDir(-1); }
+    else { setSortKey(null); setSortDir(1); }
+    setPage(1);
+  };
+
+  const sortedList = sortKey
+    ? [...filteredList].sort((a, b) => {
+        const vA = sortValue(a, sortKey);
+        const vB = sortValue(b, sortKey);
+        if (typeof vA === 'number') return (vA - vB) * sortDir;
+        return String(vA).localeCompare(String(vB)) * sortDir;
+      })
+    : filteredList;
+
+  const totalPages = Math.max(1, Math.ceil(sortedList.length / pageSize));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const pagedList = sortedList.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const sortArrow = (key) => (sortKey === key ? (sortDir === 1 ? ' ▲' : ' ▼') : '');
+  const sortThStyle = { cursor: 'pointer', userSelect: 'none' };
 
   const handleOpenDetail = (req) => {
     setSelectedReq(req);
@@ -333,12 +371,12 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>TRACKING NUMBER</th>
+                <th onClick={() => toggleSort('tracking')} style={sortThStyle} title="Sort by tracking number">TRACKING NUMBER{sortArrow('tracking')}</th>
                 <th>ISSUE & LOCATION</th>
-                <th>REQUISITIONER</th>
+                <th>REQUESTER</th>
                 <th>CATEGORY</th>
-                <th>URGENCY</th>
-                <th>STATUS</th>
+                <th onClick={() => toggleSort('urgency')} style={sortThStyle} title="Sort by urgency">URGENCY{sortArrow('urgency')}</th>
+                <th onClick={() => toggleSort('status')} style={sortThStyle} title="Sort by status">STATUS{sortArrow('status')}</th>
                 <th>ASSIGNED TECHNICIAN</th>
                 <th style={{ textAlign: 'right' }}>ACTIONS</th>
               </tr>
@@ -351,7 +389,7 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
                   </td>
                 </tr>
               ) : (
-                filteredList.map(req => {
+                pagedList.map(req => {
                   const isFlagged = req.replacementFlag?.isFlagged;
                   const isEmergency = req.urgency === 'Urgent';
                   const isHigh = req.urgency === 'High';
@@ -472,13 +510,24 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
             </tbody>
           </table>
         </div>
+        <div style={{ padding: '0 20px 16px 20px' }}>
+          <Pagination
+            page={safePage}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            pageSize={pageSize}
+            onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+            total={sortedList.length}
+            itemLabel="requests"
+          />
+        </div>
       </div>
 
-      {/* Manage Requisition Modal */}
+      {/* Manage Request Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={`Work Order Review & Dispatch: ${selectedReq?.controlNo || ''}`}
+        title={`Request Review & Dispatch: ${selectedReq?.controlNo || ''}`}
         maxWidth="740px"
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
