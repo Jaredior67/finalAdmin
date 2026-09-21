@@ -24,7 +24,7 @@ import { Modal } from '../../components/common/Modal';
 import { JobRequestFormOverlay } from '../../components/common/JobRequestFormOverlay';
 import { JobRequestPrintSheet } from '../../components/common/JobRequestPrintSheet';
 import { PageHeader } from '../../components/common/PageHeader';
-import { getTimeGreeting, formatHeaderDate, getDisplayFirstName } from '../../components/common/TimeGreeting';
+import { getTimeGreeting, formatHeaderDate, getDisplayFirstName, formatTicketDate } from '../../components/common/TimeGreeting';
 
 export const CampusAdminDashboard = () => {
   const { currentUser } = useAuth();
@@ -79,7 +79,7 @@ export const CampusAdminDashboard = () => {
     }
 
     return matchesSearch && matchesCategory && matchesTab;
-  });
+  }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 
   const handleOpenDecision = (req) => {
     setSelectedReq(req);
@@ -355,7 +355,7 @@ export const CampusAdminDashboard = () => {
                       <td style={{ fontWeight: '800', color: '#001f9c' }}>
                         {req.controlNo || req.id}
                         <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>
-                          {req.date}
+                          {formatTicketDate(req.date)}
                         </div>
                       </td>
                       <td>

@@ -10,15 +10,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
-import { getTimeGreeting, getDisplayFirstName } from '../../components/common/TimeGreeting';
+import { getTimeGreeting, getDisplayFirstName, formatTicketDate } from '../../components/common/TimeGreeting';
 import { PageHeader } from '../../components/common/PageHeader';
-
-const fmtDate = (value) => {
-  if (!value) return '—';
-  const d = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
 
 const statCard = {
   background: '#ffffff',
@@ -62,7 +55,7 @@ export const FacultyStaffDashboard = ({ onNavigate }) => {
     /high|urgent|emergency/i.test(String(r.urgency || ''))
   );
 
-  const recentTickets = [...myTickets].slice(0, 5);
+  const recentTickets = [...myTickets].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 5);
 
   const stats = [
     {
@@ -213,7 +206,7 @@ export const FacultyStaffDashboard = ({ onNavigate }) => {
                     {req.title}
                   </div>
                   <div style={{ fontSize: '12px', fontWeight: '400', color: '#64748b', marginTop: '2px', fontFamily: 'monospace' }}>
-                    {req.controlNo || req.id} &nbsp;·&nbsp; {fmtDate(req.date)}
+                    {req.controlNo || req.id} &nbsp;·&nbsp; {formatTicketDate(req.date)}
                   </div>
                 </div>
                 <div style={{ flexShrink: 0 }}>

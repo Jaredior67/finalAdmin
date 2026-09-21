@@ -19,7 +19,7 @@ import { useAuth } from '../../context/AuthContext';
 import { StatusBadge, UrgencyBadge, CategoryPill } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
 import { PageHeader } from '../../components/common/PageHeader';
-import { getTimeGreeting } from '../../components/common/TimeGreeting';
+import { getTimeGreeting, formatTicketDate } from '../../components/common/TimeGreeting';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { JobRequestFormOverlay } from '../../components/common/JobRequestFormOverlay';
 import { JobRequestPrintSheet } from '../../components/common/JobRequestPrintSheet';
@@ -67,7 +67,7 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
 
   const technicians = users.filter(u => u.role === 'Technician' || u.role === 'Maintenance');
 
-  // Filtered recent requisitions
+  // Filtered recent requests (most recent first)
   const filteredRequisitions = requisitions.filter(req => {
     const matchesSearch = 
       String(req.controlNo || req.id).toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -75,7 +75,7 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
       (req.title && req.title.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCat = filterCategory === 'all' || (req.category && req.category.toLowerCase().includes(filterCategory.toLowerCase()));
     return matchesSearch && matchesCat;
-  });
+  }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 
   const pendingList = requisitions.filter(r => r.status === 'Pending').slice(0, 3);
   const flaggedReplacements = requisitions.filter(r => r.replacementFlag?.isFlagged);
@@ -83,13 +83,6 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
   // Time greeting
   const now = new Date();
   const timeGreeting = getTimeGreeting(now);
-
-  const formatShortDate = (value) => {
-    if (!value) return '—';
-    const d = new Date(`${value}T00:00:00`);
-    if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
 
   const handleOpenDetail = (req) => {
     setSelectedReq(req);
@@ -432,7 +425,7 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
                   <UrgencyBadge urgency={req.urgency} />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: '400', color: '#64748b' }}>{formatShortDate(req.date)}</span>
+                  <span style={{ fontSize: '13px', fontWeight: '400', color: '#64748b' }}>{formatTicketDate(req.date)}</span>
                   <button
                     type="button"
                     onClick={() => handleOpenDetail(req)}
@@ -530,7 +523,7 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
                     <td className="col-category" style={{ padding: '12px 14px' }}><CategoryPill category={req.category} /></td>
                     <td style={{ padding: '12px 14px' }}><UrgencyBadge urgency={req.urgency} /></td>
                     <td style={{ padding: '12px 14px' }}><StatusBadge status={req.status} /></td>
-                    <td style={{ padding: '12px 14px', color: '#64748b', fontWeight: '400', whiteSpace: 'nowrap' }}>{formatShortDate(req.date)}</td>
+                    <td style={{ padding: '12px 14px', color: '#64748b', fontWeight: '400', whiteSpace: 'nowrap' }}>{formatTicketDate(req.date)}</td>
                     <td style={{ padding: '12px 14px', textAlign: 'right' }}>
                       <button
                         type="button"
@@ -574,7 +567,7 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
                   <div style={{ fontSize: '11.5px', color: '#64748b' }}>{evt.location || 'CEA Main Bldg'}</div>
                 </div>
                 <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '6px', background: '#eff4ff', color: '#001f9c', border: '1px solid #bfdbfe' }}>
-                  {formatShortDate(evt.scheduledDate || evt.date || 'Sep 24, 2026')}
+                  {formatTicketDate(evt.scheduledDate || evt.date || 'Sep 24, 2026')}
                 </span>
               </div>
             ))}
@@ -692,7 +685,7 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
               </div>
               <div>
                 <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date Filed</div>
-                <div style={{ fontSize: '13px', color: '#475569', fontWeight: '400' }}>{formatShortDate(selectedReq.date)}</div>
+                <div style={{ fontSize: '13px', color: '#475569', fontWeight: '400' }}>{formatTicketDate(selectedReq.date)}</div>
               </div>
             </div>
 

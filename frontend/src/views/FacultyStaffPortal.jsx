@@ -33,6 +33,7 @@ import { PDASJobRequestFormDocument } from '../components/common/PDASJobRequestF
 import { JobRequestFormOverlay } from '../components/common/JobRequestFormOverlay';
 import { JobRequestPrintSheet } from '../components/common/JobRequestPrintSheet';
 import { PageHeader } from '../components/common/PageHeader';
+import { formatTicketDate } from '../components/common/TimeGreeting';
 import fixitLogo from '../assets/fixit-logo.png';
 
 const DEFAULT_CAMPUS_BUILDINGS = [
@@ -287,7 +288,8 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
     }, 300);
   };
 
-  // Requisition Partitioning
+  // Requisition Partitioning (most recent first)
+  const byDateDesc = (a, b) => String(b.date || '').localeCompare(String(a.date || ''));
   const myTickets = requisitions.filter(r => 
     (currentUser?.email && r.requesterEmail?.toLowerCase() === currentUser.email.toLowerCase()) ||
     (currentUser?.name && r.requestedBy?.toLowerCase().includes(currentUser.name.toLowerCase()))
@@ -314,7 +316,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
        req.urgency === urgencyFilter);
     const matchesStatus = statusFilter === 'all' || req.status.toLowerCase().replace(/\s+/g, '-') === statusFilter;
     return matchesSearch && matchesCategory && matchesUrgency && matchesStatus;
-  });
+  }).sort(byDateDesc);
 
   // Filtered History Tickets
   const filteredHistoryTickets = completedTickets.filter(req => {
@@ -330,7 +332,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
        urgencyFilter === 'standard-routine' ? (req.urgency !== 'High Risk' && req.urgency !== 'Urgent' && req.urgency !== 'High') :
        req.urgency === urgencyFilter);
     return matchesSearch && matchesCategory && matchesUrgency;
-  });
+  }).sort(byDateDesc);
 
   // Export Requisitions to CSV
   const handleExportCSV = () => {
@@ -876,7 +878,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                         <StatusBadge status={req.status} />
                       </td>
                       <td style={{ fontSize: '12.5px', color: '#64748b' }}>
-                        {req.date}
+                        {formatTicketDate(req.date)}
                       </td>
                       <td style={{ fontSize: '12.5px', color: req.assignedTo ? '#0f172a' : '#94a3b8' }}>
                         {req.assignedTo || 'Pending Assignment'}
@@ -1035,7 +1037,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                           <StatusBadge status={req.status} />
                         </td>
                         <td style={{ fontSize: '12.5px', color: '#64748b' }}>
-                          {req.date}
+                          {formatTicketDate(req.date)}
                         </td>
                         <td style={{ fontSize: '12.5px', color: '#0f172a', fontWeight: '600' }}>
                           {req.assignedTo || 'PDAS Maintenance Team'}

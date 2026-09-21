@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Archive, Search, Download, RotateCcw, CheckCircle2, Eye } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { StatusBadge, CategoryPill } from '../../components/common/StatusBadge';
+import { formatTicketDate } from '../../components/common/TimeGreeting';
 
 export const ArchivedRequests = () => {
   const { requisitions, unarchiveRequisition } = useData();
@@ -19,7 +20,7 @@ export const ArchivedRequests = () => {
     const matchesCat = categoryFilter === 'all' || r.category === categoryFilter;
     const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
     return matchesSearch && matchesCat && matchesStatus;
-  });
+  }).sort((a, b) => String(b.archivedAt || b.date || '').localeCompare(String(a.archivedAt || a.date || '')));
 
   return (
     <div>
@@ -99,7 +100,7 @@ export const ArchivedRequests = () => {
                     <td style={{ fontWeight: '500' }}>{req.title}</td>
                     <td><CategoryPill category={req.category} /></td>
                     <td><StatusBadge status={req.status} /></td>
-                    <td style={{ color: '#64748b', fontSize: '12.5px' }}>{req.archivedAt || req.date}</td>
+                    <td style={{ color: '#64748b', fontSize: '12.5px' }}>{formatTicketDate(String(req.archivedAt || req.date || '').split(',')[0])}</td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button
                         type="button"

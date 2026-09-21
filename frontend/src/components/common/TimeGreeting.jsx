@@ -17,6 +17,18 @@ export function formatHeaderDate(now = new Date()) {
   });
 }
 
+/** Ticket/filed date as "Sep 2, 2026" — the single format used in every table and detail view. */
+export function formatTicketDate(value) {
+  if (!value) return '—';
+  const d = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 /** First name for header greetings — skips honorifics (Dr., Atty., Mr., …). */
 export function getDisplayFirstName(fullName, fallback = 'User') {
   if (!fullName) return fallback;
