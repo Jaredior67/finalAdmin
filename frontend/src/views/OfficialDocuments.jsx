@@ -43,7 +43,7 @@ export const OfficialDocuments = () => {
             </div>
           </div>
           <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px' }}>
-            Select a requisition below, edit all fields in the overlay (Word-like), then print the clean aligned sheet.
+            Select a request below, edit all fields in the overlay (Word-like), then print the clean aligned sheet.
           </p>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary btn-sm" onClick={() => selectedDocReq && openPreview(selectedDocReq)} disabled={!selectedDocReq}>
@@ -58,7 +58,7 @@ export const OfficialDocuments = () => {
 
       <div className="content-card">
         <div className="card-header">
-          <h2 className="card-title">Select Requisition Reference for Document Generation</h2>
+          <h2 className="card-title">Select Request Reference for Document Generation</h2>
         </div>
         <div className="table-responsive">
           <table className="data-table">

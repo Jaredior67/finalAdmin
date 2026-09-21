@@ -307,7 +307,7 @@ export const SettingsPage = () => {
               </div>
 
               <div style={{ color: '#cbd5e1', fontSize: '13.5px', marginTop: '4px', fontWeight: '500' }}>
-                {title || (isMaintenance ? 'Maintenance Specialist' : isFacultyOrStaff ? 'Faculty Requisitioner' : 'Physical Plant Administrator')}
+                {title || (isMaintenance ? 'Maintenance Specialist' : isFacultyOrStaff ? 'Faculty Requester' : 'Physical Plant Administrator')}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '10px', fontSize: '12.5px', color: '#94a3b8', flexWrap: 'wrap' }}>
@@ -400,7 +400,7 @@ export const SettingsPage = () => {
                   <User size={18} color="#001f9c" /> Personal & Institutional Profile
                 </div>
                 <div className="settings-card-subtitle">
-                  Information used on official QF-PDAS-DC-01 requisition forms, job orders, and campus communications.
+                  Information used on official QF-PDAS-DC-01 request forms, job orders, and campus communications.
                 </div>
               </div>
             </div>
@@ -529,13 +529,13 @@ export const SettingsPage = () => {
               </div>
 
               <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="form-label">Bio / Facility Requisition Notes</label>
+                <label className="form-label">Bio / Facility Request Notes</label>
                 <textarea
                   className="form-textarea"
                   rows="3"
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
-                  placeholder="Add any specific notes regarding your department station, maintenance coverage, or requisition preferences..."
+                  placeholder="Add any specific notes regarding your department station, maintenance coverage, or request preferences..."
                 />
               </div>
 
@@ -770,7 +770,7 @@ export const SettingsPage = () => {
             <div className="toggle-switch-container">
               <div>
                 <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '13.5px' }}>
-                  Requisition Lifecycle Updates
+                  Request Lifecycle Updates
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
                   Receive alerts when ticket status updates (Pending → Under Review → Awaiting Signatures → Approved → In Progress → Completed).
@@ -811,7 +811,7 @@ export const SettingsPage = () => {
                   Physical Signature Verification Reminders
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                  Notify requisitioners to print and route the official QF-PDAS-DC-01 form for wet-ink signatures.
+                  Notify requesters to print and route the official QF-PDAS-DC-01 form for wet-ink signatures.
                 </div>
               </div>
               <label className="toggle-switch">
@@ -830,7 +830,7 @@ export const SettingsPage = () => {
                   ISO/IEC 25010 Post-Completion Feedback Reminders
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                  Prompt requisitioners to submit service quality ratings once a maintenance work order is marked Completed.
+                  Prompt requesters to submit service quality ratings once a maintenance work order is marked Completed.
                 </div>
               </div>
               <label className="toggle-switch">
@@ -911,7 +911,7 @@ export const SettingsPage = () => {
               </div>
               <div>
                 <div style={{ fontWeight: '700', fontSize: '13.5px', color: '#0f172a' }}>
-                  Job Requisition Submission
+                  Job Request Submission
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
                   Submit work orders across all 6 official PDAS categories with photo and QR location tags.
@@ -1055,7 +1055,7 @@ export const SettingsPage = () => {
             <div className="toggle-switch-container">
               <div>
                 <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '13.5px' }}>
-                  Auto-Save Requisition Drafts Locally
+                  Auto-Save Request Drafts Locally
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
                   Automatically preserve unsubmitted job request form entries so you never lose progress if interrupted.

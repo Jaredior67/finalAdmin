@@ -530,7 +530,7 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
               <div style={{ fontSize: '13px', color: '#475569', lineHeight: 1.5 }}>{selectedReq.description}</div>
               <div style={{ marginTop: '8px', display: 'flex', gap: '14px', fontSize: '12px', color: '#64748b' }}>
                 <span><strong>Location:</strong> {selectedReq.location}</span>
-                <span><strong>Requisitioner:</strong> {selectedReq.requestedBy} ({selectedReq.department})</span>
+                <span><strong>Requester:</strong> {selectedReq.requestedBy} ({selectedReq.department})</span>
               </div>
               {selectedReq.completionPhotoUrl && (
                 <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -562,7 +562,7 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
                   Physical Wet-Ink Signature Verification Gate
                 </div>
                 <div style={{ fontSize: '13px', color: '#9a3412', marginBottom: '12px', lineHeight: 1.5 }}>
-                  The printed <strong>QF-PDAS-DC-01</strong> form must be signed physically in wet ink by the <strong>Requisitioner</strong> and <strong>Immediate Supervisor</strong>, then submitted to the PDAS Office before this ticket can advance to <strong>Approved</strong> and dispatched to maintenance.
+                  The printed <strong>QF-PDAS-DC-01</strong> form must be signed physically in wet ink by the <strong>Requester</strong> and <strong>Immediate Supervisor</strong>, then submitted to the PDAS Office before this ticket can advance to <strong>Approved</strong> and dispatched to maintenance.
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700', color: '#0f172a', marginBottom: '10px' }}>
                   <input
@@ -726,7 +726,7 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
                 className="form-textarea"
                 value={adminNotes}
                 onChange={(e) => setAdminNotes(e.target.value)}
-                placeholder="Add specific instructions for technician, safety protocols, or requisitioner feedback..."
+                placeholder="Add specific instructions for technician, safety protocols, or requester feedback..."
                 style={{ minHeight: '80px' }}
               />
             </div>

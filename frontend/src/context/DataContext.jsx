@@ -665,7 +665,7 @@ const INITIAL_MESSAGES = [
     unread: true,
     preview: 'Director, technician Mark has assessed the precision AC. Replacement compressor unit is needed...',
     thread: [
-      { sender: 'Engr. Carlos Mendoza', text: 'Good day Director! Requisition REQ-2026-002 has been filed for the server room cooling unit.', time: '09:15 AM' },
+      { sender: 'Engr. Carlos Mendoza', text: 'Good day Director! Request REQ-2026-002 has been filed for the server room cooling unit.', time: '09:15 AM' },
       { sender: 'PDAS Director', text: 'Approved immediately under urgent status. Lead technician Mark is dispatched.', time: '09:32 AM' },
       { sender: 'Engr. Carlos Mendoza', text: 'Director, technician Mark checked the thermal sensor. Replacement compressor unit is needed due to burnt coils. Replacement flag raised.', time: '1:34 PM' }
     ]
@@ -674,7 +674,7 @@ const INITIAL_MESSAGES = [
     id: 'msg_002',
     sender: 'Dr. Elena Ramos (CEA)',
     senderAvatar: 'E',
-    role: 'Dean / Requisitioner',
+    role: 'Dean / Requester',
     subject: 'Room 302 Wiring Safety Concern',
     controlNo: 'REQ-2026-001',
     time: 'Yesterday',
@@ -1114,9 +1114,9 @@ export const DataProvider = ({ children }) => {
         {
           status: 'Submitted',
           timestamp: nowStr,
-          actor: `${newReq.requestedBy} (${newReq.requesterRole || 'Requisitioner'})`,
+          actor: `${newReq.requestedBy} (${newReq.requesterRole || 'Requester'})`,
           note: isUrgent && !newReq.isStandardFormFilled 
-            ? 'Urgent Job Request submitted. Requisitioner required to complete full Standard QF-PDAS-DC-01 Form within the day.'
+            ? 'Urgent Job Request submitted. Requester required to complete full Standard QF-PDAS-DC-01 Form within the day.'
             : 'Standard Job Request (QF-PDAS-DC-01) submitted to PDAS central queue.'
         }
       ],
@@ -1128,7 +1128,7 @@ export const DataProvider = ({ children }) => {
     setNotifications(prev => [
       {
         id: `notif-${Date.now()}`,
-        title: isUrgent ? 'URGENT Facility Ticket (Standard Form Pending)' : 'New Facility Requisition (QF-PDAS-DC-01)',
+        title: isUrgent ? 'URGENT Facility Ticket (Standard Form Pending)' : 'New Facility Request (QF-PDAS-DC-01)',
         text: `${requestId} (${entry.category} - ${entry.location}) filed by ${entry.requestedBy}`,
         time: 'Just now',
         unread: true,
@@ -1220,7 +1220,7 @@ export const DataProvider = ({ children }) => {
     setNotifications(prev => [
       {
         id: `notif-${Date.now()}`,
-        title: isDispatched ? 'Requisition Approved and Dispatched' : 'Requisition Accepted — Awaiting Signatures',
+        title: isDispatched ? 'Request Approved and Dispatched' : 'Request Accepted — Awaiting Signatures',
         text: isDispatched
           ? `${refNo} dispatched to ${technicianName}.`
           : `${refNo} accepted. Print QF-PDAS-DC-01 and collect wet-ink signatures.`,
@@ -1325,7 +1325,7 @@ export const DataProvider = ({ children }) => {
             {
               status: 'Standard Form Filed',
               timestamp: nowStr,
-              actor: `${r.requestedBy} (${r.requesterRole || 'Requisitioner'})`,
+              actor: `${r.requestedBy} (${r.requesterRole || 'Requester'})`,
               note: 'Standard QF-PDAS-DC-01 Form details filed for urgent request.'
             }
           ]
@@ -1689,7 +1689,7 @@ export const DataProvider = ({ children }) => {
       category: target?.category || 'General',
       location: target?.location || 'Unknown',
       resolutionStatus: target?.status || 'Unknown',
-      submittedBy: evalData.submittedBy || target?.requestedBy || 'Requisitioner',
+      submittedBy: evalData.submittedBy || target?.requestedBy || 'Requester',
       submittedAt: nowStr,
       functionalSuitability: evalData.functionalSuitability,
       usability: evalData.usability,

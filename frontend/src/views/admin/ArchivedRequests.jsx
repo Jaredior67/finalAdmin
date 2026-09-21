@@ -27,7 +27,7 @@ export const ArchivedRequests = () => {
         <div>
           <h1 className="page-title">Archived Requests & Historical Records</h1>
           <p className="page-subtitle">
-            Long-term repository of resolved, completed, and closed facility requisitions ({archivedItems.length} archived)
+            Long-term repository of resolved, completed, and closed facility requests ({archivedItems.length} archived)
           </p>
         </div>
       </div>

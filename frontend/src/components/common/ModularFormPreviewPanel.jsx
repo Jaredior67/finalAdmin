@@ -261,7 +261,7 @@ export const ModularFormPreviewPanel = ({
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <CheckCircle2 size={13} color="#059669" />
-          <span>Updates automatically as you type requisition details.</span>
+          <span>Updates automatically as you type request details.</span>
         </div>
         <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: '600' }}>
           Mode: <strong style={{ color: formData?.requestType === 'Urgent Request' ? '#dc2626' : '#001f9c' }}>{formData?.requestType || 'Standard Request'}</strong>
@@ -300,7 +300,7 @@ export const ModularFormPreviewPanel = ({
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
             <span style={{ fontSize: '12px', color: '#64748b' }}>
-              ISO 9001:2015 Compliant Requisition Document (Effective: Feb 3, 2025)
+              ISO 9001:2015 Compliant Request Document (Effective: Feb 3, 2025)
             </span>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button

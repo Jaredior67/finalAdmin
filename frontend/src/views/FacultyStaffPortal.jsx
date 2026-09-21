@@ -360,7 +360,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `ISATU_Requisition_History_${currentUser?.idNumber || 'Report'}.csv`);
+    link.setAttribute('download', `ISATU_Request_History_${currentUser?.idNumber || 'Report'}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -380,8 +380,8 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
       
       {/* Page Header */}
       <PageHeader
-        breadcrumbs={['Requisition Desk', activeTab === 'faculty-history' ? 'Requisition History' : activeTab === 'faculty-tickets' ? 'My Active Tickets' : 'New Requisition']}
-        title={activeTab === 'faculty-history' ? 'Requisition History' : activeTab === 'faculty-tickets' ? 'My Active Tickets' : 'Facility Requisition Desk'}
+        breadcrumbs={['Request Desk', activeTab === 'faculty-history' ? 'Request History' : activeTab === 'faculty-tickets' ? 'My Active Tickets' : 'New Request']}
+        title={activeTab === 'faculty-history' ? 'Request History' : activeTab === 'faculty-tickets' ? 'My Active Tickets' : 'Facility Request Desk'}
         action={
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
@@ -549,7 +549,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                   The official <strong>QF-PDAS-DC-01</strong> form opens for filing.
                 </p>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', fontSize: '12.5px', fontWeight: '600', borderRadius: '9999px', padding: '5px 14px', margin: '10px 0 22px 0' }}>
-                  Filing as {currentUser?.name || 'Faculty Requisitioner'} • {currentUser?.department || 'ISAT U Dumangas'}
+                  Filing as {currentUser?.name || 'Faculty Requester'} • {currentUser?.department || 'ISAT U Dumangas'}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '26px' }}>
                   <button
@@ -603,7 +603,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '20px 24px' }}>
             <div>
               <h2 className="card-title" style={{ fontSize: '18px', fontWeight: '800' }}>
-                My Active Facility Requisitions ({filteredActiveTickets.length})
+                My Active Facility Requests ({filteredActiveTickets.length})
               </h2>
             </div>
 
@@ -720,7 +720,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                 </div>
                 <div>
                   <div style={{ fontSize: '14px', fontWeight: '800', color: '#9f1239' }}>
-                    Action Required: Urgent Requisition Standard Form Filing
+                    Action Required: Urgent Request Standard Form Filing
                   </div>
                   <div style={{ fontSize: '12.5px', color: '#881337', marginTop: '2px' }}>
                     You have urgent requests pending full <strong>QF-PDAS-DC-01 Standard Form</strong> details. Please complete within the day.
@@ -918,7 +918,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '20px 24px' }}>
             <div>
               <h2 className="card-title" style={{ fontSize: '18px', fontWeight: '800' }}>
-                Completed & Serviced Requisitions History ({filteredHistoryTickets.length})
+                Completed & Serviced Requests History ({filteredHistoryTickets.length})
               </h2>
             </div>
 
@@ -1004,7 +1004,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                   <tr>
                     <td colSpan={8} style={{ textAlign: 'center', padding: '48px 16px', color: '#94a3b8' }}>
                       <History size={32} style={{ margin: '0 auto 8px auto', opacity: 0.4 }} />
-                      <div style={{ fontSize: '14px', fontWeight: '600', color: '#475569' }}>No completed requisition history records found</div>
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: '#475569' }}>No completed request history records found</div>
                       <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
                         Once pending repairs are finished and closed by the PDAS team, they will appear here.
                       </div>
@@ -1156,7 +1156,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
       <Modal
         isOpen={Boolean(selectedTicketDetail)}
         onClose={() => setSelectedTicketDetail(null)}
-        title={`Requisition Details: ${selectedTicketDetail?.controlNo || selectedTicketDetail?.id || ''}`}
+        title={`Request Details: ${selectedTicketDetail?.controlNo || selectedTicketDetail?.id || ''}`}
         maxWidth="680px"
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
@@ -1193,11 +1193,11 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
               marginBottom: '20px'
             }}>
               <div style={{ fontSize: '12px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '14px' }}>
-                Requisition Lifecycle Progress
+                Request Lifecycle Progress
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', textAlign: 'center' }}>
                 {[
-                  { step: 1, label: '1. Requisition Filed', done: true, active: false },
+                  { step: 1, label: '1. Request Filed', done: true, active: false },
                   { step: 2, label: '2. Under Review', done: ['Under Review', 'Awaiting Signatures', 'Approved', 'In Progress', 'Ongoing', 'On Hold', 'Completed'].includes(selectedTicketDetail.status), active: selectedTicketDetail.status === 'Under Review' },
                   { step: 3, label: '3. Approved & Assigned', done: ['Approved', 'In Progress', 'Ongoing', 'On Hold', 'Completed'].includes(selectedTicketDetail.status), active: selectedTicketDetail.status === 'Approved' || selectedTicketDetail.status === 'In Progress' || selectedTicketDetail.status === 'Ongoing' || selectedTicketDetail.status === 'On Hold' },
                   { step: 4, label: '4. Serviced & Closed', done: selectedTicketDetail.status === 'Completed', active: false }

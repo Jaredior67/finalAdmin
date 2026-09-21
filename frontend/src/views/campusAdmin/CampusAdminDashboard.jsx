@@ -168,7 +168,7 @@ export const CampusAdminDashboard = () => {
             {pendingFinalAction.length}
           </div>
           <div style={{ fontSize: '11px', color: '#78350f', marginTop: '4px' }}>
-            PDAS requisitions awaiting Campus Admin approval
+            PDAS requests awaiting Campus Admin approval
           </div>
         </div>
 
@@ -339,7 +339,7 @@ export const CampusAdminDashboard = () => {
               {filteredRequisitions.length === 0 ? (
                 <tr>
                   <td colSpan="7" style={{ textAlign: 'center', padding: '36px 16px', color: '#64748b' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '700' }}>No requisitions found matching criteria.</div>
+                    <div style={{ fontSize: '14px', fontWeight: '700' }}>No requests found matching criteria.</div>
                     <div style={{ fontSize: '12px', marginTop: '4px' }}>Switch tabs or clear filters to view requests.</div>
                   </td>
                 </tr>

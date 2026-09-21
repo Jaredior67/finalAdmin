@@ -516,7 +516,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#0f172a' }}>
                       <User size={15} color="#001f9c" style={{ flexShrink: 0 }} />
-                      <span><strong>Requisitioner:</strong> {task.requestedBy}</span>
+                      <span><strong>Requester:</strong> {task.requestedBy}</span>
                     </div>
 
                     {task.qrCodeRef && (
@@ -999,7 +999,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
                 <div><UrgencyBadge urgency={selectedTaskDetail.urgency} /></div>
               </div>
               <div>
-                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Requisitioner:</span>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Requester:</span>
                 <div style={{ fontWeight: '600', color: '#001f9c' }}>{selectedTaskDetail.requestedBy} ({selectedTaskDetail.department})</div>
               </div>
               <div>
@@ -1014,7 +1014,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
 
             <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '10px', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
               <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '4px' }}>
-                Problem Description from Requisitioner:
+                Problem Description from Requester:
               </div>
               <div style={{ fontSize: '13px', color: '#1e293b', lineHeight: 1.5 }}>
                 {selectedTaskDetail.description}

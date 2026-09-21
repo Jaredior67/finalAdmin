@@ -151,7 +151,7 @@ export const CommunicationBox = () => {
             )}
           </div>
           <p style={{ fontSize: '12.5px', color: '#64748b', margin: '3px 0 0 0' }}>
-            Direct communication between requisitioners, technicians &amp; PDAS administration
+            Direct communication between requesters, technicians &amp; PDAS administration
           </p>
         </div>
         <button
