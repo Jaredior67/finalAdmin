@@ -2,32 +2,10 @@ import { Router } from 'express';
 import pool from '../config/db.js';
 import { verifyToken, requireRole } from '../middleware/auth.js';
 import { auditLog } from '../utils/auditLog.js';
+import { isPrivileged, isTech, canViewTicket, authorizeStatusChange } from '../utils/ticketPolicy.js';
 
 const router = Router();
 router.use(verifyToken);
-
-// --- Phase 2: server-side ticket lifecycle ---------------------------------
-// Allowed forward transitions. Completed and Rejected are terminal.
-const TRANSITIONS = {
-  'Pending': ['Under Review', 'Rejected'],
-  'Under Review': ['Awaiting Signatures', 'Rejected'],
-  'Awaiting Signatures': ['Approved', 'Rejected'],
-  'Approved': ['Ongoing', 'Rejected'],
-  'Ongoing': ['Completed'],
-  'Completed': [],
-  'Rejected': [],
-};
-
-const isPrivileged = (role) => role === 'admin' || role === 'campus_admin';
-const isTech = (role) => role === 'maintenance' || role === 'technician';
-
-// Ownership / visibility: admins see all; technicians see assigned;
-// faculty/staff see only their own requests (blocks IDOR).
-function canViewTicket(user, row) {
-  if (isPrivileged(user.role)) return true;
-  if (isTech(user.role)) return row.assigned_to === user.id;
-  return row.requester_id === user.id;
-}
 
 async function generateTicketNo(conn) {
   const year = new Date().getFullYear();
@@ -281,36 +259,16 @@ router.put('/:id/status', async (req, res) => {
     const currentStatus = jobRequest.status;
     const role = req.user.role;
 
-    // --- Role gate: faculty/staff can never change status. Technicians may
-    // only mark their own assigned ticket Completed. All other moves are admin.
-    if (!isPrivileged(role)) {
-      const techCompletion = isTech(role)
-        && currentStatus === 'Ongoing'
-        && targetStatus === 'Completed'
-        && jobRequest.assigned_to === req.user.id;
-      if (!techCompletion) {
-        await conn.rollback();
-        return res.status(403).json({ message: 'Only PDAS Admin can change ticket status (assigned technicians may only mark their own ticket Completed).' });
-      }
+    // Single source of truth lives in utils/ticketPolicy.js (unit-tested).
+    const decision = authorizeStatusChange(req.user, jobRequest, targetStatus);
+    if (!decision.ok) {
+      await conn.rollback();
+      return res.status(decision.status).json({ message: decision.message });
     }
     // Technicians may never reassign tickets.
     if (isTech(role) && assignedTo !== undefined && assignedTo !== jobRequest.assigned_to) {
       await conn.rollback();
       return res.status(403).json({ message: 'Technicians cannot reassign tickets.' });
-    }
-
-    // --- Transition gate: block invalid jumps (e.g. Pending -> Completed).
-    if (!(TRANSITIONS[currentStatus] || []).includes(targetStatus)) {
-      await conn.rollback();
-      return res.status(422).json({ message: `Cannot move a ticket from "${currentStatus}" to "${targetStatus}".` });
-    }
-
-    // --- Signed-form gate: digital signatures are NOT allowed. The official
-    // PDAS form is printed and physically signed; PDAS Admin must confirm it
-    // (PUT /:id/signed-form) before Approved or Ongoing.
-    if ((targetStatus === 'Approved' || targetStatus === 'Ongoing') && !jobRequest.signed_form_confirmed) {
-      await conn.rollback();
-      return res.status(422).json({ message: 'The physically signed PDAS form must be confirmed by PDAS Admin before approval or dispatch.' });
     }
 
     const completedAt = targetStatus === 'Completed' ? new Date() : jobRequest.completed_at;
