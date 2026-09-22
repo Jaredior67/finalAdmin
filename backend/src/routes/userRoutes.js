@@ -147,6 +147,11 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'firstName, lastName, email, password, and role are required.' });
     }
 
+    // Same password rules as self-registration.
+    if (typeof password !== 'string' || password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters and include a letter and a number.' });
+    }
+
     const [existing] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
     if (existing.length > 0) {
       return res.status(409).json({ message: 'A user with this email already exists.' });

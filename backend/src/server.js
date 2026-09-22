@@ -136,4 +136,12 @@ async function startWithRetry(attempt = 1) {
   }
 }
 
+if (!process.env.JWT_SECRET) {
+  console.error('====================================================');
+  console.error(' FATAL: JWT_SECRET is not set in backend/.env — refusing to start.');
+  console.error(' Copy backend/.env.example to backend/.env and set a secret.');
+  console.error('====================================================');
+  process.exit(1);
+}
+
 startWithRetry();

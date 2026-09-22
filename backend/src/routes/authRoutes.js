@@ -2,13 +2,42 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 
 const router = Router();
+
+const loginLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
+const registerLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
+
+// Phase 2: password rules — minimum 8 chars with at least one letter and number.
+function passwordError(password) {
+  if (typeof password !== 'string' || password.length < 8) {
+    return 'Password must be at least 8 characters long.';
+  }
+  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    return 'Password must include at least one letter and one number.';
+  }
+  return null;
+}
+
+function jwtSecretOrFail(res) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('FATAL: JWT_SECRET is not set. Refusing to issue tokens.');
+    res.status(500).json({ message: 'Server is misconfigured. Please contact the administrator.' });
+    return null;
+  }
+  return secret;
+}
+
+// Account lockout policy: 5 failed attempts locks the account for 15 minutes.
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCK_MINUTES = 15;
 
 // POST /api/auth/register
 // Self-registration is allowed strictly for faculty and staff members only.
 // Submissions await PDAS Admin approval.
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
   try {
     const {
       firstName,
@@ -28,6 +57,11 @@ router.post('/register', async (req, res) => {
 
     if (!firstName || !lastName || !email || !password || !role) {
       return res.status(400).json({ message: 'First name, last name, email, password, and role are required.' });
+    }
+
+    const weakPassword = passwordError(password);
+    if (weakPassword) {
+      return res.status(400).json({ message: weakPassword });
     }
 
     // Manuscript compliance: Only faculty and staff can self-register.
@@ -82,7 +116,7 @@ router.post('/register', async (req, res) => {
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password, role } = req.body;
     if (!email || !password || !role) {
@@ -95,12 +129,25 @@ router.post('/login', async (req, res) => {
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
+    // Account lockout check (generic message — never reveal lock state specifics).
+    if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
+      return res.status(429).json({ message: 'Too many failed attempts. Please try again later.' });
+    }
     if (user.status !== 'active') {
       return res.status(403).json({ message: 'This account has been deactivated. Please contact the PDAS office.' });
     }
 
     const passwordMatches = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatches) {
+      const attempts = (user.failed_login_attempts || 0) + 1;
+      const updates = ['failed_login_attempts = ?'];
+      const params = [attempts];
+      if (attempts >= MAX_FAILED_ATTEMPTS) {
+        updates.push('locked_until = DATE_ADD(NOW(), INTERVAL ? MINUTE)');
+        params.push(LOCK_MINUTES);
+      }
+      params.push(user.id);
+      await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
@@ -120,10 +167,17 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ message: `This account is not authorized for the ${role} portal.` });
     }
 
+    // Successful login resets the failed-attempt counter.
+    if (user.failed_login_attempts || user.locked_until) {
+      await pool.query('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?', [user.id]);
+    }
+
+    const secret = jwtSecretOrFail(res);
+    if (!secret) return;
     const token = jwt.sign(
       { id: user.id, role: user.role, email: user.email },
-      process.env.JWT_SECRET || 'fixit_pdas_secure_jwt_secret',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
+      secret,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
     );
 
     delete user.password_hash;
