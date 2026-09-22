@@ -470,9 +470,11 @@ export const CampusAdminDashboard = () => {
         }
       >
         {selectedReq && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="decision-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 5fr) minmax(0, 7fr)', gap: '20px', alignItems: 'start' }}>
+            {/* Left column: summary + description + endorsement + decision form */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
             {/* Top: ticket summary strip — key facts at a glance */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px' }}>
                 <div style={{ fontSize: '10.5px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client</div>
                 <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a', marginTop: '3px' }}>{selectedReq.requestedBy || '—'}</div>
@@ -503,9 +505,7 @@ export const CampusAdminDashboard = () => {
                'Regular maintenance review passed.'}
             </div>
 
-            {/* Main: decision form + live document preview */}
-            <div className="decision-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 5fr) minmax(0, 7fr)', gap: '20px', alignItems: 'start' }}>
-              {/* Left: Decision Form */}
+              {/* Decision Form */}
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '22px' }}>
                 <div style={{ fontSize: '14px', fontWeight: '800', color: '#1e3a8a', textTransform: 'uppercase', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Landmark size={18} /> Campus Administrator Decision Panel
@@ -590,7 +590,8 @@ export const CampusAdminDashboard = () => {
               </div>
             </div>
 
-            {/* Right: live QF-PDAS-DC-01 document preview */}
+            </div>
+            {/* Right column: live QF-PDAS-DC-01 document preview */}
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
                 <span style={{ fontSize: '12px', fontWeight: '800', color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -604,7 +605,6 @@ export const CampusAdminDashboard = () => {
                 <JobRequestPrintSheet req={{ ...selectedReq, finalAction: { status: decisionStatus, remarks: decisionRemarks } }} />
               </div>
             </div>
-          </div>
           </div>
         )}
       </Modal>
