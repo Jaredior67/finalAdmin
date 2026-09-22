@@ -13,11 +13,36 @@ fs.mkdirSync(uploadDir, { recursive: true });
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
+    // Phase 2: never reuse the client filename — rebuild from a random base
+    // plus the validated allow-list extension only.
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${unique}${path.extname(file.originalname)}`);
+    cb(null, `${unique}${req._validatedExt || ''}`);
   },
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
+
+// Phase 2: allow-list by extension AND client MIME (never trust MIME alone —
+// the extension gate is what keeps executables/scripts out of /uploads).
+const ALLOWED_UPLOADS = {
+  '.jpg': ['image/jpeg', 'image/pjpeg'],
+  '.jpeg': ['image/jpeg', 'image/pjpeg'],
+  '.png': ['image/png'],
+  '.pdf': ['application/pdf'],
+};
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const ext = String(path.extname(file.originalname || '')).toLowerCase();
+    const allowedMimes = ALLOWED_UPLOADS[ext];
+    if (!allowedMimes || !allowedMimes.includes(String(file.mimetype || '').toLowerCase())) {
+      const err = new Error('Only JPG, PNG, or PDF files are allowed.');
+      err.status = 400;
+      return cb(err);
+    }
+    req._validatedExt = ext;
+    cb(null, true);
+  },
+});
 
 const router = Router();
 router.use(verifyToken);

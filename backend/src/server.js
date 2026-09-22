@@ -43,12 +43,24 @@ app.use(cors({
 
 app.use(express.json({ limit: '15mb' }));
 
-// Serve static uploaded documents and photos
+// Phase 2: baseline security headers (no extra dependency).
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'SAMEORIGIN');
+  res.set('Referrer-Policy', 'no-referrer');
+  next();
+});
+
+// Serve static uploaded documents and photos. Only allow-listed types
+// (jpg/png/pdf) can ever be written here (see documentRoutes fileFilter),
+// and nosniff blocks MIME-sniffing of anything unexpected.
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
-app.use('/uploads', express.static(uploadDir));
+app.use('/uploads', express.static(uploadDir, {
+  setHeaders: (res) => { res.set('X-Content-Type-Options', 'nosniff'); },
+}));
 
 // Serve static frontend build if it exists
 const frontendDistDir = path.join(__dirname, '..', '..', 'frontend', 'dist');
@@ -94,10 +106,13 @@ app.use((req, res) => {
   res.status(404).json({ message: `No route for ${req.method} ${req.originalUrl}` });
 });
 
-// Central error handler
+// Central error handler — Phase 2: never leak stack traces or SQL errors
+// to clients. Details are logged server-side; production callers get a
+// generic message (full detail only when NODE_ENV=development).
 app.use((err, req, res, _next) => {
   console.error(err);
-  res.status(err.status || 500).json({ message: err.message || 'Something went wrong.' });
+  const expose = process.env.NODE_ENV === 'development';
+  res.status(err.status || 500).json({ message: expose ? (err.message || 'Something went wrong.') : 'Something went wrong.' });
 });
 
 const PORT = process.env.PORT || 5000;

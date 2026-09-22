@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
 import { verifyToken, requireRole } from '../middleware/auth.js';
+import { auditLog } from '../utils/auditLog.js';
 
 const router = Router();
 
@@ -245,14 +246,23 @@ router.put('/:id/status', async (req, res) => {
   }
 });
 
-// DELETE /api/users/:id
+// DELETE /api/users/:id — Phase 2: soft delete (deactivate) instead of hard
+// delete so history, tickets, and audit trails stay intact. Reactivate via
+// PUT /:id/status. The users table has no deleted flag; 'inactive' is it.
 router.delete('/:id', async (req, res) => {
   try {
-    const [result] = await pool.query('DELETE FROM users WHERE id = ?', [req.params.id]);
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'User not found.' });
+    if (Number(req.params.id) === req.user.id) {
+      return res.status(400).json({ message: 'You cannot deactivate your own account.' });
     }
-    res.json({ message: 'User removed.' });
+    const [result] = await pool.query(
+      "UPDATE users SET status = 'inactive' WHERE id = ? AND status <> 'inactive'",
+      [req.params.id]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'User not found or already inactive.' });
+    }
+    await auditLog(pool, { actorId: req.user.id, action: 'user.deactivated', entity: 'user', entityId: req.params.id });
+    res.json({ message: 'User deactivated. Reactivate anytime via user status.' });
   } catch (err) {
     console.error('DELETE /users/:id error:', err);
     res.status(500).json({ message: 'Failed to remove user.' });
