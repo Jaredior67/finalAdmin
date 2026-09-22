@@ -1,17 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Search, 
-  Filter, 
-  Plus, 
-  CheckCircle, 
-  XCircle, 
-  Wrench, 
-  Clock, 
+import {
+  Search,
+  CheckCircle,
   AlertTriangle,
   Eye,
-  Calendar,
-  UserCheck,
-  Zap,
   CheckCircle2,
   Printer,
   Archive,
@@ -36,7 +28,6 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
     updateRequisitionStatus,
     updateProcurementStatus,
     updateActionTaken,
-    updateFinalAction,
     updateRequisitionTrackingNo,
     updateRequisitionForm,
     archiveRequisition,
@@ -89,10 +80,6 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
   const [actionReturnReason, setActionReturnReason] = useState('prep_pr');
   const [actionReturnReceivedBy, setActionReturnReceivedBy] = useState('');
   const [actionReturnRemarks, setActionReturnRemarks] = useState('');
-
-  // Final Action Form State
-  const [finalStatusChoice, setFinalStatusChoice] = useState('Pending');
-  const [finalActionRemarks, setFinalActionRemarks] = useState('');
 
   // Maintenance personnel list
   const technicians = users.filter(u => 
@@ -528,7 +515,7 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={`Request Review & Dispatch: ${selectedReq?.controlNo || ''}`}
-        maxWidth="740px"
+        maxWidth="1240px"
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
             <span style={{ fontSize: '12px', color: '#64748b' }}>
@@ -555,7 +542,9 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
         }
       >
         {selectedReq && (
-          <div>
+          <div className="decision-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 5fr) minmax(0, 7fr)', gap: '20px', alignItems: 'start' }}>
+            {/* Left column: review + assign controls (functions unchanged) */}
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             {/* Tracking number — issued ONLY on Final Approval; admin may correct it */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px' }}>
               <div style={{ flex: '1 1 220px' }}>
@@ -914,60 +903,7 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
               </button>
             </div>
 
-            {/* FINAL ACTION CONTROL PANEL (CAMPUS ADMINISTRATOR) */}
-            <div style={{ background: '#f0f9ff', border: '1.5px solid #93c5fd', borderRadius: '12px', padding: '16px', marginBottom: '18px' }}>
-              <div style={{ fontWeight: '800', color: '#1e40af', marginBottom: '10px', fontSize: '14px' }}>
-                🏛️ FINAL ACTION (Campus Administrator — Dr. Ramil G. Lumauag)
-              </div>
-
-              <div style={{ display: 'flex', gap: '20px', marginBottom: '10px' }}>
-                <label style={{ fontWeight: '700', fontSize: '13.5px', color: '#15803d', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input
-                    type="radio"
-                    name="finalActionChoice"
-                    value="Approved"
-                    checked={finalStatusChoice === 'Approved'}
-                    onChange={() => setFinalStatusChoice('Approved')}
-                  />
-                  [✓] Approved
-                </label>
-                <label style={{ fontWeight: '700', fontSize: '13.5px', color: '#b91c1c', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input
-                    type="radio"
-                    name="finalActionChoice"
-                    value="Disapproved"
-                    checked={finalStatusChoice === 'Disapproved'}
-                    onChange={() => setFinalStatusChoice('Disapproved')}
-                  />
-                  [✕] Disapproved
-                </label>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '10px' }}>
-                <label className="form-label" style={{ fontSize: '12px' }}>Campus Administrator Remarks *</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Approved for immediate procurement & repair / Disapproved due to project scope..."
-                  value={finalActionRemarks}
-                  onChange={(e) => setFinalActionRemarks(e.target.value)}
-                  style={{ fontSize: '12.5px' }}
-                />
-              </div>
-
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={() => {
-                  updateFinalAction(selectedReq.id, finalStatusChoice, finalActionRemarks);
-                  setIsModalOpen(false);
-                }}
-              >
-                Apply Campus Administrator Final Action Decision
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '14px', borderTop: '1px solid #e2e8f0' }}>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -975,6 +911,21 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
               >
                 <Printer size={15} /> Print Official QF-PDAS-DC-01 Form (PDF)
               </button>
+            </div>
+            </div>
+            {/* Right column: live QF-PDAS-DC-01 preview (read-only, updates as you review) */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                <span style={{ fontSize: '12px', fontWeight: '800', color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Live QF-PDAS-DC-01 Preview
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: '700', color: '#001f9c', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '9999px', padding: '3px 10px' }}>
+                  {selectedReq.controlNo || selectedReq.id} • {statusChoice || selectedReq.status}
+                </span>
+              </div>
+              <div style={{ maxHeight: '640px', overflow: 'auto', padding: '20px', background: '#ffffff' }}>
+                <JobRequestPrintSheet req={{ ...selectedReq, status: statusChoice || selectedReq.status, assignedTo: assignee || selectedReq.assignedTo, notes: adminNotes }} />
+              </div>
             </div>
           </div>
         )}
