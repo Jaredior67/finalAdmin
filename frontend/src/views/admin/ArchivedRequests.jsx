@@ -76,13 +76,13 @@ export const ArchivedRequests = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>TRACKING NUMBER</th>
-                <th>LOCATION</th>
-                <th>WORK TITLE</th>
-                <th>CATEGORY</th>
-                <th>COMPLETION STATUS</th>
-                <th>ARCHIVED ON</th>
-                <th style={{ textAlign: 'right' }}>ACTION</th>
+                <th scope="col">TRACKING NUMBER</th>
+                <th scope="col">LOCATION</th>
+                <th scope="col">WORK TITLE</th>
+                <th scope="col">CATEGORY</th>
+                <th scope="col">COMPLETION STATUS</th>
+                <th scope="col">ARCHIVED ON</th>
+                <th scope="col" style={{ textAlign: 'right' }}>ACTION</th>
               </tr>
             </thead>
             <tbody>

@@ -52,6 +52,7 @@ export const Navbar = ({ onSearch = null, onToggleSidebar = null }) => {
           value={searchQuery}
           onChange={handleSearchChange}
           placeholder="Search tracking no., location, requester..."
+          aria-label="Search tracking number, location, or requester"
           style={{
             width: '100%',
             height: '38px',

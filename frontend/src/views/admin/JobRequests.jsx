@@ -371,14 +371,14 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
           <table className="data-table">
             <thead>
               <tr>
-                <th onClick={() => toggleSort('tracking')} style={sortThStyle} title="Sort by tracking number">TRACKING NUMBER{sortArrow('tracking')}</th>
-                <th>ISSUE & LOCATION</th>
-                <th>REQUESTER</th>
-                <th>CATEGORY</th>
-                <th onClick={() => toggleSort('urgency')} style={sortThStyle} title="Sort by urgency">URGENCY{sortArrow('urgency')}</th>
-                <th onClick={() => toggleSort('status')} style={sortThStyle} title="Sort by status">STATUS{sortArrow('status')}</th>
-                <th>ASSIGNED TECHNICIAN</th>
-                <th style={{ textAlign: 'right' }}>ACTIONS</th>
+                <th scope="col" onClick={() => toggleSort('tracking')} style={sortThStyle} title="Sort by tracking number">TRACKING NUMBER{sortArrow('tracking')}</th>
+                <th scope="col">ISSUE & LOCATION</th>
+                <th scope="col">REQUESTER</th>
+                <th scope="col">CATEGORY</th>
+                <th scope="col" onClick={() => toggleSort('urgency')} style={sortThStyle} title="Sort by urgency">URGENCY{sortArrow('urgency')}</th>
+                <th scope="col" onClick={() => toggleSort('status')} style={sortThStyle} title="Sort by status">STATUS{sortArrow('status')}</th>
+                <th scope="col">ASSIGNED TECHNICIAN</th>
+                <th scope="col" style={{ textAlign: 'right' }}>ACTIONS</th>
               </tr>
             </thead>
             <tbody>

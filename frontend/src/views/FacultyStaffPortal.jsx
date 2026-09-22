@@ -834,14 +834,14 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>TRACKING NO</th>
-                  <th>SUBJECT & LOCATION</th>
-                  <th>CATEGORY</th>
-                  <th>URGENCY</th>
-                  <th>CURRENT STATUS</th>
-                  <th>DATE FILED</th>
-                  <th>ASSIGNED TECH</th>
-                  <th style={{ textAlign: 'right' }}>ACTIONS</th>
+                  <th scope="col">TRACKING NO</th>
+                  <th scope="col">SUBJECT & LOCATION</th>
+                  <th scope="col">CATEGORY</th>
+                  <th scope="col">URGENCY</th>
+                  <th scope="col">CURRENT STATUS</th>
+                  <th scope="col">DATE FILED</th>
+                  <th scope="col">ASSIGNED TECH</th>
+                  <th scope="col" style={{ textAlign: 'right' }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
@@ -1016,14 +1016,14 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>TRACKING NO</th>
-                  <th>SUBJECT & LOCATION</th>
-                  <th>CATEGORY</th>
-                  <th>FINAL STATUS</th>
-                  <th>DATE COMPLETED</th>
-                  <th>SERVICED BY</th>
-                  <th>ISO 25010 EVALUATION</th>
-                  <th style={{ textAlign: 'right' }}>ACTIONS</th>
+                  <th scope="col">TRACKING NO</th>
+                  <th scope="col">SUBJECT & LOCATION</th>
+                  <th scope="col">CATEGORY</th>
+                  <th scope="col">FINAL STATUS</th>
+                  <th scope="col">DATE COMPLETED</th>
+                  <th scope="col">SERVICED BY</th>
+                  <th scope="col">ISO 25010 EVALUATION</th>
+                  <th scope="col" style={{ textAlign: 'right' }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>

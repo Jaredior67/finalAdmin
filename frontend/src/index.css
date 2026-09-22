@@ -375,6 +375,48 @@ a {
   }
 }
 
+/* ---- Skip link (WCAG 2.4.1 bypass block): visible on focus only ---- */
+.skip-link {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  background: #001f9c;
+  color: #ffffff;
+  padding: 10px 18px;
+  border-radius: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: 700;
+  z-index: 100000;
+  text-decoration: none;
+}
+
+.skip-link:focus-visible,
+.skip-link:focus {
+  left: 0;
+  color: #ffffff;
+}
+
+/* ---- Mobile touch targets (WCAG 2.5.8): at least 44px ---- */
+@media (max-width: 760px) {
+  .btn {
+    min-height: 44px;
+  }
+  .btn-sm {
+    min-height: 44px;
+  }
+  .nav-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .modal-header .btn-icon {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .sidebar-nav-item {
+    min-height: 44px;
+  }
+}
+
 /* ---- Global focus rings for accessibility ---- */
 input:focus-visible,
 select:focus-visible,

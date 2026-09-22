@@ -9,6 +9,7 @@ import { LoginPage } from './components/auth/LoginPage';
 import { SystemFooter } from './components/layout/SystemFooter';
 import { BackendStatus } from './components/common/BackendStatus';
 import { OfflineBanner } from './components/common/OfflineBanner';
+import { SkipLink } from './components/common/SkipLink';
 
 // Role Workspaces
 import { AdminRoutes } from './routes/AdminRoutes';
@@ -56,12 +57,13 @@ function AppContent() {
   if (isCampusAdmin) {
     return (
       <div className="app-container">
+        <SkipLink />
         <BackendStatus />
         <OfflineBanner />
         <Navbar onToggleSidebar={toggleSidebar} />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
-          <main className="content-area" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
+          <main className="content-area" id="main-content" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
             <CampusAdminRoutes activeTab={activeTab} onTabChange={setActiveTab} />
           </main>
         </div>
@@ -75,12 +77,13 @@ function AppContent() {
   if (isFacultyOrStaff) {
     return (
       <div className="app-container">
+        <SkipLink />
         <BackendStatus />
         <OfflineBanner />
         <Navbar onToggleSidebar={toggleSidebar} />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
-          <main className="content-area" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
+          <main className="content-area" id="main-content" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
             <FacultyRoutes activeTab={activeTab} onTabChange={setActiveTab} />
           </main>
         </div>
@@ -94,12 +97,13 @@ function AppContent() {
   if (isMaintenance) {
     return (
       <div className="app-container">
+        <SkipLink />
         <BackendStatus />
         <OfflineBanner />
         <Navbar onToggleSidebar={toggleSidebar} />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
-          <main className="content-area" style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '20px 16px' }}>
+          <main className="content-area" id="main-content" style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '20px 16px' }}>
             <MaintenanceRoutes activeTab={activeTab} onTabChange={setActiveTab} />
           </main>
         </div>
@@ -111,6 +115,7 @@ function AppContent() {
 
   return (
     <div className="app-container">
+      <SkipLink />
       <BackendStatus />
       <OfflineBanner />
       <Navbar onToggleSidebar={toggleSidebar} />
@@ -118,7 +123,7 @@ function AppContent() {
       <div className="main-layout">
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
         
-        <main className="content-area" style={{ paddingTop: '24px' }}>
+        <main className="content-area" id="main-content" style={{ paddingTop: '24px' }}>
           <AdminRoutes
             activeTab={activeTab}
             onTabChange={setActiveTab}

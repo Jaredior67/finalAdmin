@@ -326,13 +326,13 @@ export const CampusAdminDashboard = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Tracking No.</th>
-                <th>Subject &amp; Location</th>
-                <th>Scope Area</th>
-                <th>Requester &amp; Dept</th>
-                <th>PDAS Head Action</th>
-                <th>Final Action Status</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th scope="col">Tracking No.</th>
+                <th scope="col">Subject &amp; Location</th>
+                <th scope="col">Scope Area</th>
+                <th scope="col">Requester &amp; Dept</th>
+                <th scope="col">PDAS Head Action</th>
+                <th scope="col">Final Action Status</th>
+                <th scope="col" style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
