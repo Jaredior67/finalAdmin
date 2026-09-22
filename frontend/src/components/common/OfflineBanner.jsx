@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { WifiOff } from 'lucide-react';
 
 const DRAFT_PREFIX = 'fixit_draft_';
@@ -26,22 +26,31 @@ const countQueuedDrafts = () => {
   }
 };
 
+import { useToast } from '../ui/Toast';
+
 /**
  * OfflineBanner — fixed bottom banner shown when the browser loses network
  * connectivity. Reassures the user that form drafts are kept locally and
  * that submissions will sync once connectivity returns.
  */
 export function OfflineBanner() {
+  const { toast } = useToast();
   const [isOnline, setIsOnline] = useState(
     () => (typeof navigator !== 'undefined' ? navigator.onLine : true)
   );
   const [queuedCount, setQueuedCount] = useState(0);
+  const wasOffline = useRef(false);
 
   const refreshQueue = useCallback(() => setQueuedCount(countQueuedDrafts()), []);
 
   useEffect(() => {
-    const goOnline = () => setIsOnline(true);
-    const goOffline = () => { setIsOnline(false); refreshQueue(); };
+    const goOnline = () => {
+      // Toast only on a genuine offline -> online transition (not first mount).
+      if (wasOffline.current) toast('Back online — drafts are intact and new submissions will file normally.', 'info');
+      wasOffline.current = false;
+      setIsOnline(true);
+    };
+    const goOffline = () => { wasOffline.current = true; setIsOnline(false); refreshQueue(); };
     window.addEventListener('online', goOnline);
     window.addEventListener('offline', goOffline);
     window.addEventListener('storage', refreshQueue);

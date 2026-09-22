@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Save, Printer, X, FileText, Layers, Stamp, ArrowRight, ArrowLeft, ImagePlus, AlertCircle } from 'lucide-react';
 import { Modal } from './Modal';
 import { FormField, TextInput, TextArea, SelectInput } from '../ui/FormField';
@@ -41,6 +41,8 @@ export const JobRequestFormOverlay = ({
 }) => {
   const [form, setForm] = useState(() => buildState(initialReq));
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const saveLock = useRef(false);
   const [photoPreview, setPhotoPreview] = useState(initialReq?.photoUrl || null);
   const [photoName, setPhotoName] = useState(initialReq?.photoName || '');
   // Two-step flow: fill every field first (full width), then review the
@@ -73,6 +75,8 @@ export const JobRequestFormOverlay = ({
     if (isOpen) {
       setForm(buildState(initialReq));
       setErrors({});
+      setSaving(false);
+      saveLock.current = false;
       setPhotoPreview(initialReq?.photoUrl || null);
       setPhotoName(initialReq?.photoName || '');
       setView('form');
@@ -169,6 +173,8 @@ export const JobRequestFormOverlay = ({
   };
 
   const handleSave = (printAfter = false) => {
+    // Double-submit guard: ignore rapid repeat clicks while a save is in flight.
+    if (saveLock.current) return;
     const payload = {
       date: form.date,
       requestedBy: form.requestedBy.trim(),
@@ -196,6 +202,11 @@ export const JobRequestFormOverlay = ({
     }
     if (printAfter && onSaveAndPrint) onSaveAndPrint(payload);
     else if (onSave) onSave(payload);
+    // Release the lock shortly after — parents usually close the overlay on
+    // save; the timeout covers the case where it stays open.
+    saveLock.current = true;
+    setSaving(true);
+    setTimeout(() => { saveLock.current = false; setSaving(false); }, 1500);
   };
 
   const trackingLabel = initialReq?.controlNo
@@ -236,8 +247,8 @@ export const JobRequestFormOverlay = ({
             <span style={{ fontSize: '13px', color: '#64748b' }}>Step 2 of 2 — Check every detail on the official sheet below. Tracking: <strong>{trackingLabel}</strong></span>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button type="button" className="btn btn-secondary" style={{ padding: '10px 18px', fontSize: '14px' }} onClick={() => setView('form')}><ArrowLeft size={16} /> Back to Edit</button>
-              <button type="button" className="btn btn-secondary" style={{ padding: '10px 18px', fontSize: '14px' }} onClick={() => handleSave(false)}><Save size={16} /> Save Changes</button>
-              <button type="button" className="btn btn-primary" style={{ padding: '10px 18px', fontSize: '14px' }} onClick={() => handleSave(true)}><Printer size={16} /> Save & Print</button>
+              <button type="button" className="btn btn-secondary" style={{ padding: '10px 18px', fontSize: '14px' }} onClick={() => handleSave(false)} disabled={saving}><Save size={16} /> {saving ? 'Saving…' : 'Save Changes'}</button>
+              <button type="button" className="btn btn-primary" style={{ padding: '10px 18px', fontSize: '14px' }} onClick={() => handleSave(true)} disabled={saving}><Printer size={16} /> {saving ? 'Saving…' : 'Save & Print'}</button>
             </div>
           </div>
         )
