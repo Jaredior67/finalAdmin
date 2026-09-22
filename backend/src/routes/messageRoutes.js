@@ -59,6 +59,10 @@ router.get('/:id', async (req, res) => {
     if (msgRows.length === 0) {
       return res.status(404).json({ message: 'Message not found.' });
     }
+    // Participant guard: only the sender or recipient may open a thread.
+    if (msgRows[0].sender_id !== req.user.id && msgRows[0].recipient_id !== req.user.id) {
+      return res.status(403).json({ message: 'You do not have permission to view this message.' });
+    }
 
     const [replies] = await pool.query(
       `SELECT mr.*, CONCAT(u.first_name, ' ', u.last_name) AS sender_name
@@ -86,6 +90,9 @@ router.post('/', async (req, res) => {
     if (!subject || !body) {
       return res.status(400).json({ message: 'subject and body are required.' });
     }
+    if (String(subject).length > 200 || String(body).length > 5000) {
+      return res.status(400).json({ message: 'subject must be 200 characters or fewer and body 5000 or fewer.' });
+    }
     const [result] = await pool.query(
       'INSERT INTO messages (sender_id, recipient_id, subject, body) VALUES (?, ?, ?, ?)',
       [req.user.id, recipientId || null, subject, body]
@@ -103,6 +110,17 @@ router.post('/:id/replies', async (req, res) => {
     const { body } = req.body;
     if (!body) {
       return res.status(400).json({ message: 'body is required.' });
+    }
+    if (String(body).length > 5000) {
+      return res.status(400).json({ message: 'Reply must be 5000 characters or fewer.' });
+    }
+    // Participant guard: only sender/recipient may reply (also 404s bad ids).
+    const [parent] = await pool.query('SELECT sender_id, recipient_id FROM messages WHERE id = ?', [req.params.id]);
+    if (parent.length === 0) {
+      return res.status(404).json({ message: 'Message not found.' });
+    }
+    if (parent[0].sender_id !== req.user.id && parent[0].recipient_id !== req.user.id) {
+      return res.status(403).json({ message: 'You do not have permission to reply to this message.' });
     }
     const [result] = await pool.query(
       'INSERT INTO message_replies (message_id, sender_id, body) VALUES (?, ?, ?)',
