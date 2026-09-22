@@ -160,6 +160,16 @@ export const apiLogin = async (email, password, role) => {
   };
 };
 
+// Phase 2: best-effort server-side session invalidation. Never blocks local
+// sign-out (e.g. when offline) — the token is always discarded client-side.
+export const apiLogout = async () => {
+  try {
+    await request('/auth/logout', { method: 'POST' });
+  } catch {
+    // Offline or already invalid — local sign-out still proceeds.
+  }
+};
+
 export const apiRegister = async (regData = {}) => {
   const payload = {
     firstName: regData.firstName ?? regData.first_name ?? '',

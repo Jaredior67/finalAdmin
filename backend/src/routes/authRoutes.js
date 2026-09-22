@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
+import { verifyToken, revokeToken } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 
 const router = Router();
@@ -186,6 +187,15 @@ router.post('/login', loginLimiter, async (req, res) => {
     console.error('POST /auth/login error:', err);
     res.status(500).json({ message: 'Login failed.' });
   }
+});
+
+// POST /api/auth/logout — server-side session invalidation (Phase 2).
+// The Bearer token is added to the revocation set; the client also discards it.
+router.post('/logout', verifyToken, (req, res) => {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  revokeToken(token);
+  res.json({ message: 'Signed out.' });
 });
 
 export default router;

@@ -1,11 +1,24 @@
 import jwt from 'jsonwebtoken';
 
+// Phase 2: server-side logout invalidation. Revoked tokens are rejected until
+// they naturally expire. In-memory by design for the single-instance XAMPP
+// deployment (cleared on restart; pair with short JWT expiry).
+const revokedTokens = new Set();
+
+export function revokeToken(token) {
+  if (token) revokedTokens.add(token);
+  if (revokedTokens.size > 10000) revokedTokens.clear();
+}
+
 export function verifyToken(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
 
   if (!token) {
     return res.status(401).json({ message: 'Missing or invalid Authorization header.' });
+  }
+  if (revokedTokens.has(token)) {
+    return res.status(401).json({ message: 'Session has been signed out. Please sign in again.' });
   }
 
   try {

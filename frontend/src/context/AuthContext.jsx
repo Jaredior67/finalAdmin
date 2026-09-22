@@ -1,5 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiLogin, getToken, setToken } from '../backend/api';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { apiLogin, apiLogout, getToken, setToken } from '../backend/api';
+
+// Phase 2: idle timeout — 30 minutes without mouse/keyboard/touch activity
+// ends the session automatically (limits unattended-session exposure).
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 const AuthContext = createContext();
 
@@ -79,6 +83,27 @@ export const AuthProvider = ({ children }) => {
     }
   }, [currentUser]);
 
+  // Idle-timeout watcher — only active while signed in.
+  const idleTimer = useRef(null);
+  useEffect(() => {
+    if (!currentUser) return undefined;
+    const reset = () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      idleTimer.current = setTimeout(() => {
+        apiLogout();
+        setToken(null);
+        setCurrentUser(null);
+      }, IDLE_TIMEOUT_MS);
+    };
+    reset();
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'click'];
+    events.forEach(e => window.addEventListener(e, reset, { passive: true }));
+    return () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      events.forEach(e => window.removeEventListener(e, reset));
+    };
+  }, [currentUser]);
+
   // Previously this bypassed login entirely and faked an admin session.
   // That's not safe against a real database of real accounts, so it now
   // just opens the login form instead.
@@ -100,6 +125,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    // Server-side invalidation is best-effort (works offline by just clearing).
+    apiLogout();
     setToken(null);
     setCurrentUser(null);
   };
