@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `age`            INT          DEFAULT NULL,
   `id_photo_url`   VARCHAR(500) DEFAULT NULL,
   `status`         ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  `failed_login_attempts` INT NOT NULL DEFAULT 0,
+  `locked_until`          DATETIME DEFAULT NULL,
   `created_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -105,6 +107,9 @@ CREATE TABLE IF NOT EXISTS `job_requests` (
   `replacement_reason`            TEXT DEFAULT NULL,
   `replacement_item_specs`        TEXT DEFAULT NULL,
   `replacement_procurement_status` VARCHAR(100) DEFAULT NULL,
+  `signed_form_confirmed`         BOOLEAN NOT NULL DEFAULT FALSE,
+  `signed_form_confirmed_by`      INT DEFAULT NULL,
+  `signed_form_confirmed_at`      DATETIME DEFAULT NULL,
   `created_at`                    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`                    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT `fk_jr_requester` FOREIGN KEY (`requester_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
@@ -226,4 +231,20 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_notif_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
   INDEX `idx_notif_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ------------------------------------------------------------
+-- audit_log (Phase 2)
+-- Who did what, when: status changes, approvals, archive, deletions.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `audit_log` (
+  `id`         INT AUTO_INCREMENT PRIMARY KEY,
+  `actor_id`   INT DEFAULT NULL,
+  `action`     VARCHAR(100) NOT NULL,
+  `entity`     VARCHAR(50) NOT NULL,
+  `entity_id`  VARCHAR(50) DEFAULT NULL,
+  `details`    TEXT DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_audit_actor` (`actor_id`),
+  INDEX `idx_audit_entity` (`entity`, `entity_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -65,6 +65,18 @@ router.get('/:id/download', async (req, res) => {
     if (!doc) {
       return res.status(404).json({ message: 'Document not found.' });
     }
+    // Ownership: admins see all; otherwise the uploader, the requester,
+    // or the assigned technician of the linked ticket.
+    if (!['admin', 'campus_admin'].includes(req.user.role)) {
+      let allowed = doc.uploaded_by === req.user.id;
+      if (!allowed && doc.job_request_id) {
+        const [jr] = await pool.query('SELECT requester_id, assigned_to FROM job_requests WHERE id = ?', [doc.job_request_id]);
+        allowed = jr.length > 0 && (jr[0].requester_id === req.user.id || jr[0].assigned_to === req.user.id);
+      }
+      if (!allowed) {
+        return res.status(403).json({ message: 'You do not have permission to download this document.' });
+      }
+    }
     res.download(path.join(uploadDir, doc.file_path), doc.file_name);
   } catch (err) {
     console.error('GET /documents/:id/download error:', err);

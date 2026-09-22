@@ -39,6 +39,18 @@ router.post('/', async (req, res) => {
     if (jobRequest.status !== 'Completed' && jobRequest.status !== 'completed') {
       return res.status(400).json({ message: 'Only completed job requests can be evaluated.' });
     }
+    // Ownership: only the requester who filed the ticket may evaluate it.
+    if (!['admin', 'campus_admin'].includes(req.user.role) && jobRequest.requester_id !== req.user.id) {
+      return res.status(403).json({ message: 'Only the requester can evaluate this job request.' });
+    }
+    // One evaluation per user per ticket.
+    const [existing] = await pool.query(
+      'SELECT id FROM evaluations WHERE job_request_id = ? AND evaluated_by = ?',
+      [jobRequestId, req.user.id]
+    );
+    if (existing.length > 0) {
+      return res.status(409).json({ message: 'You have already submitted an evaluation for this job request.' });
+    }
 
     const [result] = await pool.query(
       `INSERT INTO evaluations

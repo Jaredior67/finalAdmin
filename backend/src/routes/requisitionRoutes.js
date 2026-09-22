@@ -1,9 +1,33 @@
 import { Router } from 'express';
 import pool from '../config/db.js';
 import { verifyToken, requireRole } from '../middleware/auth.js';
+import { auditLog } from '../utils/auditLog.js';
 
 const router = Router();
 router.use(verifyToken);
+
+// --- Phase 2: server-side ticket lifecycle ---------------------------------
+// Allowed forward transitions. Completed and Rejected are terminal.
+const TRANSITIONS = {
+  'Pending': ['Under Review', 'Rejected'],
+  'Under Review': ['Awaiting Signatures', 'Rejected'],
+  'Awaiting Signatures': ['Approved', 'Rejected'],
+  'Approved': ['Ongoing', 'Rejected'],
+  'Ongoing': ['Completed'],
+  'Completed': [],
+  'Rejected': [],
+};
+
+const isPrivileged = (role) => role === 'admin' || role === 'campus_admin';
+const isTech = (role) => role === 'maintenance' || role === 'technician';
+
+// Ownership / visibility: admins see all; technicians see assigned;
+// faculty/staff see only their own requests (blocks IDOR).
+function canViewTicket(user, row) {
+  if (isPrivileged(user.role)) return true;
+  if (isTech(user.role)) return row.assigned_to === user.id;
+  return row.requester_id === user.id;
+}
 
 async function generateTicketNo(conn) {
   const year = new Date().getFullYear();
@@ -41,7 +65,10 @@ function normalizeUrgency(u) {
   return 'Medium Risk';
 }
 
-// Normalize status string to exact manuscript lifecycle statuses
+// Normalize status string to exact manuscript lifecycle statuses.
+// Returns null when unrecognized so callers reject it instead of silently
+// mapping it to 'Pending' (the previous fallthrough corrupted intent,
+// e.g. 'On Hold' is not part of the server lifecycle).
 function normalizeStatus(s) {
   const str = String(s || '').toLowerCase().replace(/[\s_-]+/g, '');
   if (str === 'pending') return 'Pending';
@@ -51,7 +78,7 @@ function normalizeStatus(s) {
   if (str === 'ongoing' || str === 'inprogress') return 'Ongoing';
   if (str === 'completed' || str === 'resolved') return 'Completed';
   if (str === 'rejected' || str === 'cancelled') return 'Rejected';
-  return 'Pending';
+  return null;
 }
 
 // GET /api/job-requests - filtered by role and archive status
@@ -118,6 +145,10 @@ router.get('/:id', async (req, res) => {
     if (rows.length === 0) {
       return res.status(404).json({ message: 'Job request not found.' });
     }
+    // IDOR guard: only privileged roles, the assignee, or the requester.
+    if (!canViewTicket(req.user, rows[0])) {
+      return res.status(403).json({ message: 'You do not have permission to view this job request.' });
+    }
 
     const [history] = await pool.query(
       `SELECT h.*, CONCAT(u.first_name, ' ', u.last_name) AS changed_by_name
@@ -152,6 +183,21 @@ router.post('/', async (req, res) => {
     if (!description) {
       return res.status(400).json({ message: 'description is required.' });
     }
+    // Phase 2: server-side input limits (type/length). Category is
+    // allow-listed; unknown values fall back to 'other'.
+    if (typeof description !== 'string' || description.trim().length === 0) {
+      return res.status(400).json({ message: 'description must be a non-empty string.' });
+    }
+    if (description.length > 5000) {
+      return res.status(400).json({ message: 'description must be 5000 characters or fewer.' });
+    }
+    const allowedCategories = ['electrical', 'plumbing', 'carpentry', 'ict', 'janitorial', 'other'];
+    const finalCategory = allowedCategories.includes(String(category || '').toLowerCase())
+      ? String(category).toLowerCase()
+      : 'other';
+    if (immediateSupervisor && String(immediateSupervisor).length > 150) {
+      return res.status(400).json({ message: 'immediateSupervisor must be 150 characters or fewer.' });
+    }
 
     const finalUrgency = normalizeUrgency(urgencyLevel || priority);
     const finalReqType = requestType === 'Urgent Request' || finalUrgency === 'High Risk' ? 'Urgent Request' : 'Standard Request';
@@ -168,7 +214,7 @@ router.post('/', async (req, res) => {
         ticketNo,
         req.user.id,
         locationId || null,
-        category || 'other',
+        finalCategory,
         description,
         finalUrgency,
         finalReqType,
@@ -201,6 +247,7 @@ router.post('/', async (req, res) => {
     );
 
     await conn.commit();
+    await auditLog(pool, { actorId: req.user.id, action: 'request.submitted', entity: 'job_request', entityId: result.insertId, details: ticketNo });
     res.status(201).json({ message: 'Job request submitted.', id: result.insertId, ticketNo });
   } catch (err) {
     await conn.rollback();
@@ -217,6 +264,10 @@ router.put('/:id/status', async (req, res) => {
   try {
     const { status, assignedTo, scheduledDate, remarks } = req.body;
     const targetStatus = normalizeStatus(status);
+    if (!targetStatus) {
+      await conn.rollback();
+      return res.status(400).json({ message: 'Unrecognized status. Use Pending, Under Review, Awaiting Signatures, Approved, Ongoing, Completed, or Rejected.' });
+    }
 
     await conn.beginTransaction();
 
@@ -228,6 +279,40 @@ router.put('/:id/status', async (req, res) => {
     }
 
     const currentStatus = jobRequest.status;
+    const role = req.user.role;
+
+    // --- Role gate: faculty/staff can never change status. Technicians may
+    // only mark their own assigned ticket Completed. All other moves are admin.
+    if (!isPrivileged(role)) {
+      const techCompletion = isTech(role)
+        && currentStatus === 'Ongoing'
+        && targetStatus === 'Completed'
+        && jobRequest.assigned_to === req.user.id;
+      if (!techCompletion) {
+        await conn.rollback();
+        return res.status(403).json({ message: 'Only PDAS Admin can change ticket status (assigned technicians may only mark their own ticket Completed).' });
+      }
+    }
+    // Technicians may never reassign tickets.
+    if (isTech(role) && assignedTo !== undefined && assignedTo !== jobRequest.assigned_to) {
+      await conn.rollback();
+      return res.status(403).json({ message: 'Technicians cannot reassign tickets.' });
+    }
+
+    // --- Transition gate: block invalid jumps (e.g. Pending -> Completed).
+    if (!(TRANSITIONS[currentStatus] || []).includes(targetStatus)) {
+      await conn.rollback();
+      return res.status(422).json({ message: `Cannot move a ticket from "${currentStatus}" to "${targetStatus}".` });
+    }
+
+    // --- Signed-form gate: digital signatures are NOT allowed. The official
+    // PDAS form is printed and physically signed; PDAS Admin must confirm it
+    // (PUT /:id/signed-form) before Approved or Ongoing.
+    if ((targetStatus === 'Approved' || targetStatus === 'Ongoing') && !jobRequest.signed_form_confirmed) {
+      await conn.rollback();
+      return res.status(422).json({ message: 'The physically signed PDAS form must be confirmed by PDAS Admin before approval or dispatch.' });
+    }
+
     const completedAt = targetStatus === 'Completed' ? new Date() : jobRequest.completed_at;
     const effectiveAssignee = assignedTo !== undefined ? (assignedTo || null) : jobRequest.assigned_to;
     const approverId = ['Approved', 'Ongoing', 'Completed'].includes(targetStatus) ? (jobRequest.approved_by || req.user.id) : jobRequest.approved_by;
@@ -247,6 +332,13 @@ router.put('/:id/status', async (req, res) => {
       'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, ?, ?, ?)',
       [req.params.id, currentStatus, targetStatus, req.user.id, remarks || `Status changed to ${targetStatus}`]
     );
+    await auditLog(conn, {
+      actorId: req.user.id,
+      action: `request.status.${targetStatus}`,
+      entity: 'job_request',
+      entityId: req.params.id,
+      details: `${currentStatus} -> ${targetStatus}${remarks ? `: ${remarks}` : ''}`,
+    });
 
     // ── Manuscript Section 10: TRI-PARTY NOTIFICATIONS ─────────────────────────
     // 1. Notify Requester
@@ -300,10 +392,68 @@ router.put('/:id/status', async (req, res) => {
   }
 });
 
+// PUT /api/job-requests/:id/signed-form — PDAS Admin confirms receipt of the
+// physically signed hardcopy (wet ink). Digital signatures are NOT allowed.
+// Required before a ticket can move to Approved or Ongoing.
+router.put('/:id/signed-form', requireRole('admin', 'campus_admin'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { confirmed, scanRef = '' } = req.body;
+    await conn.beginTransaction();
+    const [rows] = await conn.query('SELECT * FROM job_requests WHERE id = ? FOR UPDATE', [req.params.id]);
+    const jobRequest = rows[0];
+    if (!jobRequest) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Job request not found.' });
+    }
+    if (!['Under Review', 'Awaiting Signatures'].includes(jobRequest.status)) {
+      await conn.rollback();
+      return res.status(422).json({ message: 'Signed-form confirmation only applies while a ticket is Under Review or Awaiting Signatures.' });
+    }
+    await conn.query(
+      'UPDATE job_requests SET signed_form_confirmed = ?, signed_form_confirmed_by = ?, signed_form_confirmed_at = ? WHERE id = ?',
+      [confirmed === false ? 0 : 1, req.user.id, new Date(), req.params.id]
+    );
+    await conn.query(
+      'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, ?, ?, ?)',
+      [req.params.id, jobRequest.status, jobRequest.status, req.user.id, confirmed === false ? 'Signed-form confirmation revoked.' : `Physically signed form confirmed${scanRef ? ` (ref: ${scanRef})` : ''}.`]
+    );
+    await auditLog(conn, {
+      actorId: req.user.id,
+      action: confirmed === false ? 'request.signedform.revoked' : 'request.signedform.confirmed',
+      entity: 'job_request',
+      entityId: req.params.id,
+      details: String(scanRef || '').slice(0, 200),
+    });
+    await conn.commit();
+    res.json({ message: confirmed === false ? 'Signed-form confirmation revoked.' : 'Signed form confirmed. The ticket may now proceed to approval.', signedFormConfirmed: confirmed !== false });
+  } catch (err) {
+    await conn.rollback();
+    console.error('PUT /job-requests/:id/signed-form error:', err);
+    res.status(500).json({ message: 'Failed to confirm signed form.' });
+  } finally {
+    conn.release();
+  }
+});
+
 // PUT /api/job-requests/:id/complete-standard-form - Urgent requests completing full form details
 router.put('/:id/complete-standard-form', async (req, res) => {
   try {
     const { immediateSupervisor, description, scopeOfWorks } = req.body;
+    // Ownership guard: only the requester (or PDAS Admin) may complete the form.
+    const [ownerRows] = await pool.query('SELECT requester_id FROM job_requests WHERE id = ?', [req.params.id]);
+    if (ownerRows.length === 0) {
+      return res.status(404).json({ message: 'Job request not found.' });
+    }
+    if (!isPrivileged(req.user.role) && ownerRows[0].requester_id !== req.user.id) {
+      return res.status(403).json({ message: 'Only the requester or PDAS Admin can complete this form.' });
+    }
+    if (description && String(description).length > 5000) {
+      return res.status(400).json({ message: 'description must be 5000 characters or fewer.' });
+    }
+    if (immediateSupervisor && String(immediateSupervisor).length > 150) {
+      return res.status(400).json({ message: 'immediateSupervisor must be 150 characters or fewer.' });
+    }
     const [result] = await pool.query(
       `UPDATE job_requests SET
          is_standard_form_filled = TRUE,
@@ -336,6 +486,11 @@ router.put('/:id/replacement-flag', async (req, res) => {
     if (!jobRequest) {
       await conn.rollback();
       return res.status(404).json({ message: 'Job request not found.' });
+    }
+    // Only PDAS Admin or the assigned technician may flag for replacement.
+    if (!isPrivileged(req.user.role) && !(isTech(req.user.role) && jobRequest.assigned_to === req.user.id)) {
+      await conn.rollback();
+      return res.status(403).json({ message: 'Only PDAS Admin or the assigned technician can flag a replacement.' });
     }
 
     await conn.query(
