@@ -1,25 +1,19 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Plus, 
-  QrCode, 
-  Upload, 
-  CheckCircle2, 
-  Clock, 
-  AlertTriangle, 
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  Plus,
+  QrCode,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
   FileText,
-  Printer, 
-  Eye, 
-  MapPin, 
-  Send, 
-  ShieldCheck,
+  Printer,
+  Eye,
+  Send,
   History,
-  Search, 
-  Star, 
-  Download, 
-  Trash2, 
-  RefreshCw, 
-  Info, 
-  Check 
+  Search,
+  Star,
+  Download,
+  Check
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -29,13 +23,11 @@ import { QrCodeScannerModal } from '../components/common/QrCodeScannerModal';
 import { CommunicationBox } from './CommunicationBox';
 import { OfficialDocuments } from './OfficialDocuments';
 import { EvaluationForm } from './EvaluationForm';
-import { PDASJobRequestFormDocument } from '../components/common/PDASJobRequestFormDocument';
 import { JobRequestFormOverlay } from '../components/common/JobRequestFormOverlay';
 import { JobRequestPrintSheet } from '../components/common/JobRequestPrintSheet';
 import { PageHeader } from '../components/common/PageHeader';
 import { Pagination } from '../components/ui/Pagination';
 import { formatTicketDate } from '../components/common/TimeGreeting';
-import fixitLogo from '../assets/fixit-logo.png';
 
 const DEFAULT_CAMPUS_BUILDINGS = [
   {
@@ -92,8 +84,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
     evaluations, 
     submitEvaluation, 
     campusLocations,
-    offices,
-    departments
+    offices
   } = useData();
 
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -148,7 +139,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
   }, [campusLocations]);
 
   // Location defaults & request-type state (the overlay itself is the form now)
-  const [selectedOffice, setSelectedOffice] = useState(() => currentUser?.department || offices?.[0] || 'Office of the Campus Administrator');
+  const [selectedOffice] = useState(() => currentUser?.department || offices?.[0] || 'Office of the Campus Administrator');
   const [selectedBuilding, setSelectedBuilding] = useState(() => CAMPUS_BUILDINGS[0]?.name || 'College of Engineering & Architecture (CEA)');
   const [selectedFloor, setSelectedFloor] = useState(() => CAMPUS_BUILDINGS[0]?.floors[0]?.floor || 'Ground Floor');
   const [selectedRoom, setSelectedRoom] = useState(() => CAMPUS_BUILDINGS[0]?.floors[0]?.rooms[0] || 'Room 101');
@@ -159,7 +150,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
   ));
 
   // Submission UX State
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [, setIsSubmitting] = useState(false);
 
   // Urgent Standard Form Completion Modal State
   const [isUrgentModalOpen, setIsUrgentModalOpen] = useState(false);
@@ -182,16 +173,19 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
     }
   }, [activeTab, initialRequestType]);
 
-  // Jump straight into the full QF-PDAS-DC-01 overlay when entering a submit
-  // tab — no duplicate page form. Fires on tab change only, so cancelling the
-  // overlay lands back on the launcher card instead of reopening.
+  // Jump straight into the full QF-PDAS-DC-01 overlay when the user NAVIGATES
+  // to a submit tab — but never on first mount, so logging in lands on the
+  // launcher card instead of an instant popup.
+  const prevTab = useRef(activeTab);
   useEffect(() => {
     if (
       (activeTab === 'faculty-submit' || activeTab === 'faculty-urgent' || activeTab === 'submit') &&
-      !submittedSuccess
+      !submittedSuccess &&
+      prevTab.current !== activeTab
     ) {
       setIsStandardOverlayOpen(true);
     }
+    prevTab.current = activeTab;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -308,11 +302,6 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
   );
   const activeTickets = myTickets.filter(r => r.status !== 'Completed' && r.status !== 'Rejected');
   const completedTickets = myTickets.filter(r => r.status === 'Completed' || r.status === 'Rejected');
-
-  // KPI Calculations (summary cards live on the Dashboard tab only)
-  const pendingEvaluationCount = completedTickets.filter(r => 
-    r.status === 'Completed' && !evaluations.some(e => e.reqId === r.id || e.controlNo === r.controlNo)
-  ).length;
 
   // Filtered Active Tickets
   const filteredActiveTickets = activeTickets.filter(req => {
