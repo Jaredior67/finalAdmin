@@ -82,3 +82,29 @@ Verified good: bcrypt hashing (cost 10) everywhere; parameterized queries throug
 - **Phase 5 — Quality & docs.** Split `DataContext`, remove dead code, fix all 121 lint warnings, API/auth tests, README update, Lighthouse report.
 
 Manual test baseline for every phase: `npm run dev:backend` + `npm run dev:frontend`, log in as admin/faculty/maintenance seed accounts, file → review → sign → approve → complete → evaluate one ticket.
+
+## Phase completion record
+
+- **Phase 1 — DONE.** Type/spacing tokens (`index.css`); `ui/FormField`, `ui/Pagination`,
+  `ui/Toast` shared primitives adopted by Reports, request overlay, all main tables;
+  terminology unified to "Request"; `formatTicketDate` ("Sep 2, 2026") + recent-first
+  everywhere; admin table sort + pagination everywhere; stat/table/sidebar bugs fixed.
+- **Phase 2 — DONE.** Ownership on ticket/message/document reads; server transition map
+  + signed-form gate (`ticketPolicy.js`, 11 unit tests green); login rate-limit +
+  15-min lockout; password rules; JWT boot-secret check + 8h default; upload
+  JPG/PNG/PDF allow-list + renamed files + nosniff; security headers; generic errors;
+  user soft-delete; `audit_log` table; evaluation owner-only + dedupe; token logout
+  revocation + 30-min idle timeout. `npm audit`: 0 vulns. Deferred: httpOnly-cookie
+  JWT (Bearer kept; short expiry + revocation mitigate), HSTS (plain-HTTP XAMPP).
+- **Phase 3 — DONE.** Skip link + `main` landmarks; modal focus trap/labels/return;
+  44px mobile targets; search `aria-label`; `th scope="col"` on all main tables;
+  verified icon+text badges, focus rings, reduced-motion.
+- **Phase 4 — DONE.** Global toasts on all 9 core actions; double-submit guard on the
+  request overlay; table sort/pagination/empty states; offline banner + draft count +
+  back-online toast; archive + post-completion evaluation flows kept.
+- **Phase 5 — DONE except noted.** Lint 121 → 26 warnings (0 errors; remainder are
+  accepted React-compiler stylistic hints, not bugs); dead seed/imports removed;
+  README refreshed. Deferred: `DataContext` split (high regression risk, no test
+  harness for its UI wiring — recommended next); Lighthouse run (no tooling in this
+  environment — run manually: `npm run build`, serve `dist/`, Chrome DevTools →
+  Lighthouse → Accessibility + Best Practices).
