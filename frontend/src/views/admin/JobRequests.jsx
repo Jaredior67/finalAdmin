@@ -570,7 +570,7 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
               <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px', padding: '12px 14px', marginBottom: '18px', color: '#9a3412', fontSize: '13px' }}>
                 {selectedReq.requestType === 'Urgent Request' || selectedReq.urgency === 'Urgent' ? (
                   <div>
-                    <strong>🚨 Urgent Request Dispatch Authorized:</strong> Admin can accept and dispatch maintenance personnel immediately for urgent hazard response. The hardcopy QF-PDAS-DC-01 form will be printed, signed by the Immediate Supervisor, and passed to PDAS post-dispatch within the day.
+                    <strong>🚨 Urgent Request Dispatch Authorized:</strong> Urgent requests dispatch immediately; the signed QF-PDAS-DC-01 hardcopy must reach the PDAS Office within 24 hours, and the request cannot advance until it is verified.
                   </div>
                 ) : (
                   <div>

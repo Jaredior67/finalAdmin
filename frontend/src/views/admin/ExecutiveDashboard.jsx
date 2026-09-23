@@ -855,7 +855,7 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
 
           {newReqForm.requestType === 'Urgent Request' && (
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '10px 12px', marginBottom: '4px', fontSize: '12.5px', color: '#92400e', lineHeight: 1.5 }}>
-              <strong>Same-day requirement:</strong> the requester must pass the signed QF-PDAS-DC-01 hardcopy (wet-ink supervisor signature) to the PDAS Office <strong>within 24 hours</strong> — the request cannot advance until it is verified.
+              <strong>Urgent requests dispatch immediately:</strong> the signed QF-PDAS-DC-01 hardcopy must reach the PDAS Office <strong>within 24 hours</strong> — the request cannot advance until it is verified.
             </div>
           )}
 

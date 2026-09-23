@@ -547,6 +547,17 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', fontSize: '12.5px', fontWeight: '600', borderRadius: '9999px', padding: '5px 14px', margin: '10px 0 22px 0' }}>
                   Filing as {currentUser?.name || 'Faculty Requester'} • {currentUser?.department || 'ISAT U Dumangas'}
                 </div>
+                {/* Where your request goes: the 6-step PDAS lifecycle */}
+                <div aria-label="Request lifecycle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '22px' }}>
+                  {['Pending', 'Under Review', 'Awaiting Signatures', 'Approved', 'Ongoing', 'Completed'].map((s, i, arr) => (
+                    <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11.5px', fontWeight: i === 0 ? '700' : '500', color: i === 0 ? '#001f9c' : '#64748b', background: i === 0 ? '#eff6ff' : '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '9999px', padding: '3px 10px', whiteSpace: 'nowrap' }}>
+                        {i + 1}. {s}
+                      </span>
+                      {i < arr.length - 1 && <span aria-hidden="true" style={{ color: '#cbd5e1', fontSize: '11px' }}>→</span>}
+                    </span>
+                  ))}
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '26px' }}>
                   <button
                     type="button"

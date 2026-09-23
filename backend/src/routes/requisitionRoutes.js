@@ -86,6 +86,10 @@ router.get('/', async (req, res) => {
       params.push(req.user.id);
     }
 
+    // Server-side paging (Phase 2 follow-up): capped so history downloads stay small.
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
     // High risk tickets prioritized first, then latest submitted
     query += ` ORDER BY 
       CASE jr.urgency_level 
@@ -93,7 +97,9 @@ router.get('/', async (req, res) => {
         WHEN 'Medium Risk' THEN 2 
         WHEN 'Low Risk' THEN 3 
         ELSE 4 
-      END ASC, jr.created_at DESC`;
+      END ASC, jr.created_at DESC
+      LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
 
     const [rows] = await pool.query(query, params);
     res.json(rows);
