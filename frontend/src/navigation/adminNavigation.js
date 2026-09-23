@@ -10,6 +10,7 @@ import {
   BarChart3,
   Tags,
   QrCode,
+  ShieldCheck,
   Settings
 } from 'lucide-react';
 
@@ -26,6 +27,7 @@ export const adminNavigation = {
     { id: 'communication-box', label: 'Messages', icon: MessageSquare, badgeKey: 'unreadMessagesCount', fallbackBadge: 1, badgeColor: '#f59e0b' },
     { id: 'analytics-reports', label: 'Analytics & Reports', icon: BarChart3 },
     { id: 'archived-requests', label: 'Archived Requests', icon: Archive },
+    { id: 'audit-trail', label: 'Audit Trail', icon: ShieldCheck },
     { id: 'replacement-requests', label: 'Add Replacement', icon: Tags, badgeKey: 'replacementCount', badgeColor: '#dc2626' },
     { id: 'print-labels', label: 'Print / Labels', icon: QrCode },
     { id: 'settings', label: 'Settings', icon: Settings }

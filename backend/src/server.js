@@ -14,6 +14,7 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import evaluationRoutes from './routes/evaluationRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import documentRoutes from './routes/documentRoutes.js';
+import auditRoutes from './routes/auditRoutes.js';
 import jobRequestDocRoutes from './routes/jobRequestDocRoutes.js';
 import preventiveRoutes, { runAutomatedPreventiveReminders } from './routes/preventiveRoutes.js';
 
@@ -88,6 +89,7 @@ app.use('/api/evaluations', evaluationRoutes);
 app.use('/api/preventive-schedules', preventiveRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/audit-log', auditRoutes);
 
 // SPA client-side routing fallback
 app.get('*', (req, res, next) => {

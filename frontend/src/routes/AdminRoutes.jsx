@@ -5,6 +5,7 @@ import { ApprovalHistory } from '../views/admin/ApprovalHistory';
 import { OfficialDocuments } from '../views/OfficialDocuments';
 import { PreventiveCalendar } from '../views/PreventiveCalendar';
 import { ArchivedRequests } from '../views/admin/ArchivedRequests';
+import { AuditTrail } from '../views/admin/AuditTrail';
 import { UserManagement } from '../views/admin/UserManagement';
 import { CommunicationBox } from '../views/CommunicationBox';
 import { AnalyticsReports } from '../views/admin/AnalyticsReports';
@@ -24,6 +25,8 @@ export const AdminRoutes = ({ activeTab, onTabChange, jobRequestStatus, setJobRe
       return <PreventiveCalendar />;
     case 'archived-requests':
       return <ArchivedRequests />;
+    case 'audit-trail':
+      return <AuditTrail />;
     case 'user-management':
       return <UserManagement />;
     case 'communication-box':

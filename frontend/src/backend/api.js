@@ -290,6 +290,9 @@ export const apiGetJobRequests = async () => request('/job-requests');
 // Evaluations API (live ISO/IEC 25010 results)
 export const apiGetEvaluations = async () => request('/evaluations');
 
+// Audit trail API (PDAS Admin, read-only accountability log)
+export const apiGetAuditLog = async (limit = 200) => request(`/audit-log?limit=${limit}`);
+
 export const checkBackendHealth = async () => {
   try {
     const res = await fetch(`${API_BASE}/health`, { method: 'GET' });
