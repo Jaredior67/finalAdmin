@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { BarChart3, TrendingUp, Clock, CheckCircle2, Download, Filter, RotateCcw } from 'lucide-react';
+import { BarChart3, CheckCircle2, Download, Filter, RotateCcw } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { FormField, TextInput, SelectInput } from '../../components/ui/FormField';
 
 export const AnalyticsReports = () => {
-  const { requisitions, totalRequisitions, completedRepairs, monthlyRequestTotals, evaluations } = useData();
+  const { requisitions, monthlyRequestTotals, evaluations } = useData();
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -31,15 +31,17 @@ export const AnalyticsReports = () => {
     setLocationFilter('all');
   };
 
-  const categories = [
-    { name: 'Electrical', count: filteredRequisitions.filter(r => r.category.includes('Electrical')).length, color: '#3b82f6' },
-    { name: 'HVAC / Aircon', count: filteredRequisitions.filter(r => r.category.includes('HVAC')).length, color: '#06b6d4' },
-    { name: 'Plumbing', count: filteredRequisitions.filter(r => r.category.includes('Plumbing')).length, color: '#10b981' },
-    { name: 'Carpentry', count: filteredRequisitions.filter(r => r.category.includes('Carpentry')).length, color: '#f59e0b' },
-    { name: 'IT / Network', count: filteredRequisitions.filter(r => r.category.includes('IT')).length, color: '#8b5cf6' },
-  ];
+  const categoryCounts = {};
+  filteredRequisitions.forEach(r => {
+    const name = r.category || 'General';
+    categoryCounts[name] = (categoryCounts[name] || 0) + 1;
+  });
+  const categories = Object.entries(categoryCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({ name, count }));
 
   const totalCatCount = Math.max(filteredRequisitions.length, 1);
+  const filteredCompleted = filteredRequisitions.filter(r => r.status === 'Completed').length;
 
   const buildingVolume = uniqueLocations.map(loc => {
     const count = filteredRequisitions.filter(r => r.location === loc).length;
@@ -89,7 +91,7 @@ export const AnalyticsReports = () => {
       <div className="page-header">
         <div>
           <h1 className="page-title">Analytics & Operational Reports</h1>
-          <p className="page-subtitle">Campus facility performance, repair turnaround SLAs, and maintenance distribution</p>
+          <p className="page-subtitle">Request volumes, completion, and service evaluation</p>
         </div>
 
         <button
@@ -166,25 +168,25 @@ export const AnalyticsReports = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '28px' }}>
         <div className="content-card" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>Avg Resolution SLA</span>
-            <Clock size={20} color="#001f9c" />
+            <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>Requests in View</span>
+            <Filter size={20} color="#001f9c" />
           </div>
-          <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>28.4 hrs</div>
-          <div style={{ fontSize: '12px', color: '#059669', marginTop: '4px', fontWeight: '600' }}>
-            ⚡ 18% faster than previous quarter target
+          <div style={{ fontSize: '28px', fontWeight: '700', color: '#0f172a' }}>{filteredRequisitions.length}</div>
+          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+            of {requisitions.length} total requests
           </div>
         </div>
 
         <div className="content-card" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>Completion Efficiency</span>
+            <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>Completion Rate</span>
             <CheckCircle2 size={20} color="#059669" />
           </div>
-          <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>
-            {totalRequisitions > 0 ? Math.round((completedRepairs / totalRequisitions) * 100) : 100}%
+          <div style={{ fontSize: '28px', fontWeight: '700', color: '#0f172a' }}>
+            {filteredRequisitions.length > 0 ? Math.round((filteredCompleted / filteredRequisitions.length) * 100) : 0}%
           </div>
           <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-            {completedRepairs} of {totalRequisitions} jobs resolved
+            {filteredCompleted} of {filteredRequisitions.length} requests completed
           </div>
         </div>
 
@@ -205,18 +207,21 @@ export const AnalyticsReports = () => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         {/* Category Breakdown Bar */}
         <div className="content-card" style={{ padding: '24px' }}>
-          <h2 className="card-title" style={{ marginBottom: '20px' }}>Workload Distribution by Category</h2>
+          <h2 className="card-title" style={{ marginBottom: '20px' }}>Requests by Category</h2>
+          {categories.length === 0 && (
+            <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>No requests match the current filters.</p>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {categories.map(cat => {
               const pct = Math.round((cat.count / totalCatCount) * 100);
               return (
                 <div key={cat.name}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>
-                    <span>{cat.name}</span>
-                    <span>{cat.count} requests ({pct}%)</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '500', marginBottom: '6px' }}>
+                    <span style={{ color: '#0f172a' }}>{cat.name}</span>
+                    <span style={{ color: '#64748b' }}>{cat.count} requests ({pct}%)</span>
                   </div>
                   <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
-                    <div style={{ width: `${Math.max(pct, 8)}%`, height: '100%', background: cat.color, borderRadius: '4px' }}></div>
+                    <div style={{ width: `${Math.max(pct, 4)}%`, height: '100%', background: '#001f9c', borderRadius: '4px' }}></div>
                   </div>
                 </div>
               );
@@ -224,9 +229,9 @@ export const AnalyticsReports = () => {
           </div>
         </div>
 
-        {/* Building Requisition Volume */}
+        {/* Building Request Volume */}
         <div className="content-card" style={{ padding: '24px' }}>
-          <h2 className="card-title" style={{ marginBottom: '20px' }}>Facility Volume by Campus Building</h2>
+          <h2 className="card-title" style={{ marginBottom: '20px' }}>Requests by Campus Building</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {buildingVolume.length === 0 && (
               <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>No requests match the current filters.</p>
@@ -249,7 +254,7 @@ export const AnalyticsReports = () => {
       <div className="content-card" style={{ padding: '24px', marginTop: '24px' }}>
         <h2 className="card-title" style={{ marginBottom: '16px' }}>ISO/IEC 25010 Service Evaluation Results</h2>
         {evaluations.length === 0 ? (
-          <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>No requester evaluations have been submitted.</p>
+          <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>No request evaluations have been submitted.</p>
         ) : (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
@@ -262,7 +267,7 @@ export const AnalyticsReports = () => {
             </div>
             <div className="table-responsive">
               <table className="data-table">
-                <thead><tr><th>CATEGORY</th><th>LOCATION</th><th>RESOLUTION STATUS</th><th>RESPONSES</th></tr></thead>
+                <thead><tr><th scope="col">CATEGORY</th><th scope="col">LOCATION</th><th scope="col">RESOLUTION STATUS</th><th scope="col">RESPONSES</th></tr></thead>
                 <tbody>{evaluationGroups.map(group => <tr key={`${group.category}-${group.location}-${group.resolutionStatus}`}><td>{group.category}</td><td>{group.location}</td><td>{group.resolutionStatus}</td><td>{group.count}</td></tr>)}</tbody>
               </table>
             </div>
