@@ -1777,6 +1777,10 @@ export const DataProvider = ({ children }) => {
     !evaluations.some(e => e.reqId === r.id || e.controlNo === r.controlNo)
   );
 
+  // Shared ticket search query — the navbar global search writes here and the
+  // faculty ticket lists read it, so there is only one search box.
+  const [ticketSearch, setTicketSearch] = useState('');
+
   return (
     <DataContext.Provider
       value={{
@@ -1845,7 +1849,9 @@ export const DataProvider = ({ children }) => {
         peekNextTrackingNumber,
         generateNextTrackingNumber,
         updateRequisitionTrackingNo,
-        updateRequisitionForm
+        updateRequisitionForm,
+        ticketSearch,
+        setTicketSearch
       }}
     >
       {children}

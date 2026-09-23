@@ -9,7 +9,7 @@ import pdasLogo from '../../assets/fixit-logo.png';
 
 export const Navbar = ({ onSearch = null }) => {
   const { currentUser, logout, setIsLoginModalOpen } = useAuth();
-  const { notifications } = useData();
+  const { notifications, setTicketSearch } = useData();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSignOutConfirmOpen, setIsSignOutConfirmOpen] = useState(false);
@@ -21,6 +21,7 @@ export const Navbar = ({ onSearch = null }) => {
   const handleSearchChange = (e) => {
     const val = e.target.value;
     setSearchQuery(val);
+    setTicketSearch(val);
     if (onSearch) onSearch(val);
   };
 

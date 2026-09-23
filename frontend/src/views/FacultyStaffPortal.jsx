@@ -9,7 +9,6 @@ import {
   Eye,
   Send,
   History,
-  Search,
   Star,
   Download,
   Check
@@ -83,7 +82,8 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
     evaluations, 
     submitEvaluation, 
     campusLocations,
-    offices
+    offices,
+    ticketSearch: searchTerm
   } = useData();
 
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -94,8 +94,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
   const [evaluationRequest, setEvaluationRequest] = useState(null);
   const [isStandardOverlayOpen, setIsStandardOverlayOpen] = useState(false);
 
-  // Filters and Search State
-  const [searchTerm, setSearchTerm] = useState('');
+  // Filters State (search text comes from the navbar global search box)
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -655,7 +654,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
             </div>
           )}
 
-          {/* Search & Filter Bar */}
+          {/* Filter Bar (search lives in the top navbar) */}
           <div style={{
             display: 'flex',
             gap: '12px',
@@ -664,51 +663,41 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
             flexWrap: 'wrap',
             alignItems: 'center'
           }}>
-            <div style={{ position: 'relative', flex: '1', minWidth: '220px' }}>
-              <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Search ticket by Tracking No, location, or subject..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ paddingLeft: '36px', height: '38px', fontSize: '13px' }}
-              />
-            </div>
+            <select
+              aria-label="Filter by category"
+              className="form-select"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              style={{ height: '38px', fontSize: '12.5px', flex: '1', minWidth: '150px' }}
+            >
+              <option value="all">All Categories</option>
+              <option value="Electrical">Electrical</option>
+              <option value="Air Conditioning">Air Conditioning</option>
+              <option value="Water/Sanitary">Water/Sanitary</option>
+              <option value="Physical Structures">Physical Structures</option>
+              <option value="Mechanical">Mechanical</option>
+              <option value="Drawing/Design">Drawing/Design</option>
+            </select>
 
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <select
-                className="form-select"
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                style={{ height: '38px', fontSize: '12.5px', minWidth: '130px' }}
-              >
-                <option value="all">All Categories</option>
-                <option value="Electrical">Electrical</option>
-                <option value="Air Conditioning">Air Conditioning</option>
-                <option value="Water/Sanitary">Water/Sanitary</option>
-                <option value="Physical Structures">Physical Structures</option>
-                <option value="Mechanical">Mechanical</option>
-                <option value="Drawing/Design">Drawing/Design</option>
-              </select>
-
-              <select
-                className="form-select"
-                value={urgencyFilter}
-                onChange={(e) => setUrgencyFilter(e.target.value)}
-                style={{ height: '38px', fontSize: '12.5px', minWidth: '120px' }}
-              >
-                <option value="all">All Risk Levels</option>
-                <option value="High Risk">High Risk</option>
-                <option value="Medium Risk">Medium Risk</option>
-                <option value="Low Risk">Low Risk</option>
-              </select>
+            <select
+              aria-label="Filter by risk level"
+              className="form-select"
+              value={urgencyFilter}
+              onChange={(e) => setUrgencyFilter(e.target.value)}
+              style={{ height: '38px', fontSize: '12.5px', flex: '1', minWidth: '150px' }}
+            >
+              <option value="all">All Risk Levels</option>
+              <option value="High Risk">High Risk</option>
+              <option value="Medium Risk">Medium Risk</option>
+              <option value="Low Risk">Low Risk</option>
+            </select>
 
               <select
+                aria-label="Filter by status"
                 className="form-select"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                style={{ height: '38px', fontSize: '12.5px', minWidth: '130px' }}
+                style={{ height: '38px', fontSize: '12.5px', flex: '1', minWidth: '150px' }}
               >
                 <option value="all">All Active Status</option>
                 <option value="pending">Pending</option>
@@ -718,7 +707,6 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                 <option value="ongoing">Ongoing</option>
                 <option value="on-hold">On Hold</option>
               </select>
-            </div>
           </div>
 
           <div className="table-responsive">
@@ -832,27 +820,19 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
 
       {/* TAB 3: REQUEST HISTORY & COMPLETED LOGS */}
       {activeTab === 'faculty-history' && (
-        <div className="content-card">
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '20px 24px' }}>
-            <div>
-              <h2 className="card-title" style={{ fontSize: '18px', fontWeight: '800' }}>
-                Completed & Serviced Requests History ({filteredHistoryTickets.length})
-              </h2>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={handleExportCSV}
-                title="Export list to CSV for accreditation or records"
-              >
-                <Download size={14} /> Export CSV
-              </button>
-            </div>
+        <div className="content-card" style={{ paddingTop: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 24px 14px 24px' }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleExportCSV}
+              title="Export list to CSV for accreditation or records"
+            >
+              <Download size={14} /> Export CSV
+            </button>
           </div>
 
-          {/* Search & Filter Bar */}
+          {/* Filter Bar (search lives in the top navbar) */}
           <div style={{
             display: 'flex',
             gap: '12px',
@@ -861,46 +841,34 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
             flexWrap: 'wrap',
             alignItems: 'center'
           }}>
-            <div style={{ position: 'relative', flex: '1', minWidth: '220px' }}>
-              <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Search history by Tracking No, location, technician..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ paddingLeft: '36px', height: '38px', fontSize: '13px' }}
-              />
-            </div>
+            <select
+              aria-label="Filter by category"
+              className="form-select"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              style={{ height: '38px', fontSize: '12.5px', flex: '1', minWidth: '150px' }}
+            >
+              <option value="all">All Categories</option>
+              <option value="Electrical">Electrical</option>
+              <option value="Air Conditioning">Air Conditioning</option>
+              <option value="Water/Sanitary">Water/Sanitary</option>
+              <option value="Physical Structures">Physical Structures</option>
+              <option value="Mechanical">Mechanical</option>
+              <option value="Drawing/Design">Drawing/Design</option>
+            </select>
 
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <select
-                className="form-select"
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                style={{ height: '38px', fontSize: '12.5px', minWidth: '130px' }}
-              >
-                <option value="all">All Categories</option>
-                <option value="Electrical">Electrical</option>
-                <option value="Air Conditioning">Air Conditioning</option>
-                <option value="Water/Sanitary">Water/Sanitary</option>
-                <option value="Physical Structures">Physical Structures</option>
-                <option value="Mechanical">Mechanical</option>
-              </select>
-
-              <select
-                className="form-select"
-                value={urgencyFilter}
-                onChange={(e) => setUrgencyFilter(e.target.value)}
-                style={{ height: '38px', fontSize: '12.5px', minWidth: '120px' }}
-              >
-                <option value="all">All Urgencies</option>
-                <option value="Urgent">Urgent</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </div>
+            <select
+              aria-label="Filter by risk level"
+              className="form-select"
+              value={urgencyFilter}
+              onChange={(e) => setUrgencyFilter(e.target.value)}
+              style={{ height: '38px', fontSize: '12.5px', flex: '1', minWidth: '150px' }}
+            >
+              <option value="all">All Risk Levels</option>
+              <option value="High Risk">High Risk</option>
+              <option value="Medium Risk">Medium Risk</option>
+              <option value="Low Risk">Low Risk</option>
+            </select>
           </div>
 
           <div className="table-responsive">
