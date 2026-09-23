@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Plus,
   QrCode,
   CheckCircle2,
   Clock,
@@ -310,11 +309,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
       req.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       req.location.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || req.category === categoryFilter;
-    const matchesUrgency = 
-      urgencyFilter === 'all' || 
-      (urgencyFilter === 'urgent-priority' ? (req.urgency === 'High Risk' || req.urgency === 'Urgent' || req.urgency === 'High') :
-       urgencyFilter === 'standard-routine' ? (req.urgency !== 'High Risk' && req.urgency !== 'Urgent' && req.urgency !== 'High') :
-       req.urgency === urgencyFilter);
+    const matchesUrgency = urgencyFilter === 'all' || req.urgency === urgencyFilter;
     const matchesStatus = statusFilter === 'all' || req.status.toLowerCase().replace(/\s+/g, '-') === statusFilter;
     return matchesSearch && matchesCategory && matchesUrgency && matchesStatus;
   }).sort(byDateDesc);
@@ -327,11 +322,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
       req.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (req.assignedTo && req.assignedTo.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCategory = categoryFilter === 'all' || req.category === categoryFilter;
-    const matchesUrgency = 
-      urgencyFilter === 'all' || 
-      (urgencyFilter === 'urgent-priority' ? (req.urgency === 'High Risk' || req.urgency === 'Urgent' || req.urgency === 'High') :
-       urgencyFilter === 'standard-routine' ? (req.urgency !== 'High Risk' && req.urgency !== 'Urgent' && req.urgency !== 'High') :
-       req.urgency === urgencyFilter);
+    const matchesUrgency = urgencyFilter === 'all' || req.urgency === urgencyFilter;
     return matchesSearch && matchesCategory && matchesUrgency;
   }).sort(byDateDesc);
 
@@ -605,96 +596,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
 
       {/* TAB 2: MY ACTIVE TICKETS & TRACKING */}
       {(activeTab === 'faculty-tickets' || activeTab === 'my-tickets') && (
-        <div className="content-card">
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '20px 24px' }}>
-            <div>
-              <h2 className="card-title" style={{ fontSize: '18px', fontWeight: '800' }}>
-                My Active Facility Requests ({filteredActiveTickets.length})
-              </h2>
-            </div>
-
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => {
-                if (onTabChange) onTabChange('faculty-submit');
-                setSubmittedSuccess(null);
-              }}
-            >
-              <Plus size={14} /> New Request
-            </button>
-          </div>
-
-          {/* Urgency Classification Quick-Filter Pills */}
-          <div style={{
-            display: 'flex',
-            gap: '8px',
-            padding: '0 24px 14px 24px',
-            borderBottom: '1px solid #f1f5f9',
-            flexWrap: 'wrap',
-            alignItems: 'center'
-          }}>
-            <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', marginRight: '4px' }}>
-              View By Mode:
-            </span>
-            <button
-              type="button"
-              onClick={() => setUrgencyFilter('all')}
-              style={{
-                padding: '5px 14px',
-                borderRadius: '20px',
-                border: urgencyFilter === 'all' ? '1.5px solid #001f9c' : '1px solid #cbd5e1',
-                background: urgencyFilter === 'all' ? '#eff6ff' : '#ffffff',
-                color: urgencyFilter === 'all' ? '#001f9c' : '#475569',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              All Active ({activeTickets.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setUrgencyFilter('urgent-priority')}
-              style={{
-                padding: '5px 14px',
-                borderRadius: '20px',
-                border: urgencyFilter === 'urgent-priority' ? '1.5px solid #dc2626' : '1px solid #fca5a5',
-                background: urgencyFilter === 'urgent-priority' ? '#fee2e2' : '#fff1f2',
-                color: urgencyFilter === 'urgent-priority' ? '#991b1b' : '#dc2626',
-                fontSize: '12px',
-                fontWeight: '800',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <AlertTriangle size={13} /> High Risk / Urgent ({activeTickets.filter(t => t.urgency === 'High Risk' || t.urgency === 'Urgent' || t.urgency === 'High').length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setUrgencyFilter('standard-routine')}
-              style={{
-                padding: '5px 14px',
-                borderRadius: '20px',
-                border: urgencyFilter === 'standard-routine' ? '1.5px solid #001f9c' : '1px solid #cbd5e1',
-                background: urgencyFilter === 'standard-routine' ? '#eff6ff' : '#ffffff',
-                color: urgencyFilter === 'standard-routine' ? '#001f9c' : '#475569',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <FileText size={13} /> Routine / Standard ({activeTickets.filter(t => t.urgency !== 'High Risk' && t.urgency !== 'Urgent' && t.urgency !== 'High').length})
-            </button>
-          </div>
+        <div className="content-card" style={{ paddingTop: '20px' }}>
 
           {/* URGENT PENDING STANDARD FORM WARNING BANNER */}
           {activeTickets.some(r => r.urgentPendingStandardForm) && (
