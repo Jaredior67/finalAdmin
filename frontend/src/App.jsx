@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ToastProvider } from './components/ui/Toast';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { LoginModal } from './components/auth/LoginModal';
@@ -144,7 +145,9 @@ export default function App() {
     <ToastProvider>
       <AuthProvider>
         <DataProvider>
-          <AppContent />
+          <ErrorBoundary>
+            <AppContent />
+          </ErrorBoundary>
         </DataProvider>
       </AuthProvider>
     </ToastProvider>

@@ -311,6 +311,18 @@ login is rate-limited with 15-minute lockout after 5 failures; JWT default expir
 8h with 30-minute client idle timeout; logout revokes the token server-side;
 uploads accept JPG/PNG/PDF only; error responses are generic outside development.
 
+### Backup (MySQL)
+
+```bash
+# Nightly dump (Windows Task Scheduler or cron)
+mysqldump -h 127.0.0.1 -u root fixit_pdas > fixit_pdas_%DATE%.sql
+# Restore
+mysql -h 127.0.0.1 -u root fixit_pdas < fixit_pdas_YYYYMMDD.sql
+```
+Keep at least 7 daily dumps off-machine. Browser `localStorage` is a cache only —
+the database is the system of record for users; ticket writes should target the
+API (see item 1 below) so dumps capture everything.
+
 ### Step 5: Start the backend
 
 ```bash
