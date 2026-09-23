@@ -155,6 +155,12 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
 
   const handleSaveTaskStatus = () => {
     if (selectedTask) {
+      // Completed records are locked — the modal is read-only in that state.
+      if (selectedTask.status === 'Completed') {
+        setActionMessage(`${selectedTask.controlNo || selectedTask.id} is already Completed and locked.`);
+        setIsActionModalOpen(false);
+        return;
+      }
       let finalNotes = technicianNotes || `Work performed on-site by ${currentUser?.name || 'Maintenance Specialist'}.`;
       if (materialsUsed) {
         finalNotes += ` [Materials: ${materialsUsed}]`;
@@ -659,7 +665,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
                         onClick={() => handleOpenAction(task)}
                       >
                         <Wrench size={14} />
-                        {isCompleted ? 'Edit Work Log' : 'Update Status & Log Parts'}
+                        {isCompleted ? 'View Work Log' : 'Update Status & Log Parts'}
                       </button>
                     </div>
                   </div>
@@ -683,8 +689,9 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
               className="btn btn-secondary"
               onClick={() => setIsActionModalOpen(false)}
             >
-              Cancel
+              {selectedTask?.status === 'Completed' ? 'Close' : 'Cancel'}
             </button>
+            {selectedTask?.status !== 'Completed' && (
             <button
               type="button"
               className="btn btn-primary"
@@ -693,11 +700,18 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
               <Check size={16} />
               Save & Apply Status
             </button>
+            )}
           </div>
         }
       >
         {selectedTask && (
           <div>
+            {selectedTask.status === 'Completed' && (
+              <div role="note" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '12.5px', color: '#475569' }}>
+                🔒 This work log is <strong>Completed and locked</strong> — it can no longer be edited, preserving the service record.
+              </div>
+            )}
+            <fieldset disabled={selectedTask.status === 'Completed'} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
             <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px', fontSize: '13px', border: '1px solid #e2e8f0' }}>
               <div style={{ fontWeight: '700', color: '#0f172a' }}>{selectedTask.title}</div>
               <div style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>{selectedTask.location}</div>
@@ -705,23 +719,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
 
             <div className="form-group">
               <label className="form-label">Set Maintenance Progress Status *</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setTargetStatus('Pending')}
-                  style={{
-                    padding: '10px',
-                    borderRadius: '8px',
-                    border: targetStatus === 'Pending' ? '2px solid #f59e0b' : '1px solid #cbd5e1',
-                    background: targetStatus === 'Pending' ? '#fffbeb' : '#ffffff',
-                    fontWeight: targetStatus === 'Pending' ? '700' : '500',
-                    color: targetStatus === 'Pending' ? '#b45309' : '#475569',
-                    fontSize: '12.5px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Pending
-                </button>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                 <button
                   type="button"
                   onClick={() => setTargetStatus('Ongoing')}
@@ -833,6 +831,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
                 />
               )}
             </div>
+            </fieldset>
           </div>
         )}
       </Modal>

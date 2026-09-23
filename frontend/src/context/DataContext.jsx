@@ -1286,7 +1286,11 @@ export const DataProvider = ({ children }) => {
 
   const updateRequisitionStatus = (reqId, newStatus, actorName = 'Maintenance Staff', notes = '') => {
     const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
-    if (!target || newStatus === 'Approved' || (target.status === 'Pending' && newStatus !== 'Under Review' && newStatus !== 'Ongoing' && newStatus !== 'On Hold') || (newStatus === 'Ongoing' && target.status === 'Completed') || (newStatus === 'In Progress' && (target.status !== 'Approved' || !target.assignedTo))) return;
+    // Forward-only guard: nothing returns to Pending, Rejected goes through the
+    // reject flow, and Completed records are locked (mirrors the server policy).
+    // Returns false when blocked so callers never report a false success.
+    if (!target || target.status === 'Completed' || newStatus === 'Pending' || newStatus === 'Rejected') return false;
+    if (!target || newStatus === 'Approved' || (target.status === 'Pending' && newStatus !== 'Under Review' && newStatus !== 'Ongoing' && newStatus !== 'On Hold') || (newStatus === 'Ongoing' && target.status === 'Completed') || (newStatus === 'In Progress' && (target.status !== 'Approved' || !target.assignedTo))) return false;
     const nowStr = new Date().toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
     setRequisitions(prev =>
@@ -1332,6 +1336,7 @@ export const DataProvider = ({ children }) => {
       ...prev
     ]);
     toast(`Request ${target?.controlNo || reqId} updated to ${newStatus}.`);
+    return true;
   };
 
   const raiseMaintenanceFlag = (reqId, flagData) => {

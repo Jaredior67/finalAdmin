@@ -201,7 +201,11 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
           rejectRequisition(selectedReq.id, adminNotes);
           confirmationMessage = `${selectedReq.controlNo || selectedReq.id} rejected.`;
         } else {
-          updateRequisitionStatus(selectedReq.id, statusChoice, assignee, adminNotes);
+          const statusUpdated = updateRequisitionStatus(selectedReq.id, statusChoice, assignee, adminNotes);
+          if (!statusUpdated) {
+            setAssignWarn(`Cannot move a ticket from "${selectedReq.status}" to "${statusChoice}". Completed records are locked and tickets never return to Pending.`);
+            return;
+          }
           confirmationMessage = `${selectedReq.controlNo || selectedReq.id} status updated successfully.`;
         }
       }
