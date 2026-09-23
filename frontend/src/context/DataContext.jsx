@@ -685,6 +685,25 @@ export const DataProvider = ({ children }) => {
     }));
   };
 
+  const markNotificationRead = (id) => {
+    setAllNotifications(prev => prev.map(n => (n.id === id ? { ...n, unread: false } : n)));
+  };
+
+  const deleteNotification = (id) => {
+    setAllNotifications(prev => prev.filter(n => n.id !== id));
+    toast('Notification deleted.', 'info');
+  };
+
+  const clearAllNotifications = () => {
+    const visibleIds = new Set(
+      allNotifications
+        .filter(n => isNotificationForUser(n, currentUser, { isAdmin, isMaintenance, isFacultyOrStaff }))
+        .map(n => n.id)
+    );
+    setAllNotifications(prev => prev.filter(n => !visibleIds.has(n.id)));
+    toast('All notifications cleared.', 'info');
+  };
+
   const [evaluations, setEvaluations] = useState(() => {
     const saved = localStorage.getItem('fixit_pdas_evaluations_v3');
     return saved ? JSON.parse(saved) : [];
@@ -1806,6 +1825,9 @@ export const DataProvider = ({ children }) => {
         messages,
         notifications,
         markAllNotificationsRead,
+        markNotificationRead,
+        deleteNotification,
+        clearAllNotifications,
         evaluations,
         totalRequisitions,
         pendingApprovals,
