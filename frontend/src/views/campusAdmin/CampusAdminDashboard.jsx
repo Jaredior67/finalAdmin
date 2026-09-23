@@ -32,6 +32,7 @@ export const CampusAdminDashboard = () => {
   const [isDecisionModalOpen, setIsDecisionModalOpen] = useState(false);
   const [decisionStatus, setDecisionStatus] = useState('Approved');
   const [decisionRemarks, setDecisionRemarks] = useState('');
+  const [decisionError, setDecisionError] = useState('');
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isPrintOpen, setIsPrintOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,11 +43,14 @@ export const CampusAdminDashboard = () => {
   // Requisitions filtering
   const activeRequisitions = requisitions.filter(r => !r.isArchived);
 
-  // Group by Final Action status
-  const pendingFinalAction = activeRequisitions.filter(r => {
+  // Group by Final Action status. The approver queue only lists tickets PDAS
+  // has already acted on (past Pending/Under Review) — brand-new filings stay
+  // with PDAS until review, preserving the process order.
+  const needsFinalAction = (r) => {
     const faStatus = r.finalAction?.status;
-    return !faStatus || faStatus === 'Pending';
-  });
+    return (!faStatus || faStatus === 'Pending') && !['Pending', 'Under Review'].includes(r.status);
+  };
+  const pendingFinalAction = activeRequisitions.filter(needsFinalAction);
 
   const approvedFinalAction = activeRequisitions.filter(r => r.finalAction?.status === 'Approved' || r.status === 'Approved' || r.status === 'Ongoing' || r.status === 'Completed');
   const disapprovedFinalAction = activeRequisitions.filter(r => r.finalAction?.status === 'Disapproved' || r.status === 'Rejected');
@@ -63,7 +67,7 @@ export const CampusAdminDashboard = () => {
 
     let matchesTab = true;
     if (tabFilter === 'pending') {
-      matchesTab = !r.finalAction?.status || r.finalAction?.status === 'Pending';
+      matchesTab = needsFinalAction(r);
     } else if (tabFilter === 'approved') {
       matchesTab = r.finalAction?.status === 'Approved' || r.status === 'Approved' || r.status === 'Ongoing' || r.status === 'Completed';
     } else if (tabFilter === 'disapproved') {
@@ -75,6 +79,7 @@ export const CampusAdminDashboard = () => {
 
   const handleOpenDecision = (req) => {
     setSelectedReq(req);
+    setDecisionError('');
     setDecisionStatus(req.finalAction?.status || 'Approved');
     setDecisionRemarks(req.finalAction?.remarks || (req.finalAction?.status === 'Approved' ? 'Approved for execution & issuance of work order' : ''));
     setIsDecisionModalOpen(true);
@@ -82,6 +87,12 @@ export const CampusAdminDashboard = () => {
 
   const handleApplyDecision = () => {
     if (!selectedReq) return;
+    // A disapproval without written grounds is not actionable — require remarks.
+    if (decisionStatus === 'Disapproved' && !decisionRemarks.trim()) {
+      setDecisionError('Disapproval requires written grounds — state the reason so PDAS and the requester can act on it.');
+      return;
+    }
+    setDecisionError('');
     const issued = updateFinalAction(selectedReq.id, decisionStatus, decisionRemarks);
     setSuccessToast(decisionStatus === 'Approved'
       ? `Approved. Tracking ${issued || '(range exhausted — set in Settings → Tracking Numbers)'} issued for Ticket ${selectedReq.id}.`
@@ -571,10 +582,15 @@ export const CampusAdminDashboard = () => {
                 <textarea
                   className="form-textarea"
                   value={decisionRemarks}
-                  onChange={(e) => setDecisionRemarks(e.target.value)}
+                  onChange={(e) => { setDecisionRemarks(e.target.value); if (decisionError) setDecisionError(''); }}
                   placeholder="e.g. Approved for immediate procurement of replacement parts and work order issuance..."
                   style={{ minHeight: '120px', fontSize: '13.5px' }}
                 />
+                {decisionError && (
+                  <div role="alert" style={{ marginTop: '6px', fontSize: '12.5px', color: '#b91c1c', fontWeight: '600' }}>
+                    {decisionError}
+                  </div>
+                )}
               </div>
 
               <div style={{ background: '#f1f5f9', borderRadius: '8px', padding: '12px 14px', fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
