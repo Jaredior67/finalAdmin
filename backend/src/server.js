@@ -45,10 +45,22 @@ app.use(cors({
 app.use(express.json({ limit: '15mb' }));
 
 // Phase 2: baseline security headers (no extra dependency).
+// CSP is deliberately pragmatic: the UI uses inline styles and Google Fonts,
+// seed data hot-links https images, and the API lives on :5000 in dev —
+// script execution, however, is locked to 'self' (no inline scripts).
 app.use((req, res, next) => {
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('X-Frame-Options', 'SAMEORIGIN');
   res.set('Referrer-Policy', 'no-referrer');
+  res.set(
+    'Content-Security-Policy',
+    "default-src 'self'; " +
+    'script-src \'self\'; ' +
+    'style-src \'self\' \'unsafe-inline\' https://fonts.googleapis.com; ' +
+    'font-src \'self\' https://fonts.gstatic.com data:; ' +
+    'img-src \'self\' data: https:; ' +
+    'connect-src \'self\' http://localhost:* http://127.0.0.1:* https://localhost:*;'
+  );
   next();
 });
 
