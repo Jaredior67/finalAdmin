@@ -20,7 +20,6 @@ import { StatusBadge, UrgencyBadge, CategoryPill } from '../../components/common
 import { Modal } from '../../components/common/Modal';
 import { PageHeader } from '../../components/common/PageHeader';
 import { getTimeGreeting, formatTicketDate } from '../../components/common/TimeGreeting';
-import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { JobRequestFormOverlay } from '../../components/common/JobRequestFormOverlay';
 import { JobRequestPrintSheet } from '../../components/common/JobRequestPrintSheet';
 

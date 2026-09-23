@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Modal } from './Modal';
 
 export const ConfirmDialog = ({

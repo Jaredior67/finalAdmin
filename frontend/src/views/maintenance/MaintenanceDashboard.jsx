@@ -1,17 +1,9 @@
 import React from 'react';
-import { 
-  Wrench, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Clock, 
-  Calendar, 
-  MapPin, 
-  ArrowRight, 
-  Zap, 
-  Tags, 
-  CheckCircle, 
-  Sparkles, 
-  ShieldAlert 
+import {
+  Wrench,
+  AlertTriangle,
+  Calendar,
+  ArrowRight
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -21,7 +13,7 @@ import { PageHeader } from '../../components/common/PageHeader';
 
 export const MaintenanceDashboard = ({ onNavigate }) => {
   const { currentUser } = useAuth();
-  const { requisitions, updateRequisitionStatus } = useData();
+  const { requisitions } = useData();
 
   // Header greeting — same pattern as the admin dashboard.
   const now = new Date();

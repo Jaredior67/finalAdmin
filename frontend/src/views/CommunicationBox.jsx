@@ -1,16 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { 
-  MessageSquare, 
-  Send, 
-  Search, 
+import {
+  MessageSquare,
+  Send,
+  Search,
   Plus,
   CheckCheck,
-  Check,
-  Clock,
-  Wifi,
-  WifiOff,
-  ChevronRight,
-  X,
   Users,
   Hash,
   Pencil
@@ -35,13 +29,6 @@ const getInitials = (name = '') => {
   const parts = name.replace(/\(.*?\)/g, '').trim().split(' ').filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   return name.slice(0, 2).toUpperCase();
-};
-
-const formatTimestamp = (ts) => {
-  if (!ts) return '';
-  // If it's a date string like "Yesterday", return as-is
-  if (/yesterday|today/i.test(ts)) return ts;
-  return ts;
 };
 
 /* ── Main Component ──────────────────────────────────────────────────────── */
@@ -309,7 +296,7 @@ export const CommunicationBox = () => {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   {(() => {
-                    const { bg, label } = getRoleColor(activeThread.sender);
+                    const { bg } = getRoleColor(activeThread.sender);
                     return (
                       <div style={{
                         width: '40px', height: '40px', borderRadius: '50%', background: bg,

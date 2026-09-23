@@ -20,20 +20,19 @@ import { CampusAdminRoutes } from './routes/CampusAdminRoutes';
 function AppContent() {
   const { currentUser, isAdmin, isCampusAdmin, isMaintenance, isFacultyOrStaff } = useAuth();
   const [activeTab, setActiveTab] = useState(() => (
-    isMaintenance ? 'tech-tasks' : isFacultyOrStaff ? 'faculty-submit' : isCampusAdmin ? 'campus-admin-dashboard' : 'executive-dashboard'
+    isMaintenance ? 'tech-tasks' : isFacultyOrStaff ? 'faculty-dashboard' : isCampusAdmin ? 'campus-admin-dashboard' : 'executive-dashboard'
   ));
   const [jobRequestStatus, setJobRequestStatus] = useState('all');
-  // Sidebar collapse control — the toggle lives in the navbar, aligned with
-  // the brand, and is shared by every role layout.
+  // Sidebar collapse control — the toggle lives in the sidebar header
+  // and is shared by every role layout.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const toggleSidebar = () => setSidebarCollapsed((v) => !v);
 
   // Automatically reset to the proper role tab when logging in or switching accounts
   useEffect(() => {
     if (isMaintenance) {
       setActiveTab(prev => (prev && (prev.startsWith('tech-') || prev === 'replacement-requests' || prev === 'settings') ? prev : 'tech-tasks'));
     } else if (isFacultyOrStaff) {
-      setActiveTab(prev => (prev && (prev.startsWith('faculty-') || prev === 'replacement-requests' || prev === 'settings') ? prev : 'faculty-submit'));
+      setActiveTab(prev => (prev && (prev.startsWith('faculty-') || prev === 'replacement-requests' || prev === 'settings') ? prev : 'faculty-dashboard'));
     } else if (isCampusAdmin) {
       setActiveTab(prev => (prev && ['campus-admin-dashboard', 'approval-history', 'official-documents', 'analytics-reports', 'communication-box', 'settings'].includes(prev) ? prev : 'campus-admin-dashboard'));
     } else if (isAdmin) {
@@ -60,7 +59,7 @@ function AppContent() {
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar onToggleSidebar={toggleSidebar} />
+        <Navbar />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
           <main className="content-area" id="main-content" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
@@ -80,7 +79,7 @@ function AppContent() {
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar onToggleSidebar={toggleSidebar} />
+        <Navbar />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
           <main className="content-area" id="main-content" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
@@ -100,7 +99,7 @@ function AppContent() {
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar onToggleSidebar={toggleSidebar} />
+        <Navbar />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
           <main className="content-area" id="main-content" style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '20px 16px' }}>
@@ -118,7 +117,7 @@ function AppContent() {
       <SkipLink />
       <BackendStatus />
       <OfflineBanner />
-      <Navbar onToggleSidebar={toggleSidebar} />
+      <Navbar />
       
       <div className="main-layout">
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Check, Clock, AlertTriangle, ShieldCheck, X } from 'lucide-react';
+import { Bell, AlertTriangle, ShieldCheck, X } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 
 export const NotificationDrawer = ({ isOpen, onClose }) => {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldAlert, UserCheck, LogIn, UserPlus, ArrowRight } from 'lucide-react';
+import { UserCheck, LogIn, UserPlus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { RegisterModal } from './RegisterModal';
 import fixitLogo from '../../assets/fixit-logo.png';

@@ -60,7 +60,6 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
     (currentUser?.name && r.requestedBy?.toLowerCase().includes(currentUser.name.toLowerCase()))
   );
   const facultyActiveTicketsCount = facultyTickets.filter(r => r.status !== 'Completed' && r.status !== 'Rejected').length;
-  const facultyUrgentTicketsCount = facultyTickets.filter(r => (r.urgency === 'Urgent' || r.urgency === 'High') && r.status !== 'Completed' && r.status !== 'Rejected').length;
 
   const techTasks = (requisitions || []).filter(r =>
     !currentUser?.name ||
@@ -236,8 +235,6 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
               ...item,
               badge: item.badgeKey === 'facultyActiveTicketsCount'
                 ? (facultyActiveTicketsCount || null)
-                : item.badgeKey === 'facultyUrgentTicketsCount'
-                  ? (facultyUrgentTicketsCount || null)
                 : item.badgeKey === 'replacementCount'
                   ? (replacementCount || null)
                   : null

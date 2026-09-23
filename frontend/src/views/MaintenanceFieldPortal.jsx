@@ -24,7 +24,6 @@ import { CommunicationBox } from './CommunicationBox';
 import { PreventiveCalendar } from './PreventiveCalendar';
 import { OfficialDocuments } from './OfficialDocuments';
 import { PDASJobRequestFormDocument } from '../components/common/PDASJobRequestFormDocument';
-import fixitLogo from '../assets/fixit-logo.png';
 import { PageHeader } from '../components/common/PageHeader';
 
 export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }) => {

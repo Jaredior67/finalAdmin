@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  Printer, QrCode, Search, Building2, MapPin, Tag, Download, 
-  CheckCircle2, Plus, Edit2, Trash2, Layers, LayoutGrid, Table as TableIcon,
-  RefreshCw, CheckSquare, Square, Eye, Copy, Check
+import {
+  Printer, QrCode, Search, Building2, MapPin, Tag,
+  Plus, Edit2, Trash2, Layers, LayoutGrid, Table as TableIcon,
+  CheckSquare, Square, Copy, Check
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { Modal } from '../components/common/Modal';
@@ -12,9 +12,8 @@ export const PrintLabels = () => {
     campusLocations, 
     addCampusLocation, 
     updateCampusLocation, 
-    deleteCampusLocation, 
-    resetCampusLocations,
-    requisitions 
+    deleteCampusLocation,
+    requisitions
   } = useData();
 
   const [selectedBldg, setSelectedBldg] = useState('all');

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Archive, Search, Download, RotateCcw, CheckCircle2, Eye } from 'lucide-react';
+import { Search, RotateCcw } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { StatusBadge, CategoryPill } from '../../components/common/StatusBadge';
 import { formatTicketDate } from '../../components/common/TimeGreeting';

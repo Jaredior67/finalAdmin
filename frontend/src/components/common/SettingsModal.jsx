@@ -1,20 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  Camera, 
-  Trash2, 
-  Lock, 
-  Save, 
-  Eye, 
-  EyeOff, 
-  CheckCircle2, 
-  AlertCircle, 
-  User, 
-  Shield, 
-  Bell, 
-  Building, 
-  MapPin, 
-  Phone, 
-  Key 
+import {
+  Camera,
+  Trash2,
+  Lock,
+  Save,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  AlertCircle,
+  User,
+  Shield
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { useAuth } from '../../context/AuthContext';

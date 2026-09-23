@@ -1,5 +1,5 @@
 import React from 'react';
-import { Save, WifiOff, Wifi, Check, Trash2 } from 'lucide-react';
+import { WifiOff, Check, Trash2 } from 'lucide-react';
 
 export const AutoSaveIndicator = ({ 
   isOnline = true, 

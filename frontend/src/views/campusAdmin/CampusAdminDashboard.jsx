@@ -1,25 +1,17 @@
 import React, { useState } from 'react';
-import { 
-  Landmark, 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
-  FileText, 
-  Printer, 
-  Search, 
-  Filter, 
-  Eye, 
-  AlertTriangle, 
-  ShieldCheck, 
-  Check, 
-  TrendingUp, 
-  Building2, 
-  Calendar, 
-  CheckCircle 
+import {
+  Landmark,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Printer,
+  Search,
+  Check,
+  CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { StatusBadge, UrgencyBadge, CategoryPill } from '../../components/common/StatusBadge';
+import { UrgencyBadge, CategoryPill } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
 import { JobRequestFormOverlay } from '../../components/common/JobRequestFormOverlay';
 import { JobRequestPrintSheet } from '../../components/common/JobRequestPrintSheet';
@@ -28,7 +20,7 @@ import { getTimeGreeting, formatHeaderDate, getDisplayFirstName, formatTicketDat
 
 export const CampusAdminDashboard = () => {
   const { currentUser } = useAuth();
-  const { requisitions, updateFinalAction, peekNextTrackingNumber, users } = useData();
+  const { requisitions, updateFinalAction, peekNextTrackingNumber } = useData();
 
   // Header greeting — same pattern as the admin dashboard.
   const now = new Date();

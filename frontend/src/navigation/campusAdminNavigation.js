@@ -4,8 +4,7 @@ import {
   Folder,
   BarChart3,
   MessageSquare,
-  Settings,
-  CheckCircle2
+  Settings
 } from 'lucide-react';
 
 export const campusAdminNavigation = {

@@ -13,7 +13,6 @@ import {
   apiUpdateUser,
   apiSetUserStatus,
   apiRemoveUser,
-  apiGetPreventiveSchedules,
   apiCreatePreventiveSchedule,
 } from '../backend/api';
 
@@ -490,170 +489,6 @@ const INITIAL_CALENDAR_EVENTS = [
   }
 ];
 
-const INITIAL_USERS = [
-  {
-    id: 'usr_001',
-    firstName: 'Reynaldo',
-    lastName: 'Bautista',
-    middleName: 'Santos',
-    name: 'Engr. Reynaldo Bautista',
-    title: 'PDAS Director',
-    role: 'Admin',
-    userType: 'Admin',
-    email: 'pdas.director@dumangas.isatu.edu.ph',
-    department: 'PDAS Administration',
-    designation: 'PDAS Director / Head Administrator',
-    phone: '+63 917 123 4567',
-    idNumber: 'ISATU-ADM-2018-001',
-    idStatus: 'Verified',
-    status: 'Active',
-    lastActive: 'Just now'
-  },
-  {
-    id: 'usr_002',
-    firstName: 'Elena',
-    lastName: 'Ramos',
-    middleName: 'Dizon',
-    name: 'Dr. Elena Ramos',
-    title: 'Dean, College of Engineering & Architecture',
-    role: 'Faculty',
-    userType: 'Faculty',
-    email: 'elena.ramos.isatu@gmail.com',
-    department: 'College of Engineering & Architecture',
-    designation: 'Professor / College Dean',
-    phone: '+63 918 333 4455',
-    idNumber: 'ISATU-FAC-2019-042',
-    idStatus: 'Verified',
-    status: 'Active',
-    lastActive: '15 mins ago'
-  },
-  {
-    id: 'usr_003',
-    firstName: 'Glenda',
-    lastName: 'Montenegro',
-    middleName: 'Alvarez',
-    name: 'Glenda Montenegro',
-    title: 'Laboratory Property Custodian',
-    role: 'Staff',
-    userType: 'Staff',
-    email: 'glenda.montenegro.staff@gmail.com',
-    department: 'Industrial Technology & Workshops',
-    designation: 'Lab Technician & Custodian',
-    phone: '+63 927 888 9900',
-    idNumber: 'ISATU-STF-2021-118',
-    idStatus: 'Verified',
-    status: 'Active',
-    lastActive: '1 hour ago'
-  },
-  {
-    id: 'usr_004',
-    firstName: 'Mark',
-    lastName: 'Villanueva',
-    middleName: 'Cruz',
-    name: 'Mark Villanueva',
-    title: 'Senior Electrical & HVAC Technician',
-    role: 'Technician',
-    userType: 'Maintenance',
-    email: 'mark.villanueva.isatu@gmail.com',
-    department: 'PDAS Technical Crew Unit',
-    designation: 'Lead Maintenance Specialist',
-    specialization: 'Electrical & HVAC',
-    phone: '+63 920 456 7890',
-    idNumber: 'ISATU-TEC-2020-055',
-    idStatus: 'Verified',
-    status: 'Active',
-    lastActive: '5 mins ago'
-  },
-  {
-    id: 'usr_005',
-    firstName: 'Ronaldo',
-    lastName: 'Dela Cruz',
-    middleName: 'Gomez',
-    name: 'Ronaldo Dela Cruz',
-    title: 'Plumbing & Pipe Specialist',
-    role: 'Technician',
-    userType: 'Maintenance',
-    email: 'ronaldo.delacruz@dumangas.isatu.edu.ph',
-    department: 'PDAS Technical Crew Unit',
-    designation: 'Senior Plumber',
-    specialization: 'Plumbing & Drainage',
-    phone: '+63 919 777 4433',
-    idNumber: 'ISATU-TEC-2019-014',
-    idStatus: 'Verified',
-    status: 'Active',
-    lastActive: '2 hours ago'
-  },
-  {
-    id: 'usr_006',
-    firstName: 'Arthur',
-    lastName: 'Pendelton',
-    middleName: 'Reyes',
-    name: 'Arthur Pendelton',
-    title: 'Master Carpenter & Mason',
-    role: 'Technician',
-    userType: 'Maintenance',
-    email: 'arthur.pendelton@dumangas.isatu.edu.ph',
-    department: 'PDAS Technical Crew Unit',
-    designation: 'Master Carpenter',
-    specialization: 'Carpentry & Masonry',
-    phone: '+63 921 888 2211',
-    idNumber: 'ISATU-TEC-2018-009',
-    idStatus: 'Verified',
-    status: 'Active',
-    lastActive: 'Yesterday'
-  }
-];
-
-const INITIAL_PENDING_REGISTRATIONS = [
-  {
-    id: 'REG-2026-001',
-    firstName: 'Prof. Roberto',
-    lastName: 'Castillo',
-    middleName: 'Villar',
-    gmail: 'roberto.castillo.isatu@gmail.com',
-    userType: 'Faculty',
-    department: 'Department of Electrical & Electronics Engineering',
-    designation: 'Associate Professor',
-    contactNumber: '+63 919 444 5566',
-    idNumber: 'ISATU-FAC-2022-093',
-    registeredDate: '2026-09-03 10:15 AM',
-    idFileName: 'Faculty_ID_Prof_Castillo.jpg',
-    idPreviewUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=400&auto=format&fit=crop&q=60',
-    status: 'Pending Verification'
-  },
-  {
-    id: 'REG-2026-002',
-    firstName: 'Clarissa',
-    lastName: 'Tan',
-    middleName: 'Lim',
-    gmail: 'clarissa.tan.staff@gmail.com',
-    userType: 'Staff',
-    department: 'Office of Student Affairs and Services (OSAS)',
-    designation: 'Administrative Officer II',
-    contactNumber: '+63 915 222 3344',
-    idNumber: 'ISATU-STF-2023-144',
-    registeredDate: '2026-09-02 03:30 PM',
-    idFileName: 'Staff_ID_Clarissa_Tan.jpg',
-    idPreviewUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&auto=format&fit=crop&q=60',
-    status: 'Pending Verification'
-  }
-];
-
-const INITIAL_REJECTED_REGISTRATIONS = [  {
-    id: 'REG-REJ-001',
-    firstName: 'Juan',
-    lastName: 'Dela Cruz (Sample)',
-    middleName: 'B',
-    gmail: 'unverified.user@gmail.com',
-    userType: 'Staff',
-    department: 'General Staff',
-    contactNumber: '+63 900 000 0000',
-    idNumber: 'INVALID-ID-000',
-    rejectedDate: '2026-09-01 11:30 AM',
-    reason: 'Blurry and unreadable ID photo attachment. Missing valid ISAT U institutional ID number.'
-  }
-];
-
 const INITIAL_MESSAGES = [
   {
     id: 'msg_001',
@@ -766,7 +601,7 @@ export const DataProvider = ({ children }) => {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {}
+      } catch { /* corrupted cache falls through to seed data */ }
     }
     return INITIAL_SAMPLE_NOTIFICATIONS;
   });
@@ -961,10 +796,8 @@ export const DataProvider = ({ children }) => {
   // Generic save for overlay-edited QF-PDAS-DC-01 fields (before print).
   const updateRequisitionForm = (reqId, patch) => {
     if (!patch || typeof patch !== 'object') return false;
-    let updated = false;
     setRequisitions(prev => prev.map(r => {
       if (r.id === reqId || r.controlNo === reqId) {
-        updated = true;
         return {
           ...r,
           ...patch,

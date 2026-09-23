@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { checkBackendHealth } from '../../backend/api';
-import { AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, RefreshCw, X } from 'lucide-react';
 
 const POLL_INTERVAL_MS = 15000; // re-check every 15 seconds
 const INITIAL_DELAY_MS = 1200;  // wait a moment before first check so app renders first

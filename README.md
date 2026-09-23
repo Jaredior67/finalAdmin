@@ -1,12 +1,26 @@
-# FixIt PDAS Admin Portal
+# FixIT: Facility Issue eXpress and Integrated Tracking System
 
-This project is a role-based facilities and maintenance management system for ISAT U Dumangas. It supports three main user types:
+Role-based facility maintenance system for ISAT U Dumangas Campus (PDAS Office).
+It digitizes maintenance requests, replacing manual, verbal, and handwritten reporting.
 
-- Admin / PDAS Director
-- Faculty and Staff requisitioners
-- Maintenance personnel
+## Roles
 
-The application is built as a full-stack system with a React frontend and an Express + MySQL backend.
+- **PDAS Admin** — reviews requests, manages approvals, assigns technicians, reports, archive.
+- **Campus Admin** — final action (Approved/Disapproved) on the official job request form.
+- **Faculty / Staff** — submits requests, tracks status, views history, evaluates completed work.
+- **Maintenance Personnel** — assigned tasks, progress updates, completion, replacement flags.
+
+## Ticket lifecycle (enforced on the server)
+
+`Pending → Under Review → Awaiting Signatures → Approved → Ongoing → Completed`
+(`Rejected` is terminal from Pending / Under Review / Awaiting Signatures / Approved.)
+
+- Risk levels: **Low Risk / Medium Risk / High Risk** (colored badges with icons).
+- **No digital signatures.** The official QF-PDAS-DC-01 form is printed and physically
+  signed (client, immediate supervisor, PDAS Head, Campus Administrator).
+- A ticket **cannot** move to Approved or Ongoing until PDAS Admin confirms the
+  signed hardcopy (`PUT /api/job-requests/:id/signed-form`).
+- Every status change is written to `job_request_status_history` **and** `audit_log`.
 
 ---
 
@@ -83,73 +97,49 @@ The app is organized around a central PDAS portal where each role sees a differe
 ## 3. Project Structure
 
 ```text
-finalfinalfinaladmin/
-├── README.md
-├── package.json
+capstoneSystem/
+├── README.md / AUDIT.md / DEPLOYMENT.md
 ├── backend/
 │   ├── package.json
+│   ├── .env.example (copy to .env — never commit real secrets)
 │   ├── database/
 │   │   ├── schema.sql
 │   │   └── seed.sql
 │   └── src/
-│       ├── server.js
-│       ├── config/
-│       │   └── db.js
+│       ├── server.js (security headers, static uploads, generic error handler)
+│       ├── config/db.js
 │       ├── middleware/
-│       │   └── auth.js
+│       │   ├── auth.js (Bearer JWT + server-side logout revocation)
+│       │   └── rateLimit.js (login/register throttling)
+│       ├── utils/
+│       │   ├── auditLog.js
+│       │   └── ticketPolicy.js (lifecycle map + RBAC, unit-tested)
 │       ├── routes/
-│       │   ├── authRoutes.js
-│       │   ├── documentRoutes.js
-│       │   ├── evaluationRoutes.js
+│       │   ├── authRoutes.js (register, login with lockout, logout)
+│       │   ├── documentRoutes.js (JPG/PNG/PDF allow-list uploads)
+│       │   ├── evaluationRoutes.js (owner-only, one per ticket)
 │       │   ├── lookupRoutes.js
-│       │   ├── messageRoutes.js
+│       │   ├── messageRoutes.js (participant-only threads)
 │       │   ├── notificationRoutes.js
-│       │   ├── requisitionRoutes.js
-│       │   └── userRoutes.js
-│       ├── scripts/
-│       │   └── seedAdmin.js
-│       └── uploads/
+│       │   ├── requisitionRoutes.js (ownership + transition + signed-form gates)
+│       │   ├── userRoutes.js (admin-only; soft-delete)
+│       │   ├── jobRequestDocRoutes.js / preventiveRoutes.js
+│       ├── scripts/ (autoSetup migrations, seedAdmin, seedTestAccounts)
+│       ├── tests/ (ticketPolicy.test.js + QR helper tests)
+│       └── uploads/ (allow-listed files only, nosniff)
 ├── frontend/
-│   ├── package.json
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── forms/
+│   ├── package.json / index.html / vite.config.js
 │   └── src/
-│       ├── App.jsx
-│       ├── App.css
-│       ├── index.css
-│       ├── main.jsx
-│       ├── assets/
-│       ├── backend/
-│       │   └── api.js
+│       ├── App.jsx (role shells + skip link + toast/offline providers)
+│       ├── index.css (design tokens: type scale, 8px spacing, status-only colors)
+│       ├── assets/ / backend/api.js
 │       ├── components/
-│       │   ├── auth/
-│       │   ├── common/
-│       │   └── layout/
-│       ├── context/
-│       │   ├── AuthContext.jsx
-│       │   └── DataContext.jsx
-│       ├── navigation/
-│       │   ├── adminNavigation.js
-│       │   ├── facultyNavigation.js
-│       │   └── maintenanceNavigation.js
-│       ├── routes/
-│       │   ├── AdminRoutes.jsx
-│       │   ├── FacultyRoutes.jsx
-│       │   └── MaintenanceRoutes.jsx
-│       └── views/
-│           ├── admin/
-│           ├── faculty/
-│           ├── maintenance/
-│           ├── CommunicationBox.jsx
-│           ├── EvaluationForm.jsx
-│           ├── FacultyStaffPortal.jsx
-│           ├── MaintenanceFieldPortal.jsx
-│           ├── OfficialDocuments.jsx
-│           ├── PreventiveCalendar.jsx
-│           ├── PrintLabels.jsx
-│           ├── ReplacementRequests.jsx
-│           └── SettingsPage.jsx
+│       │   ├── auth/ / layout/
+│       │   ├── common/ (Modal with focus trap, badges, skeletons, banners…)
+│       │   └── ui/ (FormField, Pagination, Toast — shared primitives)
+│       ├── context/ (AuthContext with idle timeout, DataContext)
+│       ├── navigation/ / routes/ (per-role)
+│       └── views/ (admin/, faculty/, maintenance/, campusAdmin/, shared)
 ```
 
 ---
@@ -311,9 +301,15 @@ DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=
 DB_NAME=fixit_pdas
-JWT_SECRET=your_secret_key_here
+JWT_SECRET=<output of: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))">
+JWT_EXPIRES_IN=8h
 FRONTEND_ORIGIN=http://localhost:5173
 ```
+
+Security notes: passwords are bcrypt-hashed (cost 10, min 8 chars with letter+number);
+login is rate-limited with 15-minute lockout after 5 failures; JWT default expiry is
+8h with 30-minute client idle timeout; logout revokes the token server-side;
+uploads accept JPG/PNG/PDF only; error responses are generic outside development.
 
 ### Step 5: Start the backend
 
@@ -371,27 +367,30 @@ The backend registers the following main routes:
 
 ### Authentication
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
+- `POST /api/auth/register` (faculty/staff only, rate-limited, min 8-char letter+number password)
+- `POST /api/auth/login` (rate-limited; 5 failures lock the account 15 min)
+- `POST /api/auth/logout` (revokes the Bearer token server-side)
 
-### Users
+### Users (PDAS Admin only)
 
 - `GET /api/users`
-- `POST /api/users`
+- `POST /api/users` (same password rules)
 - `PUT /api/users/:id`
 - `PUT /api/users/:id/status`
-- `DELETE /api/users/:id`
+- `DELETE /api/users/:id` (soft-delete → `inactive`; self-deactivation blocked)
 - `GET /api/users/registrations`
 - `PUT /api/users/registrations/:id/approve`
 - `PUT /api/users/registrations/:id/reject`
 
-### Job Requests / Requisitions
+### Job Requests (ownership enforced: requester / assignee / admin)
 
 - `GET /api/job-requests`
-- `POST /api/job-requests`
+- `POST /api/job-requests` (description ≤ 5000 chars, allow-listed category)
 - `GET /api/job-requests/:id`
-- `PUT /api/job-requests/:id`
-- `DELETE /api/job-requests/:id`
+- `PUT /api/job-requests/:id/status` (role + transition map + signed-form gate)
+- `PUT /api/job-requests/:id/signed-form` (admin: confirm physical hardcopy)
+- `PUT /api/job-requests/:id/complete-standard-form` (requester or admin)
+- `PUT /api/job-requests/:id/replacement-flag` (admin or assigned technician)
 
 ### Notifications
 
@@ -403,15 +402,17 @@ The backend registers the following main routes:
 - `GET /api/messages`
 - `POST /api/messages`
 
-### Documents
+### Documents (JPG/PNG/PDF only, ≤10 MB, renamed server-side)
 
-- `POST /api/documents/upload`
-- `GET /api/documents`
+- `POST /api/documents`
+- `GET /api/documents/job-request/:jobRequestId`
+- `GET /api/documents/:id/download` (uploader / requester / assignee / admin)
 
-### Evaluations
+### Evaluations (requester-only, one per completed ticket)
 
 - `POST /api/evaluations`
 - `GET /api/evaluations`
+- `GET /api/evaluations/job-request/:jobRequestId`
 
 ### Lookups
 

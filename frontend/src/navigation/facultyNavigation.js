@@ -1,7 +1,6 @@
 import {
   LayoutGrid,
   PlusCircle,
-  AlertTriangle,
   FileText,
   History,
   MessageSquare,
@@ -13,8 +12,7 @@ import {
 export const facultyNavigation = {
   requisition: [
     { id: 'faculty-dashboard', label: 'Dashboard', icon: LayoutGrid },
-    { id: 'faculty-submit', label: 'Job Request Desk', icon: PlusCircle },
-    { id: 'faculty-urgent', label: 'Report Urgent Issue', icon: AlertTriangle, badgeKey: 'facultyUrgentTicketsCount', badgeColor: '#dc2626' },
+    { id: 'faculty-submit', label: 'Job Request', icon: PlusCircle },
     { id: 'faculty-tickets', label: 'My Active Tickets', icon: FileText, badgeKey: 'facultyActiveTicketsCount', badgeColor: '#001f9c' },
     { id: 'faculty-history', label: 'Request History', icon: History }
   ],

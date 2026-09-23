@@ -397,7 +397,7 @@ router.put('/:id/signed-form', requireRole('admin', 'campus_admin'), async (req,
 // PUT /api/job-requests/:id/complete-standard-form - Urgent requests completing full form details
 router.put('/:id/complete-standard-form', async (req, res) => {
   try {
-    const { immediateSupervisor, description, scopeOfWorks } = req.body;
+    const { immediateSupervisor, description } = req.body;
     // Ownership guard: only the requester (or PDAS Admin) may complete the form.
     const [ownerRows] = await pool.query('SELECT requester_id FROM job_requests WHERE id = ?', [req.params.id]);
     if (ownerRows.length === 0) {

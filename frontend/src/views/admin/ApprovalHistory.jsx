@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Clock, Search, CheckCircle2, XCircle, ShieldCheck, Download } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, ShieldCheck, Download } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 
 export const ApprovalHistory = () => {

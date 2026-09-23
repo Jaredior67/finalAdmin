@@ -1,23 +1,14 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  AlertTriangle, 
-  CheckCircle2, 
-  Clock, 
-  Printer, 
-  Search, 
-  Tag, 
-  Building, 
-  FileText, 
-  ArrowRight, 
-  Check, 
-  SlidersHorizontal,
-  PackageCheck,
-  Send,
-  ShoppingBag
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Printer,
+  Search,
+  Check,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { StatusBadge } from '../components/common/StatusBadge';
 import { Modal } from '../components/common/Modal';
 
 const PROCUREMENT_STAGES = [
@@ -196,7 +187,6 @@ export const ReplacementRequests = () => {
             {filteredRequests.map(request => {
               const currentProcStatus = request.replacementFlag.procurementStatus || 'Pending Purchase Request (PR)';
               const currentStageIdx = getStageIndex(currentProcStatus);
-              const latestUpdate = request.timeline?.[request.timeline.length - 1];
 
               return (
                 <div

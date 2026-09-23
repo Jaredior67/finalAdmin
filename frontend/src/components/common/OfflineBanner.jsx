@@ -60,7 +60,7 @@ export function OfflineBanner() {
       window.removeEventListener('offline', goOffline);
       window.removeEventListener('storage', refreshQueue);
     };
-  }, [refreshQueue]);
+  }, [refreshQueue, toast]);
 
   if (isOnline) return null;
 

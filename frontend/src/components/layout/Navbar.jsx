@@ -7,7 +7,7 @@ import { Modal } from '../common/Modal';
 import { SettingsModal } from '../common/SettingsModal';
 import pdasLogo from '../../assets/fixit-logo.png';
 
-export const Navbar = ({ onSearch = null, onToggleSidebar = null }) => {
+export const Navbar = ({ onSearch = null }) => {
   const { currentUser, logout, setIsLoginModalOpen } = useAuth();
   const { notifications } = useData();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
