@@ -27,9 +27,9 @@ export const LoginPage = () => {
   // Login flow active tab: 'admin' | 'faculty_staff' | 'maintenance'
   const [activeFlow, setActiveFlow] = useState('admin');
 
-  // Credentials & Form State
-  const [email, setEmail] = useState(() => localStorage.getItem('fixit_pdas_remembered_login_v1') || 'adminisatu.edu.ph@gmail.com');
-  const [password, setPassword] = useState('admin123');
+  // Credentials & Form State (password is never prefilled or remembered)
+  const [email, setEmail] = useState(() => localStorage.getItem('fixit_pdas_remembered_login_v1') || '');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(() => Boolean(localStorage.getItem('fixit_pdas_remembered_login_v1')));
   const [error, setError] = useState('');
@@ -64,27 +64,25 @@ export const LoginPage = () => {
     }
   };
 
-  // Switch Login Flow (Admin, Approver, Faculty & Staff, Maintenance)
+  // Switch Login Flow (Admin, Approver, Faculty & Staff, Maintenance).
+  // Fills the demo email for the portal; the password is always typed by hand.
   const handleSelectFlow = (flowType) => {
     setActiveFlow(flowType);
     setError('');
-    
+    setPassword('');
+
     if (flowType === 'admin') {
       const p = TEST_PERSONAS.find(item => item.key === 'admin');
-      setEmail(p?.email || 'adminisatu.edu.ph@gmail.com');
-      setPassword(p?.password || 'admin123');
+      setEmail(p?.email || '');
     } else if (flowType === 'campus_admin') {
       const p = TEST_PERSONAS.find(item => item.key === 'campus_admin');
-      setEmail(p?.email || 'campusadmin@isatu.edu.ph');
-      setPassword(p?.password || 'admin123');
+      setEmail(p?.email || '');
     } else if (flowType === 'faculty_staff') {
       const p = TEST_PERSONAS.find(item => item.key === 'faculty');
-      setEmail(p?.email || 'faculty@isatu.edu.ph');
-      setPassword(p?.password || 'faculty123');
+      setEmail(p?.email || '');
     } else if (flowType === 'maintenance') {
       const p = TEST_PERSONAS.find(item => item.key === 'maintenance');
-      setEmail(p?.email || 'maintenance@isatu.edu.ph');
-      setPassword(p?.password || 'tech123');
+      setEmail(p?.email || '');
     }
   };
 

@@ -102,7 +102,7 @@ export const UserManagement = () => {
     email: '',
     phone: '',
     specialization: 'Electrical & HVAC',
-    password: 'tech123',
+    password: '',
     idNumber: ''
   });
 
@@ -184,7 +184,7 @@ export const UserManagement = () => {
         email: '',
         phone: '',
         specialization: 'Electrical & HVAC',
-        password: 'tech123',
+        password: '',
         idNumber: ''
       });
     } catch (requestError) {
@@ -962,14 +962,16 @@ export const UserManagement = () => {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Initial PIN / Password</label>
+            <label className="form-label">Temporary Password *</label>
             <input
               type="text"
               className="form-input"
               value={techForm.password}
               onChange={(e) => setTechForm({ ...techForm, password: e.target.value })}
+              placeholder="Min 8 characters, letter + number"
               required
             />
+            <div className="form-help">The technician must change this after first sign-in.</div>
           </div>
 
           <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>

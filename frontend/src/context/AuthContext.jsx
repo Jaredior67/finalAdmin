@@ -7,18 +7,16 @@ const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 const AuthContext = createContext();
 
-// NOTE: TEST_PERSONAS is kept ONLY so LoginModal.jsx's quick-select buttons
-// still render without crashing. It is no longer used for authentication —
-// real login always goes through the backend. If you want those quick-select
-// buttons to actually work, create matching accounts via Register + admin
-// approval (or npm run seed:admin for the admin one), using these emails.
+// NOTE: Role shortcuts fill in the email only — passwords are NEVER stored
+// or displayed in the client. Real login always goes through the backend.
+// Seeded demo accounts are created via Register + admin approval
+// (or npm run seed:admin for the admin one).
 export const TEST_PERSONAS = [
   {
     key: 'admin',
     roleName: 'PDAS Director / Head',
     title: 'PDAS Director',
     email: 'adminisatu.edu.ph@gmail.com',
-    password: 'admin123',
     iconText: '🛡️',
   },
   {
@@ -26,7 +24,6 @@ export const TEST_PERSONAS = [
     roleName: 'Approver',
     title: 'Approver',
     email: 'campusadmin@isatu.edu.ph',
-    password: 'admin123',
     iconText: '🏛️',
   },
   {
@@ -34,7 +31,6 @@ export const TEST_PERSONAS = [
     roleName: 'Faculty Requester',
     title: 'Faculty / College Dean',
     email: 'faculty@isatu.edu.ph',
-    password: 'faculty123',
     iconText: '🎓',
   },
   {
@@ -42,7 +38,6 @@ export const TEST_PERSONAS = [
     roleName: 'Staff Requester',
     title: 'Laboratory Property Custodian',
     email: 'staff@isatu.edu.ph',
-    password: 'staff123',
     iconText: '💼',
   },
   {
@@ -50,7 +45,6 @@ export const TEST_PERSONAS = [
     roleName: 'Maintenance Personnel',
     title: 'Lead Maintenance Specialist',
     email: 'maintenance@isatu.edu.ph',
-    password: 'tech123',
     iconText: '🔧',
   },
 ];

@@ -7,8 +7,8 @@ import fixitLogo from '../../assets/fixit-logo.png';
 
 export const LoginModal = () => {
   const { isLoginModalOpen, setIsLoginModalOpen, loginWithCredentials } = useAuth();
-  const [email, setEmail] = useState('adminisatu.edu.ph@gmail.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
@@ -17,7 +17,7 @@ export const LoginModal = () => {
 
   const handleSelectPersona = (persona) => {
     setEmail(persona.email);
-    setPassword(persona.password);
+    setPassword('');
     setSelectedRole(persona.key || 'admin');
     setError('');
   };
@@ -181,7 +181,7 @@ export const LoginModal = () => {
               </button>
             </div>
             <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '4px' }}>
-              Default demo password: <code>admin123</code> (or select persona above)
+              Select a role above to fill its email, then enter your password.
             </div>
           </div>
 
