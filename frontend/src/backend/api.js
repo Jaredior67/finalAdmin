@@ -284,6 +284,12 @@ export const apiCreatePreventiveSchedule = async (scheduleData) =>
     body: JSON.stringify(scheduleData),
   });
 
+// Job Requests API (live MySQL data for Reports & Analytics)
+export const apiGetJobRequests = async () => request('/job-requests');
+
+// Evaluations API (live ISO/IEC 25010 results)
+export const apiGetEvaluations = async () => request('/evaluations');
+
 export const checkBackendHealth = async () => {
   try {
     const res = await fetch(`${API_BASE}/health`, { method: 'GET' });

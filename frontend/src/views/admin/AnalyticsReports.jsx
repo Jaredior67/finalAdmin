@@ -1,10 +1,75 @@
-import React, { useState } from 'react';
-import { BarChart3, CheckCircle2, Download, Filter, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { BarChart3, CheckCircle2, Download, Filter, RotateCcw, WifiOff } from 'lucide-react';
 import { useData } from '../../context/DataContext';
+import { apiGetJobRequests, apiGetEvaluations } from '../../backend/api';
+import { TableSkeleton } from '../../components/common/Skeleton';
+import { EmptyState } from '../../components/common/EmptyState';
 import { FormField, TextInput, SelectInput } from '../../components/ui/FormField';
 
+// Backend (MySQL) rows use snake_case — normalize to the report shape.
+const mapJobRow = (r) => ({
+  controlNo: r.ticket_no || r.controlNo,
+  date: String(r.created_at || r.date || '').slice(0, 10),
+  location: [r.building, r.room].filter(Boolean).join(' - ') || r.location || '—',
+  category: r.category || 'General',
+  urgency: r.urgency_level || r.urgency || 'Medium Risk',
+  status: r.status,
+  requestType: r.request_type || r.requestType || 'Standard Request',
+  requestedBy: r.requester_name || r.requestedBy || '—',
+});
+
+const mapEvalRow = (e) => ({
+  functionalSuitability: e.functional_suitability ?? e.functionalSuitability,
+  usability: e.usability,
+  reliability: e.reliability,
+  performanceEfficiency: e.performance_efficiency ?? e.performanceEfficiency,
+  category: e.category || 'General',
+  location: e.building || e.location || 'Unknown',
+  resolutionStatus: e.resolution_status || e.resolutionStatus || 'Unknown',
+});
+
+const fmtMonth = (ym) => {
+  const d = new Date(`${ym}-01T00:00:00`);
+  return Number.isNaN(d.getTime()) ? ym : d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+};
+
 export const AnalyticsReports = () => {
-  const { requisitions, monthlyRequestTotals, evaluations } = useData();
+  const { requisitions: localRequisitions, evaluations: localEvaluations } = useData();
+
+  // Live backend data with on-device fallback (works offline).
+  const [liveRequests, setLiveRequests] = useState(null);
+  const [liveEvals, setLiveEvals] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [usingLive, setUsingLive] = useState(false);
+
+  const loadReports = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const [jr, ev] = await Promise.all([apiGetJobRequests(), apiGetEvaluations()]);
+      setLiveRequests((jr || []).map(mapJobRow));
+      setLiveEvals((ev || []).map(mapEvalRow));
+      setUsingLive(true);
+    } catch (err) {
+      setLoadError(err.message || 'Could not reach the server.');
+      setUsingLive(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadReports(); }, [loadReports]);
+
+  const requisitions = liveRequests || localRequisitions;
+  const evaluations = liveEvals || localEvaluations;
+
+  // Monthly totals derived from whichever source is active.
+  const monthlyRequestTotals = {};
+  requisitions.forEach(r => {
+    const m = String(r.date || '').slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(m)) monthlyRequestTotals[m] = (monthlyRequestTotals[m] || 0) + 1;
+  });
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -165,6 +230,30 @@ export const AnalyticsReports = () => {
       </div>
 
       {/* Metric Cards */}
+      {loading && (
+        <div className="content-card" style={{ padding: '20px' }}>
+          <TableSkeleton rows={4} cols={3} />
+        </div>
+      )}
+      {!loading && !usingLive && (
+        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '12px 16px', marginBottom: '24px' }}>
+          <WifiOff size={16} color="#b45309" />
+          <span style={{ fontSize: '13px', fontWeight: '500', color: '#92400e', flex: '1 1 auto', minWidth: '200px' }}>
+            Live server unreachable{loadError ? ` (${loadError})` : ''}. Showing on-device data.
+          </span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={loadReports}>
+            Retry Live Data
+          </button>
+        </div>
+      )}
+      {!loading && usingLive && requisitions.length === 0 && (
+        <EmptyState
+          title="No requests in the database"
+          description="Filed requests will appear here with live totals, breakdowns, and evaluation results."
+        />
+      )}
+      {!loading && (requisitions.length > 0 || !usingLive) && (
+      <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '28px' }}>
         <div className="content-card" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
@@ -197,8 +286,11 @@ export const AnalyticsReports = () => {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {Object.entries(monthlyRequestTotals).sort(([a], [b]) => b.localeCompare(a)).map(([month, count]) => (
-              <div key={month} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}><span>{month}</span><strong>{count} requests</strong></div>
+              <div key={month} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}><span>{fmtMonth(month)}</span><strong>{count} requests</strong></div>
             ))}
+            {Object.keys(monthlyRequestTotals).length === 0 && (
+              <span style={{ fontSize: '13px', color: '#64748b' }}>No requests yet.</span>
+            )}
           </div>
         </div>
       </div>
@@ -274,6 +366,8 @@ export const AnalyticsReports = () => {
           </>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 };
