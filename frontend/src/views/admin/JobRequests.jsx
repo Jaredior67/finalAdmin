@@ -27,7 +27,6 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
     assignTechnician, 
     updateRequisitionStatus,
     updateProcurementStatus,
-    updateActionTaken,
     updateRequisitionTrackingNo,
     updateRequisitionForm,
     archiveRequisition,
@@ -65,21 +64,6 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
 
   // Assignment gate warning (standard tickets need confirmed hardcopy first)
   const [assignWarn, setAssignWarn] = useState('');
-
-  // Action Taken Form State
-  const [actionDesignTeam, setActionDesignTeam] = useState(false);
-  const [actionDesignDetailedPlan, setActionDesignDetailedPlan] = useState(false);
-  const [actionDesignPowBoq, setActionDesignPowBoq] = useState(false);
-  const [actionDesignReceivedBy, setActionDesignReceivedBy] = useState('');
-
-  const [actionGsm, setActionGsm] = useState(false);
-  const [actionGsmReceivedBy, setActionGsmReceivedBy] = useState('');
-  const [actionGsmDate, setActionGsmDate] = useState('');
-
-  const [actionReturn, setActionReturn] = useState(false);
-  const [actionReturnReason, setActionReturnReason] = useState('prep_pr');
-  const [actionReturnReceivedBy, setActionReturnReceivedBy] = useState('');
-  const [actionReturnRemarks, setActionReturnRemarks] = useState('');
 
   // Maintenance personnel list
   const technicians = users.filter(u => 
@@ -767,140 +751,6 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
                 placeholder="Add specific instructions for technician, safety protocols, or requester feedback..."
                 style={{ minHeight: '80px' }}
               />
-            </div>
-            {/* ACTION TAKEN CONTROL PANEL (PDAS DIRECTOR) */}
-            <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '12px', padding: '16px', marginBottom: '18px' }}>
-              <div style={{ fontWeight: '800', color: '#0f172a', marginBottom: '10px', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>📋 ACTION TAKEN (Head, PDAS — Kristine J. Amar)</span>
-                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>QF-PDAS-DC-01 Section</span>
-              </div>
-
-              {/* Action 1: Design Team */}
-              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px', marginBottom: '10px' }}>
-                <label style={{ fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#0f172a' }}>
-                  <input
-                    type="checkbox"
-                    checked={actionDesignTeam}
-                    onChange={(e) => setActionDesignTeam(e.target.checked)}
-                  />
-                  Endorsed to Design Team for preparations
-                </label>
-                {actionDesignTeam && (
-                  <div style={{ marginTop: '8px', marginLeft: '24px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
-                    <div style={{ display: 'flex', gap: '16px' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <input
-                          type="checkbox"
-                          checked={actionDesignDetailedPlan}
-                          onChange={(e) => setActionDesignDetailedPlan(e.target.checked)}
-                        /> Detailed Plan
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <input
-                          type="checkbox"
-                          checked={actionDesignPowBoq}
-                          onChange={(e) => setActionDesignPowBoq(e.target.checked)}
-                        /> Program of Works and Bill of Quantities
-                      </label>
-                    </div>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Received by (Name & Signature)..."
-                      value={actionDesignReceivedBy}
-                      onChange={(e) => setActionDesignReceivedBy(e.target.value)}
-                      style={{ fontSize: '12px', padding: '4px 8px' }}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Action 2: GSM Head */}
-              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px', marginBottom: '10px' }}>
-                <label style={{ fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#0f172a' }}>
-                  <input
-                    type="checkbox"
-                    checked={actionGsm}
-                    onChange={(e) => setActionGsm(e.target.checked)}
-                  />
-                  Endorsed to GSM Head for issuance of Work Order
-                </label>
-                {actionGsm && (
-                  <div style={{ marginTop: '8px', marginLeft: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px' }}>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Received by (Name & Signature)..."
-                      value={actionGsmReceivedBy}
-                      onChange={(e) => setActionGsmReceivedBy(e.target.value)}
-                      style={{ fontSize: '12px', padding: '4px 8px' }}
-                    />
-                    <input
-                      type="date"
-                      className="form-input"
-                      value={actionGsmDate}
-                      onChange={(e) => setActionGsmDate(e.target.value)}
-                      style={{ fontSize: '12px', padding: '4px 8px' }}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Action 3: Returned to Client */}
-              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px', marginBottom: '10px' }}>
-                <label style={{ fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#0f172a' }}>
-                  <input
-                    type="checkbox"
-                    checked={actionReturn}
-                    onChange={(e) => setActionReturn(e.target.checked)}
-                  />
-                  Returned to Client for PR / JR / Remarks
-                </label>
-                {actionReturn && (
-                  <div style={{ marginTop: '8px', marginLeft: '24px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
-                    <select
-                      className="form-select"
-                      value={actionReturnReason}
-                      onChange={(e) => setActionReturnReason(e.target.value)}
-                      style={{ fontSize: '12px', padding: '4px 8px' }}
-                    >
-                      <option value="cannot_be_done">Request cannot be done as per remarks</option>
-                      <option value="prep_pr">Preparation of Purchase Request (PR) for materials needed</option>
-                      <option value="prep_jr">Preparation of Job Request (JR) for procurement</option>
-                    </select>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Received by Name & Signature..."
-                      value={actionReturnReceivedBy}
-                      onChange={(e) => setActionReturnReceivedBy(e.target.value)}
-                      style={{ fontSize: '12px', padding: '4px 8px' }}
-                    />
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Specific Remarks..."
-                      value={actionReturnRemarks}
-                      onChange={(e) => setActionReturnRemarks(e.target.value)}
-                      style={{ fontSize: '12px', padding: '4px 8px' }}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  updateActionTaken(selectedReq.id, {
-                    endorsedDesignTeam: { checked: actionDesignTeam, detailedPlan: actionDesignDetailedPlan, powBoq: actionDesignPowBoq, receivedBy: actionDesignReceivedBy },
-                    endorsedGSMHead: { checked: actionGsm, workOrder: actionGsm, receivedBy: actionGsmReceivedBy, date: actionGsmDate },
-                    returnedToClient: { checked: actionReturn, reason: actionReturnReason, receivedBy: actionReturnReceivedBy, remarks: actionReturnRemarks }
-                  });
-                }}
-              >
-                Save Action Taken Details
-              </button>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '14px', borderTop: '1px solid #e2e8f0' }}>
