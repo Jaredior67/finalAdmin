@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Wrench, 
   CheckCircle2, 
@@ -28,7 +28,19 @@ import { PageHeader } from '../components/common/PageHeader';
 
 export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }) => {
   const { currentUser } = useAuth();
-  const { requisitions, updateRequisitionStatus, updateRequisitionForm, raiseMaintenanceFlag, raiseReplacementFlag, evaluations } = useData();
+  const { requisitions, updateRequisitionStatus, updateRequisitionForm, raiseMaintenanceFlag, raiseReplacementFlag, evaluations, focusedTicketRef, setFocusedTicketRef } = useData();
+
+  // Deep link: a clicked notification stores its ticket ref here — open the
+  // exact work order detail, then clear so it never reopens.
+  useEffect(() => {
+    if (!focusedTicketRef) return;
+    const found = (requisitions || []).find(r =>
+      r.controlNo === focusedTicketRef || r.id === focusedTicketRef || r.ticket_no === focusedTicketRef
+    );
+    if (found) setSelectedTaskDetail(found);
+    setFocusedTicketRef(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedTicketRef]);
 
   const [selectedTask, setSelectedTask] = useState(null);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState(null);

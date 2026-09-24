@@ -30,8 +30,22 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
     updateRequisitionTrackingNo,
     updateRequisitionForm,
     archiveRequisition,
-    users 
+    users,
+    focusedTicketRef,
+    setFocusedTicketRef
   } = useData();
+
+  // Deep link: a clicked notification stores its ticket ref here — open the
+  // exact record, then clear so it never reopens.
+  useEffect(() => {
+    if (!focusedTicketRef) return;
+    const found = (requisitions || []).find(r =>
+      r.controlNo === focusedTicketRef || r.id === focusedTicketRef || r.ticket_no === focusedTicketRef
+    );
+    if (found) handleOpenDetail(found);
+    setFocusedTicketRef(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedTicketRef]);
 
   // Signature gate state
   const [signaturesConfirmed, setSignaturesConfirmed] = useState(false);

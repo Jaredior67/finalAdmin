@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Landmark,
   CheckCircle2,
@@ -20,7 +20,7 @@ import { getTimeGreeting, formatHeaderDate, getDisplayFirstName, formatTicketDat
 
 export const CampusAdminDashboard = () => {
   const { currentUser } = useAuth();
-  const { requisitions, updateFinalAction, peekNextTrackingNumber } = useData();
+  const { requisitions, updateFinalAction, peekNextTrackingNumber, focusedTicketRef, setFocusedTicketRef } = useData();
 
   // Header greeting — same pattern as the admin dashboard.
   const now = new Date();
@@ -76,6 +76,18 @@ export const CampusAdminDashboard = () => {
 
     return matchesSearch && matchesCategory && matchesTab;
   }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+
+  // Deep link: a clicked notification stores its ticket ref here — open the
+  // exact record in the decision modal, then clear so it never reopens.
+  useEffect(() => {
+    if (!focusedTicketRef) return;
+    const found = (requisitions || []).find(r =>
+      r.controlNo === focusedTicketRef || r.id === focusedTicketRef || r.ticket_no === focusedTicketRef
+    );
+    if (found) handleOpenDecision(found);
+    setFocusedTicketRef(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedTicketRef]);
 
   const handleOpenDecision = (req) => {
     setSelectedReq(req);

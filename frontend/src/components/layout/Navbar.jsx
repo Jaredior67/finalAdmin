@@ -7,7 +7,7 @@ import { Modal } from '../common/Modal';
 import { SettingsModal } from '../common/SettingsModal';
 import pdasLogo from '../../assets/fixit-logo.png';
 
-export const Navbar = ({ onSearch = null }) => {
+export const Navbar = ({ onSearch = null, onNavigateTab = null }) => {
   const { currentUser, logout, setIsLoginModalOpen } = useAuth();
   const { notifications, setTicketSearch } = useData();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -112,6 +112,7 @@ export const Navbar = ({ onSearch = null }) => {
           <NotificationDrawer 
             isOpen={isNotifOpen} 
             onClose={() => setIsNotifOpen(false)} 
+            onNavigateTab={onNavigateTab}
           />
         </div>
 

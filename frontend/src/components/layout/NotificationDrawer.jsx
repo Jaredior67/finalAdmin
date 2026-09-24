@@ -1,22 +1,58 @@
 import React, { useState } from 'react';
 import { Bell, BellOff, AlertTriangle, ShieldCheck, X, Trash2 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 
-export const NotificationDrawer = ({ isOpen, onClose }) => {
+// Pull a ticket reference out of any notification shape: explicit fields
+// first, then tracking numbers embedded in title/text, then backend links
+// like "/job-requests/123".
+const extractTicketRef = (n) => {
+  if (!n) return null;
+  if (n.ticketRef || n.controlNo || n.ticket_no || n.reqId) {
+    return n.ticketRef || n.controlNo || n.ticket_no || n.reqId;
+  }
+  const haystack = `${n.title || ''} ${n.text || ''} ${n.message || ''}`;
+  const tracked = haystack.match(/[A-Z]{2,4}-\d{4}-\d+/);
+  if (tracked) return tracked[0];
+  const linkMatch = String(n.link || '').match(/job-requests\/([^/?#]+)/);
+  if (linkMatch) return decodeURIComponent(linkMatch[1]);
+  return null;
+};
+
+export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
   const {
     notifications,
     markAllNotificationsRead,
     markNotificationRead,
     deleteNotification,
     clearAllNotifications,
+    setFocusedTicketRef,
   } = useData();
+  const { isCampusAdmin, isMaintenance, isFacultyOrStaff } = useAuth();
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isClearAllOpen, setIsClearAllOpen] = useState(false);
 
   if (!isOpen) return null;
 
   const unreadCount = notifications.filter(n => n.unread).length;
+
+  // Clicking a notification jumps straight to its ticket: store the reference
+  // for the destination view to open, then switch to the role's ticket tab.
+  const handleOpenNotification = (n) => {
+    if (n.unread) markNotificationRead(n.id);
+    const ref = extractTicketRef(n);
+    if (ref) setFocusedTicketRef(ref);
+    const tab = isCampusAdmin
+      ? 'campus-admin-dashboard'
+      : isMaintenance
+        ? 'tech-tasks'
+        : isFacultyOrStaff
+          ? 'faculty-tickets'
+          : 'job-requests';
+    if (onNavigateTab) onNavigateTab(tab);
+    if (onClose) onClose();
+  };
 
   const handleConfirmDelete = () => {
     if (deleteTarget) deleteNotification(deleteTarget.id);
@@ -104,8 +140,8 @@ export const NotificationDrawer = ({ isOpen, onClose }) => {
             notifications.map(n => (
               <div
                 key={n.id}
-                onClick={() => n.unread && markNotificationRead(n.id)}
-                title={n.unread ? 'Click to mark as read' : undefined}
+                onClick={() => handleOpenNotification(n)}
+                title="Open this ticket"
                 style={{
                   padding: '14px 18px',
                   borderBottom: '1px solid #f1f5f9',
@@ -113,7 +149,7 @@ export const NotificationDrawer = ({ isOpen, onClose }) => {
                   display: 'flex',
                   gap: '12px',
                   transition: 'background 0.15s',
-                  cursor: n.unread ? 'pointer' : 'default'
+                  cursor: 'pointer'
                 }}
               >
                 <div style={{

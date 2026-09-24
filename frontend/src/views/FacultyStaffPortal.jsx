@@ -83,7 +83,9 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
     submitEvaluation, 
     campusLocations,
     offices,
-    ticketSearch: searchTerm
+    ticketSearch: searchTerm,
+    focusedTicketRef,
+    setFocusedTicketRef
   } = useData();
 
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -291,6 +293,22 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
       if (printAfter) setIsPrintModalOpen(true);
     }, 300);
   };
+
+  // Deep link: a clicked notification stores its ticket ref here — open the
+  // exact record in the details modal, then clear so it never reopens.
+  useEffect(() => {
+    if (!focusedTicketRef) return;
+    const all = [...(requisitions || [])];
+    const found = all.find(r =>
+      r.controlNo === focusedTicketRef || r.id === focusedTicketRef || r.ticket_no === focusedTicketRef
+    );
+    if (found) {
+      if (onTabChange) onTabChange('faculty-tickets');
+      setSelectedTicketDetail(found);
+    }
+    setFocusedTicketRef(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedTicketRef]);
 
   // Requisition Partitioning (most recent first)
   const byDateDesc = (a, b) => String(b.date || '').localeCompare(String(a.date || ''));

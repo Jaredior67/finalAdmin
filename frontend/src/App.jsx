@@ -60,7 +60,7 @@ function AppContent() {
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar />
+        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
           <main className="content-area" id="main-content" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
@@ -80,7 +80,7 @@ function AppContent() {
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar />
+        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
           <main className="content-area" id="main-content" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
@@ -100,7 +100,7 @@ function AppContent() {
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar />
+        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
           <main className="content-area" id="main-content" style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '20px 16px' }}>
@@ -118,7 +118,7 @@ function AppContent() {
       <SkipLink />
       <BackendStatus />
       <OfflineBanner />
-      <Navbar />
+      <Navbar onNavigateTab={(tab) => setActiveTab(tab)} />
       
       <div className="main-layout">
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />

@@ -1805,6 +1805,11 @@ export const DataProvider = ({ children }) => {
   // faculty ticket lists read it, so there is only one search box.
   const [ticketSearch, setTicketSearch] = useState('');
 
+  // Deep-link target: when a notification is clicked, the drawer stores the
+  // ticket reference here and navigates to the role tab; the destination view
+  // opens the matching record, then clears the ref.
+  const [focusedTicketRef, setFocusedTicketRef] = useState(null);
+
   return (
     <DataContext.Provider
       value={{
@@ -1878,7 +1883,9 @@ export const DataProvider = ({ children }) => {
         updateRequisitionTrackingNo,
         updateRequisitionForm,
         ticketSearch,
-        setTicketSearch
+        setTicketSearch,
+        focusedTicketRef,
+        setFocusedTicketRef
       }}
     >
       {children}
