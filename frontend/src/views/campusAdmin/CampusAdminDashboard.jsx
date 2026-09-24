@@ -5,7 +5,6 @@ import {
   XCircle,
   Clock,
   Printer,
-  Search,
   Check,
   CheckCircle
 } from 'lucide-react';
@@ -20,7 +19,7 @@ import { getTimeGreeting, formatHeaderDate, getDisplayFirstName, formatTicketDat
 
 export const CampusAdminDashboard = () => {
   const { currentUser } = useAuth();
-  const { requisitions, updateFinalAction, peekNextTrackingNumber, focusedTicketRef, setFocusedTicketRef } = useData();
+  const { requisitions, updateFinalAction, peekNextTrackingNumber, focusedTicketRef, setFocusedTicketRef, ticketSearch: searchTerm } = useData();
 
   // Header greeting — same pattern as the admin dashboard.
   const now = new Date();
@@ -35,7 +34,6 @@ export const CampusAdminDashboard = () => {
   const [decisionError, setDecisionError] = useState('');
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isPrintOpen, setIsPrintOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [tabFilter, setTabFilter] = useState('pending'); // 'pending' | 'approved' | 'disapproved' | 'all'
   const [successToast, setSuccessToast] = useState('');
@@ -257,20 +255,8 @@ export const CampusAdminDashboard = () => {
             </p>
           </div>
 
-          {/* Search & Filters */}
+          {/* Filters (search lives in the top navbar) */}
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', width: '240px' }}>
-              <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Search ticket, client, room..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ paddingLeft: '32px', height: '36px', fontSize: '12.5px' }}
-              />
-            </div>
-
             <select
               className="form-select"
               value={categoryFilter}

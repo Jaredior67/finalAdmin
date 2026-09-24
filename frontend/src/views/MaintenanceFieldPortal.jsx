@@ -6,10 +6,9 @@ import {
   MapPin, 
   Phone, 
   User, 
-  Check, 
+  Check,
   AlertCircle,
   Zap,
-  Search,
   Eye,
   Printer,
   Download,
@@ -28,7 +27,7 @@ import { PageHeader } from '../components/common/PageHeader';
 
 export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }) => {
   const { currentUser } = useAuth();
-  const { requisitions, updateRequisitionStatus, updateRequisitionForm, raiseMaintenanceFlag, raiseReplacementFlag, evaluations, focusedTicketRef, setFocusedTicketRef } = useData();
+  const { requisitions, updateRequisitionStatus, updateRequisitionForm, raiseMaintenanceFlag, raiseReplacementFlag, evaluations, focusedTicketRef, setFocusedTicketRef, ticketSearch: searchTerm } = useData();
 
   // Deep link: a clicked notification stores its ticket ref here — open the
   // exact work order detail, then clear so it never reopens.
@@ -57,8 +56,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
   const [completionPhoto, setCompletionPhoto] = useState(null);
   const [maintenanceFlagType, setMaintenanceFlagType] = useState('Replacement');
 
-  // Filter & Search State
-  const [searchTerm, setSearchTerm] = useState('');
+  // Filter State (search text comes from the navbar global search box)
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -394,18 +392,6 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
           flexWrap: 'wrap',
           alignItems: 'center'
         }}>
-          <div style={{ position: 'relative', flex: '1', minWidth: '220px' }}>
-            <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-            <input
-              type="text"
-              className="form-input"
-              placeholder="Search work order by Tracking No, location, subject..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ paddingLeft: '36px', height: '38px', fontSize: '13px' }}
-            />
-          </div>
-
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <select
               className="form-select"

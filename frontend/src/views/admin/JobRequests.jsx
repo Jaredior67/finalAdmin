@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
   CheckCircle,
   AlertTriangle,
   Eye,
@@ -32,7 +31,8 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
     archiveRequisition,
     users,
     focusedTicketRef,
-    setFocusedTicketRef
+    setFocusedTicketRef,
+    ticketSearch: searchTerm
   } = useData();
 
   // Deep link: a clicked notification stores its ticket ref here — open the
@@ -54,7 +54,6 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
   const [activeStatusTab, setActiveStatusTab] = useState(initialStatusTab);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [sortKey, setSortKey] = useState(null);
@@ -315,19 +314,8 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
         ))}
       </div>
 
-      {/* Filters Bar */}
+      {/* Filters Bar (search lives in the top navbar) */}
       <div className="filter-bar">
-        <div className="search-input-wrapper">
-          <Search size={16} className="search-input-icon" />
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Search by tracking number, title, location, QR tag, or requestor..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
         <select
           className="select-filter"
           value={categoryFilter}

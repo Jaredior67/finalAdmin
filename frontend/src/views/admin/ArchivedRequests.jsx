@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { Search, RotateCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { StatusBadge, CategoryPill } from '../../components/common/StatusBadge';
 import { formatTicketDate } from '../../components/common/TimeGreeting';
 
 export const ArchivedRequests = () => {
-  const { requisitions, unarchiveRequisition } = useData();
-  const [searchTerm, setSearchTerm] = useState('');
+  const { requisitions, unarchiveRequisition, ticketSearch: searchTerm } = useData();
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -34,17 +33,7 @@ export const ArchivedRequests = () => {
       </div>
 
       <div className="filter-bar">
-        <div className="search-input-wrapper">
-          <Search size={16} className="search-input-icon" />
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Search archive by tracking number, location, or issue..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
+        <span style={{ fontSize: '12.5px', color: '#64748b' }}>Search from the top navbar to filter this archive.</span>
         <select
           className="select-filter"
           value={categoryFilter}

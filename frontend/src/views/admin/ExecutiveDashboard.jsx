@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { 
-  ArrowRight, 
-  Plus, 
-  Search, 
-  CheckCircle, 
-  XCircle, 
-  Eye, 
+import {
+  ArrowRight,
+  Plus,
+  CheckCircle,
+  XCircle,
+  Eye,
   FileText,
   AlertTriangle,
   Clock,
@@ -29,8 +28,9 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
     requisitions = [], 
     totalRequisitions = 0, 
     pendingApprovals = 0, 
-    ongoingWorkOrders = 0, 
+    ongoingWorkOrders = 0,
     completedRepairs = 0,
+    ticketSearch: searchTerm,
     approveRequisition,
     rejectRequisition,
     addRequisition,
@@ -45,7 +45,6 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
   const [selectedTech, setSelectedTech] = useState('');
   const [assignWarn, setAssignWarn] = useState('');
   const [dispatchMessage, setDispatchMessage] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
 
   // Form state for creating a new facility requisition (same Standard/Urgent flow as faculty)
@@ -448,18 +447,8 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', width: '220px' }}>
-              <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-              <input 
-                type="text"
-                placeholder="Search tracking no, location..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ width: '100%', height: '38px', paddingLeft: '32px', paddingRight: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13.5px', background: '#f8fafc' }}
-              />
-            </div>
-
             <select
+              aria-label="Filter by category"
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
               style={{ height: '34px', padding: '0 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12.5px', background: '#f8fafc', color: '#334155' }}
