@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowRight,
   Plus,
   CheckCircle,
-  XCircle,
   Eye,
   FileText,
   AlertTriangle,
@@ -14,6 +13,7 @@ import {
   ClipboardList
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
+import { apiGetPreventiveSchedules } from '../../backend/api';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge, UrgencyBadge, CategoryPill } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
@@ -31,19 +31,12 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
     ongoingWorkOrders = 0,
     completedRepairs = 0,
     ticketSearch: searchTerm,
-    approveRequisition,
-    rejectRequisition,
     addRequisition,
-    users = [],
-    preventiveEvents = []
+    calendarEvents = [],
+    setFocusedTicketRef
   } = useData();
 
-  const [selectedReq, setSelectedReq] = useState(null);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isNewReqModalOpen, setIsNewReqModalOpen] = useState(false);
-  const [approvalRemarks, setApprovalRemarks] = useState('');
-  const [selectedTech, setSelectedTech] = useState('');
-  const [assignWarn, setAssignWarn] = useState('');
   const [dispatchMessage, setDispatchMessage] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
 
@@ -63,8 +56,6 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
   const [createdForPrint, setCreatedForPrint] = useState(null);
   const [isPrintOpen, setIsPrintOpen] = useState(false);
 
-  const technicians = users.filter(u => u.role === 'Technician' || u.role === 'Maintenance');
-
   // Filtered recent requests (most recent first)
   const filteredRequisitions = requisitions.filter(req => {
     const matchesSearch = 
@@ -82,41 +73,34 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
   const now = new Date();
   const timeGreeting = getTimeGreeting(now);
 
+  // Live preventive schedules (MySQL) with on-device calendar fallback.
+  const [liveSchedules, setLiveSchedules] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    apiGetPreventiveSchedules()
+      .then(rows => { if (!cancelled) setLiveSchedules(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (!cancelled) setLiveSchedules(null); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const upcomingPreventive = ((liveSchedules || calendarEvents || [])
+    .map(ev => ({
+      title: ev.title || ev.assetName || 'Scheduled maintenance',
+      location: ev.location || '—',
+      date: String(ev.scheduled_date || ev.scheduledDate || ev.date || '').slice(0, 10),
+      status: ev.status || 'Scheduled',
+    }))
+    .filter(ev => /^\d{4}-\d{2}-\d{2}$/.test(ev.date) && ev.date >= new Date().toISOString().split('T')[0])
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 4));
+
   const handleOpenDetail = (req) => {
-    setSelectedReq(req);
-    setSelectedTech(req.assignedTo || '');
-    setApprovalRemarks(req.notes || '');
-    setAssignWarn('');
-    setIsDetailModalOpen(true);
+    // Dashboard Manage opens the full approver-style review modal on the
+    // Job Requests tab: jump there and deep-open this exact ticket.
+    if (setFocusedTicketRef) setFocusedTicketRef(req.controlNo || req.id);
+    if (onNavigate) onNavigate('job-requests', 'all');
   };
 
-  const handleApprove = () => {
-    if (selectedReq) {
-      // Standard tickets: confirm the signed hardcopy first — assignment only after receipt.
-      if (selectedTech && selectedReq.requestType !== 'Urgent Request' && !selectedReq.signedFormScanUrl) {
-        setAssignWarn('Confirm receipt of the fully-signed physical form first (Review & Assign → Awaiting Signatures gate) before assigning.');
-        return;
-      }
-      const approvalSucceeded = approveRequisition(
-        selectedReq.id,
-        approvalRemarks || 'Approved by PDAS Director',
-        selectedTech
-      );
-      if (approvalSucceeded && selectedTech) {
-        setDispatchMessage(`${selectedReq.controlNo || selectedReq.id} approved and dispatched to ${selectedTech}.`);
-      } else {
-        setDispatchMessage(`${selectedReq.controlNo || selectedReq.id} approved.`);
-      }
-      setIsDetailModalOpen(false);
-    }
-  };
-
-  const handleReject = () => {
-    if (selectedReq) {
-      rejectRequisition(selectedReq.id, approvalRemarks || 'Disapproved by PDAS Director');
-      setIsDetailModalOpen(false);
-    }
-  };
 
   const buildScopeOfWorks = (targetCat, desc) => ({
     drawingDesign: { checked: targetCat === 'Drawing/Design', options: [], description: targetCat === 'Drawing/Design' ? desc : '', dateComplied: '' },
@@ -548,17 +532,34 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {(preventiveEvents || []).slice(0, 4).map((evt, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: '500', color: '#0f172a' }}>{evt.assetName || evt.title || 'AC Quarterly Servicing'}</div>
-                  <div style={{ fontSize: '11.5px', color: '#64748b' }}>{evt.location || 'CEA Main Bldg'}</div>
+            {upcomingPreventive.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '20px 12px' }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>No upcoming schedules</div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  {liveSchedules === null ? 'Could not reach the server — showing on-device calendar.' : 'Schedule preventive work from the calendar.'}
                 </div>
-                <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '6px', background: '#eff4ff', color: '#001f9c', border: '1px solid #bfdbfe' }}>
-                  {formatTicketDate(evt.scheduledDate || evt.date || 'Sep 24, 2026')}
-                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ marginTop: '12px' }}
+                  onClick={() => onNavigate && onNavigate('preventive-calendar')}
+                >
+                  <Calendar size={14} /> Open Calendar
+                </button>
               </div>
-            ))}
+            ) : (
+              upcomingPreventive.map((evt, idx) => (
+                <div key={`${evt.date}-${idx}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: '500', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{evt.title}</div>
+                    <div style={{ fontSize: '11.5px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{evt.location}</div>
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '6px', background: '#eff4ff', color: '#001f9c', border: '1px solid #bfdbfe', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    {formatTicketDate(evt.date)}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -596,139 +597,6 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
 
       </div>
 
-      {/* Request Details & Admin Decision Modal */}
-      <Modal
-        isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
-        title={`Request Review: ${selectedReq?.controlNo || ''}`}
-        maxWidth="720px"
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-            <div style={{ fontSize: '12px', color: '#64748b' }}>
-              Logged as: <strong>PDAS Director (Authorized Approver)</strong>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setIsDetailModalOpen(false)}
-              >
-                Close
-              </button>
-              {selectedReq?.status === 'Pending' && (
-                <>
-                  <button
-                    type="button"
-                    className="btn btn-danger btn-sm"
-                    onClick={handleReject}
-                    style={{ background: '#dc2626', color: '#ffffff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <XCircle size={15} /> Disapprove
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={handleApprove}
-                    style={{ background: '#001f9c', color: '#ffffff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <CheckCircle size={15} /> Approve &amp; Dispatch
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        }
-      >
-        {selectedReq && (
-          <div>
-            <div style={{
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              borderRadius: '12px',
-              padding: '16px',
-              marginBottom: '20px',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: '14px'
-            }}>
-              <div>
-                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500', textTransform: 'uppercase' }}>Tracking Number</div>
-                <div style={{ fontSize: '14px', fontWeight: '700', color: '#001f9c' }}>{selectedReq.controlNo}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500', textTransform: 'uppercase' }}>Current Status</div>
-                <div style={{ marginTop: '4px' }}><StatusBadge status={selectedReq.status} /></div>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500', textTransform: 'uppercase' }}>Urgency Level</div>
-                <div style={{ marginTop: '4px' }}><UrgencyBadge urgency={selectedReq.urgency} /></div>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500', textTransform: 'uppercase' }}>Location</div>
-                <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{selectedReq.location}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500', textTransform: 'uppercase' }}>Category</div>
-                <div style={{ marginTop: '4px' }}><CategoryPill category={selectedReq.category} /></div>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date Filed</div>
-                <div style={{ fontSize: '13px', color: '#475569', fontWeight: '400' }}>{formatTicketDate(selectedReq.date)}</div>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '18px' }}>
-              <div style={{ fontSize: '12.5px', fontWeight: '500', color: '#334155', marginBottom: '4px' }}>
-                Job Request Title: {selectedReq.title}
-              </div>
-              <div style={{
-                background: '#ffffff',
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                padding: '12px 14px',
-                fontSize: '13.5px',
-                color: '#1e293b',
-                lineHeight: 1.5
-              }}>
-                {selectedReq.description}
-              </div>
-            </div>
-
-            {/* Technician Assignment */}
-            <div className="form-group" style={{ marginBottom: '14px' }}>
-              <label className="form-label" style={{ fontSize: '12.5px', fontWeight: '500', color: '#334155', marginBottom: '4px', display: 'block' }}>Assign Responsible Technician</label>
-              <select
-                className="form-select"
-                value={selectedTech}
-                onChange={(e) => setSelectedTech(e.target.value)}
-                style={{ width: '100%', height: '38px', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px' }}
-              >
-                <option value="">-- Select PDAS Technician --</option>
-                {technicians.map(t => (
-                  <option key={t.id} value={`${t.name} (${t.title || t.role})`}>
-                    {t.name} - {t.title || t.role}
-                  </option>
-                ))}
-              </select>
-              {assignWarn && (
-                <div style={{ marginTop: '6px', fontSize: '12.5px', color: '#b91c1c', fontWeight: '600' }}>{assignWarn}</div>
-              )}
-            </div>
-
-            {/* Director Notes */}
-            <div className="form-group">
-              <label className="form-label" style={{ fontSize: '12.5px', fontWeight: '500', color: '#334155', marginBottom: '4px', display: 'block' }}>PDAS Director Review Remarks / Action Notes</label>
-              <textarea
-                className="form-textarea"
-                value={approvalRemarks}
-                onChange={(e) => setApprovalRemarks(e.target.value)}
-                placeholder="Enter instructions or safety notes..."
-                style={{ width: '100%', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px', minHeight: '70px' }}
-              />
-            </div>
-          </div>
-        )}
-      </Modal>
 
       {/* New Request Modal — same Standard / Urgent flow as faculty */}
       <Modal
