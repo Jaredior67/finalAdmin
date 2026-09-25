@@ -48,6 +48,7 @@ router.post('/register', registerLimiter, async (req, res) => {
       password,
       role,
       department,
+      office,
       contactNumber,
       gender,
       address,
@@ -74,6 +75,11 @@ router.post('/register', registerLimiter, async (req, res) => {
       });
     }
 
+    // Staff registrants must indicate their administrative office.
+    if (normalizedRole === 'staff' && !office) {
+      return res.status(400).json({ message: 'Administrative office is required for staff registration.' });
+    }
+
     const [existingUsers] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
     const [existingRequests] = await pool.query(
       "SELECT id FROM registration_requests WHERE email = ? AND status = 'pending'",
@@ -87,8 +93,8 @@ router.post('/register', registerLimiter, async (req, res) => {
 
     const [result] = await pool.query(
       `INSERT INTO registration_requests
-        (first_name, middle_name, last_name, email, password_hash, role, department, contact_number, gender, address, birthday, age, id_photo_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (first_name, middle_name, last_name, email, password_hash, role, department, office, contact_number, gender, address, birthday, age, id_photo_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         firstName,
         middleName || null,
@@ -97,6 +103,7 @@ router.post('/register', registerLimiter, async (req, res) => {
         passwordHash,
         normalizedRole,
         department || null,
+        office || null,
         contactNumber || null,
         gender || null,
         address || null,

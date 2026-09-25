@@ -13,7 +13,7 @@ router.use(verifyToken, requireRole('admin'));
 router.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, first_name, middle_name, last_name, email, role, department, contact_number,
+      `SELECT id, first_name, middle_name, last_name, email, role, department, office, contact_number,
               gender, address, birthday, age, id_photo_url, status, created_at
        FROM users ORDER BY created_at DESC`
     );
@@ -29,7 +29,7 @@ router.get('/registrations', async (req, res) => {
   try {
     const status = req.query.status || 'pending';
     const [rows] = await pool.query(
-      `SELECT id, first_name, middle_name, last_name, email, role, department, contact_number,
+      `SELECT id, first_name, middle_name, last_name, email, role, department, office, contact_number,
               gender, address, birthday, age, id_photo_url, status, rejection_reason, created_at, reviewed_at
        FROM registration_requests WHERE status = ? ORDER BY created_at DESC`,
       [status]
@@ -59,8 +59,8 @@ router.put('/registrations/:id/approve', async (req, res) => {
 
     const [result] = await conn.query(
       `INSERT INTO users
-        (first_name, middle_name, last_name, email, password_hash, role, department, contact_number, gender, address, birthday, age, id_photo_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (first_name, middle_name, last_name, email, password_hash, role, department, office, contact_number, gender, address, birthday, age, id_photo_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         reg.first_name,
         reg.middle_name,
@@ -69,6 +69,7 @@ router.put('/registrations/:id/approve', async (req, res) => {
         reg.password_hash,
         reg.role,
         reg.department,
+        reg.office,
         reg.contact_number,
         reg.gender,
         reg.address,
@@ -136,6 +137,7 @@ router.post('/', async (req, res) => {
       password,
       role,
       department,
+      office,
       contactNumber,
       gender,
       address,
@@ -146,6 +148,12 @@ router.post('/', async (req, res) => {
 
     if (!firstName || !lastName || !email || !password || !role) {
       return res.status(400).json({ message: 'firstName, lastName, email, password, and role are required.' });
+    }
+
+    // Role allow-list — prevents privilege escalation via crafted API body.
+    const allowedRoles = ['admin', 'campus_admin', 'faculty', 'staff', 'maintenance', 'technician'];
+    if (!allowedRoles.includes(String(role).toLowerCase())) {
+      return res.status(400).json({ message: `role must be one of: ${allowedRoles.join(', ')}.` });
     }
 
     // Same password rules as self-registration.
@@ -161,8 +169,8 @@ router.post('/', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const [result] = await pool.query(
       `INSERT INTO users
-        (first_name, middle_name, last_name, email, password_hash, role, department, contact_number, gender, address, birthday, age, id_photo_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (first_name, middle_name, last_name, email, password_hash, role, department, office, contact_number, gender, address, birthday, age, id_photo_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         firstName,
         middleName || null,
@@ -171,6 +179,7 @@ router.post('/', async (req, res) => {
         passwordHash,
         role,
         department || null,
+        office || null,
         contactNumber || null,
         gender || null,
         address || null,
@@ -195,6 +204,7 @@ router.put('/:id', async (req, res) => {
       middleName,
       lastName,
       department,
+      office,
       contactNumber,
       role,
       gender,
@@ -203,12 +213,20 @@ router.put('/:id', async (req, res) => {
       age,
     } = req.body;
 
+    // Role allow-list guard — prevents privilege escalation via crafted API body.
+    if (role !== undefined && role !== null) {
+      const allowedRoles = ['admin', 'campus_admin', 'faculty', 'staff', 'maintenance', 'technician'];
+      if (!allowedRoles.includes(String(role).toLowerCase())) {
+        return res.status(400).json({ message: `role must be one of: ${allowedRoles.join(', ')}.` });
+      }
+    }
     const [result] = await pool.query(
       `UPDATE users SET
          first_name = COALESCE(?, first_name),
          middle_name = COALESCE(?, middle_name),
          last_name = COALESCE(?, last_name),
          department = COALESCE(?, department),
+         office = COALESCE(?, office),
          contact_number = COALESCE(?, contact_number),
          role = COALESCE(?, role),
          gender = COALESCE(?, gender),
@@ -216,7 +234,7 @@ router.put('/:id', async (req, res) => {
          birthday = COALESCE(?, birthday),
          age = COALESCE(?, age)
        WHERE id = ?`,
-      [firstName, middleName, lastName, department, contactNumber, role, gender, address, birthday, age, req.params.id]
+      [firstName, middleName, lastName, department, office, contactNumber, role, gender, address, birthday, age, req.params.id]
     );
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'User not found.' });

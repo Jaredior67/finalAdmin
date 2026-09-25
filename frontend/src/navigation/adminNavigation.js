@@ -28,7 +28,7 @@ export const adminNavigation = {
     { id: 'analytics-reports', label: 'Analytics & Reports', icon: BarChart3 },
     { id: 'archived-requests', label: 'Archived Requests', icon: Archive },
     { id: 'audit-trail', label: 'Audit Trail', icon: ShieldCheck },
-    { id: 'replacement-requests', label: 'Add Replacement', icon: Tags, badgeKey: 'replacementCount', badgeColor: '#dc2626' },
+    { id: 'replacement-requests', label: 'For Replacement', icon: Tags, badgeKey: 'replacementCount', badgeColor: '#dc2626' },
     { id: 'print-labels', label: 'Print / Labels', icon: QrCode },
     { id: 'settings', label: 'Settings', icon: Settings }
   ]

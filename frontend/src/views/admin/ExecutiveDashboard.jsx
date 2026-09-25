@@ -67,7 +67,7 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
   }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 
   const pendingList = requisitions.filter(r => r.status === 'Pending').slice(0, 3);
-  const flaggedReplacements = requisitions.filter(r => r.replacementFlag?.isFlagged);
+  const flaggedReplacements = requisitions.filter(r => r.replacementFlag?.isFlagged || r.maintenanceFlag?.type === 'Disposal');
 
   // Time greeting
   const now = new Date();
@@ -288,7 +288,7 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
           <div style={{ fontSize: '26px', fontWeight: '700', color: '#0f172a', lineHeight: 1 }}>{pendingApprovals}</div>
         </div>
 
-        {/* Ongoing Work Orders */}
+        {/* Ongoing requests */}
         <div 
           onClick={() => onNavigate && onNavigate('job-requests', 'in-progress')}
           style={{

@@ -12,6 +12,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
     lastName: '',
     userType: 'Faculty', // 'Faculty' | 'Staff'
     department: 'College of Engineering & Architecture (CEA)',
+    office: 'Office of the Campus Administrator',
     contactNumber: '',
     gender: 'Male',
     address: '',
@@ -76,6 +77,10 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
       setError('Contact Number is required.');
       return;
     }
+    if (formData.userType === 'Staff' && !formData.office.trim()) {
+      setError('Please select your administrative office.');
+      return;
+    }
     if (formData.password.length < 6) {
       setError('Create a password with at least 6 characters.');
       return;
@@ -109,6 +114,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
       lastName: '',
       userType: 'Faculty',
       department: 'College of Engineering & Architecture (CEA)',
+      office: 'Office of the Campus Administrator',
       contactNumber: '',
       gender: 'Male',
       address: '',
@@ -211,7 +217,11 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
               <div>• Gender: <strong>{formData.gender}</strong></div>
               <div>• Age: <strong>{formData.age || '—'}</strong></div>
               <div style={{ gridColumn: '1 / -1' }}>• Address: <strong>{formData.address || '—'}</strong></div>
-              <div style={{ gridColumn: '1 / -1' }}>• {formData.userType === 'Faculty' ? 'Department' : 'Office'}: <strong>{formData.department}</strong></div>
+              {formData.userType === 'Faculty' ? (
+                <div style={{ gridColumn: '1 / -1' }}>• Department: <strong>{formData.department}</strong></div>
+              ) : (
+                <div style={{ gridColumn: '1 / -1' }}>• Office: <strong>{formData.office}</strong></div>
+              )}
               <div style={{ gridColumn: '1 / -1' }}>• Institutional ID: <strong style={{ color: '#059669' }}>✓ Photo Attached for Review</strong></div>
             </div>
           </div>
@@ -250,7 +260,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
           )}
 
           {/* 1. Name Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+          <div className="form-grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div className="form-group">
               <label className="form-label">First Name *</label>
               <input
@@ -288,7 +298,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
           </div>
 
           {/* 2. Classification & Gender */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '14px' }}>
+          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '14px' }}>
             <div className="form-group">
               <label className="form-label">Account Classification *</label>
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -339,7 +349,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
                     name="userType"
                     value="Staff"
                     checked={formData.userType === 'Staff'}
-                    onChange={() => setFormData({ ...formData, userType: 'Staff', department: offices[0] || 'Office of the Campus Administrator' })}
+                    onChange={() => setFormData({ ...formData, userType: 'Staff', office: offices[0] || 'Office of the Campus Administrator' })}
                     style={{ display: 'none' }}
                   />
                   <Briefcase size={16} />
@@ -364,7 +374,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
           </div>
 
           {/* 3. Birthday, Age & Address */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '14px' }}>
+          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '14px' }}>
             <div className="form-group">
               <label className="form-label">Birthday</label>
               <input
@@ -400,25 +410,43 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
             />
           </div>
 
-          {/* 4. Department / Office Dropdown */}
-          <div className="form-group">
-            <label className="form-label">
-              {formData.userType === 'Faculty' ? 'Academic Department *' : 'Administrative Office *'}
-            </label>
-            <select
-              className="form-select"
-              value={formData.department}
-              onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-              required
-            >
-              {(formData.userType === 'Faculty' ? departments : offices).map((dept) => (
-                <option key={dept} value={dept}>{dept}</option>
-              ))}
-            </select>
-          </div>
+          {/* 4. Department (Faculty) / Office (Staff) Dropdown */}
+          {formData.userType === 'Faculty' ? (
+            <div className="form-group">
+              <label className="form-label">
+                Academic Department *
+              </label>
+              <select
+                className="form-select"
+                value={formData.department}
+                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                required
+              >
+                {departments.map((dept) => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="form-group">
+              <label className="form-label">
+                Office *
+              </label>
+              <select
+                className="form-select"
+                value={formData.office}
+                onChange={(e) => setFormData({ ...formData, office: e.target.value })}
+                required
+              >
+                {offices.map((office) => (
+                  <option key={office} value={office}>{office}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* 5. Email & Contact Number */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <div className="form-group">
               <label className="form-label">Institutional Email / Gmail *</label>
               <input

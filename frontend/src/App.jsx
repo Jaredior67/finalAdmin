@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ToastProvider } from './components/ui/Toast';
@@ -13,10 +13,15 @@ import { OfflineBanner } from './components/common/OfflineBanner';
 import { SkipLink } from './components/common/SkipLink';
 
 // Role Workspaces
-import { AdminRoutes } from './routes/AdminRoutes';
-import { FacultyRoutes } from './routes/FacultyRoutes';
-import { MaintenanceRoutes } from './routes/MaintenanceRoutes';
-import { CampusAdminRoutes } from './routes/CampusAdminRoutes';
+const AdminRoutes = lazy(() => import('./routes/AdminRoutes').then(m => ({ default: m.AdminRoutes })));
+const FacultyRoutes = lazy(() => import('./routes/FacultyRoutes').then(m => ({ default: m.FacultyRoutes })));
+const MaintenanceRoutes = lazy(() => import('./routes/MaintenanceRoutes').then(m => ({ default: m.MaintenanceRoutes })));
+const CampusAdminRoutes = lazy(() => import('./routes/CampusAdminRoutes').then(m => ({ default: m.CampusAdminRoutes })));
+const RouteFallback = () => (
+  <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontSize: '14px' }}>
+    Loading workspace…
+  </div>
+);
 
 function AppContent() {
   const { currentUser, isAdmin, isCampusAdmin, isMaintenance, isFacultyOrStaff } = useAuth();
@@ -60,11 +65,13 @@ function AppContent() {
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} />
+        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
           <main className="content-area" id="main-content" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
-            <CampusAdminRoutes activeTab={activeTab} onTabChange={setActiveTab} />
+            <Suspense fallback={<RouteFallback />}>
+              <CampusAdminRoutes activeTab={activeTab} onTabChange={setActiveTab} />
+            </Suspense>
           </main>
         </div>
         <SystemFooter />
@@ -80,11 +87,13 @@ function AppContent() {
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} />
+        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
           <main className="content-area" id="main-content" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
-            <FacultyRoutes activeTab={activeTab} onTabChange={setActiveTab} />
+            <Suspense fallback={<RouteFallback />}>
+              <FacultyRoutes activeTab={activeTab} onTabChange={setActiveTab} />
+            </Suspense>
           </main>
         </div>
         <SystemFooter />
@@ -100,11 +109,13 @@ function AppContent() {
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} />
+        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
-          <main className="content-area" id="main-content" style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '20px 16px' }}>
-            <MaintenanceRoutes activeTab={activeTab} onTabChange={setActiveTab} />
+                    <main className="content-area" id="main-content" style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '20px 16px' }}>
+            <Suspense fallback={<RouteFallback />}>
+              <MaintenanceRoutes activeTab={activeTab} onTabChange={setActiveTab} />
+            </Suspense>
           </main>
         </div>
         <SystemFooter />
@@ -118,19 +129,21 @@ function AppContent() {
       <SkipLink />
       <BackendStatus />
       <OfflineBanner />
-      <Navbar onNavigateTab={(tab) => setActiveTab(tab)} />
+      <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
       
       <div className="main-layout">
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
         
-        <main className="content-area" id="main-content" style={{ paddingTop: '24px' }}>
-          <AdminRoutes
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            jobRequestStatus={jobRequestStatus}
-            setJobRequestStatus={setJobRequestStatus}
-          />
-        </main>
+                <main className="content-area" id="main-content" style={{ paddingTop: '24px' }}>
+          <Suspense fallback={<RouteFallback />}>
+            <AdminRoutes
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              jobRequestStatus={jobRequestStatus}
+              setJobRequestStatus={setJobRequestStatus}
+            />
+          </Suspense>
+        </main> 
       </div>
 
       <SystemFooter />

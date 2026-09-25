@@ -9,7 +9,8 @@
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
     "dev": "npm --prefix frontend run dev",
-    "lint": "npx oxlint backend/src frontend/src"
+    "lint": "npx oxlint backend/src frontend/src",
+    "test": "npm --prefix backend test"
   },
   "dependencies": {
     "lucide-react": "^1.39.0",

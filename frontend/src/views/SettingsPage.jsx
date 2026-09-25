@@ -830,7 +830,7 @@ export const SettingsPage = () => {
                   ISO/IEC 25010 Post-Completion Feedback Reminders
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                  Prompt requesters to submit service quality ratings once a maintenance work order is marked Completed.
+                  Prompt requesters to submit service quality ratings once a maintenance requests is marked Completed.
                 </div>
               </div>
               <label className="toggle-switch">

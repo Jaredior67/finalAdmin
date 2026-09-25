@@ -35,7 +35,7 @@ export const MaintenanceDashboard = ({ onNavigate }) => {
   const activeTasks = myTasks.filter(r => r.status !== 'Completed' && r.status !== 'Rejected');
   const urgentTasks = activeTasks.filter(r => r.urgency === 'High Risk' || r.urgency === 'Urgent' || r.urgency === 'High');
   const completedTasks = (requisitions || []).filter(r => r.status === 'Completed');
-  const replacementFlagged = (requisitions || []).filter(r => r.replacementFlag?.isFlagged);
+  const replacementFlagged = (requisitions || []).filter(r => r.replacementFlag?.isFlagged || r.maintenanceFlag?.type === 'Disposal');
 
   return (
     <div style={{ maxWidth: '1240px', margin: '0 auto', paddingBottom: '36px' }}>
@@ -64,7 +64,7 @@ export const MaintenanceDashboard = ({ onNavigate }) => {
                 gap: '6px'
               }}
             >
-              <Wrench size={15} /> Assigned Work Orders
+              <Wrench size={15} /> Assigned Requests
             </button>
 
             <button

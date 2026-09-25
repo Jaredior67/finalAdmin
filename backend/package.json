@@ -10,7 +10,7 @@
     "seed:admin": "node src/scripts/seedAdmin.js",
     "seed:test-accounts": "node src/scripts/seedTestAccounts.js",
     "seed:all": "node src/scripts/seedAdmin.js && node src/scripts/seedTestAccounts.js",
-    "test": "node --test tests/"
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

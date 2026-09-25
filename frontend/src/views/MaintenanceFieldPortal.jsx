@@ -249,9 +249,9 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
       
       {/* Page Header */}
       <PageHeader
-        breadcrumbs={['Field Operations', activeTab === 'tech-history' ? 'Work Logs' : activeTab === 'tech-emergency' ? 'Urgent Queue' : 'Assigned Work Orders']}
-        title={activeTab === 'tech-history' ? 'Completed Work Logs' : activeTab === 'tech-emergency' ? 'Urgent Priority Queue' : 'Assigned Field Work Orders'}
-        description={`On-site dispatch, work order updates, and technical logs. Logged as ${currentUser?.name || 'Mark Villanueva (Lead Specialist)'}`}
+        breadcrumbs={['Field Operations', activeTab === 'tech-history' ? 'Work Logs' : activeTab === 'tech-emergency' ? 'Urgent Queue' : 'Assigned Requests']}
+        title={activeTab === 'tech-history' ? 'Completed Work Logs' : activeTab === 'tech-emergency' ? 'Urgent Priority Queue' : 'Assigned Field Requests'}
+        description={`On-site dispatch, request updates, and technical logs. Logged as ${currentUser?.name || 'Mark Villanueva (Lead Specialist)'}`}
         action={
           <div style={{ display: 'flex', gap: '8px' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', borderRadius: '8px', fontSize: '12.5px', fontWeight: '700' }}>
@@ -324,7 +324,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
             <AlertCircle size={24} color="#e11d48" style={{ flexShrink: 0, marginTop: '2px' }} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '15px', fontWeight: '800', color: '#9f1239', marginBottom: '4px' }}>
-                Critical Urgent Work Orders Requiring Immediate Action ({emergencyTasks.length})
+                Critical Urgent Requests Requiring Immediate Action ({emergencyTasks.length})
               </div>
               <div style={{ fontSize: '13px', color: '#be123c', lineHeight: 1.5, marginBottom: '10px' }}>
                 Priority tickets located at <strong>{emergencyTasks.map(t => t.location).join(' • ')}</strong> need immediate on-site safety mitigation.
@@ -364,7 +364,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
             <h2 className="card-title" style={{ fontSize: '18px', fontWeight: '800' }}>
               {activeTab === 'tech-emergency' ? `Urgent & High-Risk Priority Queue (${filteredTasks.length})` :
                activeTab === 'tech-history' ? `Completed Maintenance Work Logs (${filteredTasks.length})` :
-               `Assigned Field Maintenance Work Orders (${filteredTasks.length})`}
+               `Assigned Field Maintenance Requests (${filteredTasks.length})`}
             </h2>
             <span style={{ fontSize: '12px', color: '#64748b' }}>
               Touch-friendly interface for on-site execution, parts logging, and status advance
@@ -441,7 +441,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
           {filteredTasks.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '48px 16px', color: '#94a3b8' }}>
               <Wrench size={32} style={{ margin: '0 auto 8px auto', opacity: 0.4 }} />
-              <div style={{ fontSize: '14px', fontWeight: '600', color: '#475569' }}>No work orders found in this queue</div>
+              <div style={{ fontSize: '14px', fontWeight: '600', color: '#475569' }}>No requests found in this queue</div>
               <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
                 Adjust your search or filter parameters to view other tasks.
               </div>
@@ -951,7 +951,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
       <Modal
         isOpen={Boolean(selectedTaskDetail)}
         onClose={() => setSelectedTaskDetail(null)}
-        title={`Work Order Detail: ${selectedTaskDetail?.controlNo || ''}`}
+        title={`Request Details: ${selectedTaskDetail?.controlNo || ''}`}
         maxWidth="680px"
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
@@ -970,7 +970,7 @@ export const MaintenanceFieldPortal = ({ activeTab = 'tech-tasks', onTabChange }
                 setIsPrintModalOpen(true);
               }}
             >
-              <Printer size={14} /> Print Work Order Slip
+              <Printer size={14} /> Print Request Slip
             </button>
           </div>
         }

@@ -7,7 +7,7 @@ list endpoints are newest-first · ticket detail embeds `history`.
 
 | Method & path | Body | Notes |
 |---|---|---|
-| `POST /api/auth/register` | firstName, lastName, email, password (min 8, letter+number), role ∈ faculty/staff | Creates a *pending* registration, not a user |
+| `POST /api/auth/register` | firstName, lastName, email, password (min 8, letter+number), role ∈ faculty/staff, department (faculty), office (staff, required) | Creates a *pending* registration, not a user |
 | `POST /api/auth/login` | email, password, role (portal key) | 5 failures → 15-min lockout; JWT default 8h |
 | `POST /api/auth/logout` | — (Bearer) | Revokes the token server-side |
 

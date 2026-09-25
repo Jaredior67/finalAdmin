@@ -35,7 +35,15 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
 
   if (!isOpen) return null;
 
-  const unreadCount = notifications.filter(n => n.unread).length;
+  // Crash-proofing: ignore corrupt cache entries (nulls / non-objects /
+  // title-less rows) so one bad record can never blank the whole portal.
+  const safeNotifications = (Array.isArray(notifications) ? notifications : [])
+    .filter(n => n && typeof n === 'object');
+  const getTitle = (n) => String(n.title || 'Notification');
+  const getBody = (n) => String(n.text ?? n.message ?? '');
+  const isUrgent = (n) => getTitle(n).includes('Urgent');
+
+  const unreadCount = safeNotifications.filter(n => n.unread).length;
 
   // Clicking a notification jumps straight to its ticket: store the reference
   // for the destination view to open, then switch to the role's ticket tab.
@@ -99,7 +107,7 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            {notifications.length > 0 && (
+            {safeNotifications.length > 0 && (
               <>
                 <button
                   type="button"
@@ -130,14 +138,14 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
         </div>
 
         <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
-          {notifications.length === 0 ? (
+          {safeNotifications.length === 0 ? (
             <div style={{ padding: '36px 24px', textAlign: 'center' }}>
               <BellOff size={32} color="#cbd5e1" style={{ margin: '0 auto 10px auto' }} />
               <div style={{ fontSize: '13.5px', fontWeight: '700', color: '#334155' }}>You're all caught up</div>
               <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>New ticket updates will appear here.</div>
             </div>
           ) : (
-            notifications.map(n => (
+            safeNotifications.map(n => (
               <div
                 key={n.id}
                 onClick={() => handleOpenNotification(n)}
@@ -156,32 +164,32 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
                   width: '32px',
                   height: '32px',
                   borderRadius: '8px',
-                  background: n.title.includes('Urgent') ? '#fee2e2' : '#e0e7ff',
-                  color: n.title.includes('Urgent') ? '#dc2626' : '#1d4ed8',
+                  background: isUrgent(n) ? '#fee2e2' : '#e0e7ff',
+                  color: isUrgent(n) ? '#dc2626' : '#1d4ed8',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0
                 }}>
-                  {n.title.includes('Urgent') ? <AlertTriangle size={16} /> : <ShieldCheck size={16} />}
+                  {isUrgent(n) ? <AlertTriangle size={16} /> : <ShieldCheck size={16} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
                     <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                       {n.unread && <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#2563eb', flexShrink: 0 }} />}
-                      {n.title}
+                      {getTitle(n)}
                     </span>
-                    <span style={{ fontSize: '11px', color: '#94a3b8', flexShrink: 0 }}>{n.time}</span>
+                    <span style={{ fontSize: '11px', color: '#94a3b8', flexShrink: 0 }}>{n.time || ''}</span>
                   </div>
                   <p style={{ fontSize: '12px', color: '#475569', lineHeight: 1.4, margin: 0 }}>
-                    {n.text}
+                    {getBody(n)}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setDeleteTarget(n); }}
                   title="Delete this notification"
-                  aria-label={`Delete notification: ${n.title}`}
+                  aria-label={`Delete notification: ${getTitle(n)}`}
                   style={{
                     background: 'none',
                     border: 'none',

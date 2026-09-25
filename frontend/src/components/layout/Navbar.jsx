@@ -7,7 +7,7 @@ import { Modal } from '../common/Modal';
 import { SettingsModal } from '../common/SettingsModal';
 import pdasLogo from '../../assets/fixit-logo.png';
 
-export const Navbar = ({ onSearch = null, onNavigateTab = null }) => {
+export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed = false }) => {
   const { currentUser, logout, setIsLoginModalOpen } = useAuth();
   const { notifications, setTicketSearch } = useData();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -16,7 +16,7 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const unreadNotifs = notifications ? notifications.filter(n => n.unread).length : 0;
+  const unreadNotifs = Array.isArray(notifications) ? notifications.filter(n => n && n.unread).length : 0;
 
   const handleSearchChange = (e) => {
     const val = e.target.value;
@@ -26,20 +26,20 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null }) => {
   };
 
   return (
-    <header className="top-navbar" style={{ height: '64px', background: '#ffffff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', position: 'sticky', top: 0, zIndex: 100 }}>
+    <header className={`top-navbar${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`} style={{ height: '64px', background: '#ffffff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', position: 'sticky', top: 0, zIndex: 100 }}>
       {/* Left Brand Section: sidebar toggle + FixIT logo + ISAT U Dumangas Campus */}
-      <div className="navbar-brand-section" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <img 
-          src={pdasLogo} 
-          alt="FixIT Logo" 
-          style={{ height: '36px', width: 'auto', objectFit: 'contain', flexShrink: 0 }}
+      <div className="navbar-brand-section" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+        <img
+          src={pdasLogo}
+          alt="FixIT Logo"
+          style={{ height: '30px', width: '30px', objectFit: 'contain', flexShrink: 0, display: 'block', alignSelf: 'center' }}
           onError={(e) => { e.target.src = '/fixit-logo.png'; }}
         />
-        <div style={{ display: 'flex', flexDirection: 'column', whiteSpace: 'nowrap', lineHeight: 1.25 }}>
-          <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#001f9c', letterSpacing: '0.02em' }}>
+        <div className="navbar-brand-text" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignSelf: 'center', whiteSpace: 'nowrap', lineHeight: 1.25, minWidth: 0, overflow: 'hidden', flex: '0 1 auto' }}>
+          <span style={{ fontSize: '10.5px', fontWeight: '800', color: '#001f9c', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', width: '100%' }}>
             ISAT U Dumangas Campus
           </span>
-          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>
+          <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', width: '100%' }}>
             PDAS Facility Management
           </span>
         </div>

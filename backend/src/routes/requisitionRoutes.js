@@ -7,14 +7,23 @@ import { isPrivileged, isTech, canViewTicket, authorizeStatusChange } from '../u
 const router = Router();
 router.use(verifyToken);
 
+/**
+ * generateTicketNo - atomic, race-condition-safe ticket numbering.
+ * Uses ticket_sequences with an atomic UPSERT so concurrent inserts
+ * never produce the same ticket number (unlike COUNT(*) which had a TOCTOU gap).
+ */
 async function generateTicketNo(conn) {
   const year = new Date().getFullYear();
-  const [rows] = await conn.query(
-    "SELECT COUNT(*) AS count FROM job_requests WHERE ticket_no LIKE ?",
-    [`JR-${year}-%`]
+  // Upsert: insert the year row if missing, otherwise atomically bump counter.
+  await conn.query(
+    'INSERT INTO ticket_sequences (`year`, last_no) VALUES (?, 1) ON DUPLICATE KEY UPDATE last_no = last_no + 1',
+    [year]
   );
-  const next = (rows[0].count || 0) + 1;
-  return `JR-${year}-${String(next).padStart(4, '0')}`;
+  const [[{ last_no }]] = await conn.query(
+    'SELECT last_no FROM ticket_sequences WHERE `year` = ?',
+    [year]
+  );
+  return `JR-${year}-${String(last_no).padStart(4, '0')}`;
 }
 
 async function notify(conn, userId, title, message, link = null) {
@@ -35,6 +44,22 @@ async function notifyAdmins(conn, title, message, link = null, excludeUserId = n
   }
 }
 
+// Helper to notify supervisors
+async function notifySupervisors(conn, title, message, link = null) {
+  const [supervisors] = await conn.query("SELECT id FROM users WHERE role = 'supervisor' AND status = 'active'");
+  for (const sup of supervisors) {
+    await notify(conn, sup.id, title, message, link);
+  }
+}
+
+// Helper to notify campus admin approvers
+async function notifyApprovers(conn, title, message, link = null) {
+  const [approvers] = await conn.query("SELECT id FROM users WHERE role = 'campus_admin' AND status = 'active'");
+  for (const app of approvers) {
+    await notify(conn, app.id, title, message, link);
+  }
+}
+
 // Normalize urgency string to exact manuscript enums
 function normalizeUrgency(u) {
   const str = String(u || '').toLowerCase();
@@ -44,13 +69,13 @@ function normalizeUrgency(u) {
 }
 
 // Normalize status string to exact manuscript lifecycle statuses.
-// Returns null when unrecognized so callers reject it instead of silently
-// mapping it to 'Pending' (the previous fallthrough corrupted intent,
-// e.g. 'On Hold' is not part of the server lifecycle).
 function normalizeStatus(s) {
   const str = String(s || '').toLowerCase().replace(/[\s_-]+/g, '');
+  if (str === 'draft') return 'Draft';
+  if (str === 'pendingsupervisorapproval' || str === 'supervisorapproval' || str === 'supervisor') return 'Pending Supervisor Approval';
   if (str === 'pending') return 'Pending';
   if (str === 'underreview' || str === 'review') return 'Under Review';
+  if (str === 'pendingfinalapproval' || str === 'finalapproval') return 'Pending Final Approval';
   if (str === 'awaitingsignatures' || str === 'awaiting') return 'Awaiting Signatures';
   if (str === 'approved') return 'Approved';
   if (str === 'ongoing' || str === 'inprogress') return 'Ongoing';
@@ -84,6 +109,9 @@ router.get('/', async (req, res) => {
     } else if (req.user.role === 'faculty' || req.user.role === 'staff') {
       query += ' AND jr.requester_id = ?';
       params.push(req.user.id);
+    } else if (req.user.role === 'supervisor') {
+      query += ' AND (jr.status = "Pending Supervisor Approval" OR jr.supervisor_id = ? OR jr.immediate_supervisor LIKE ? OR req.department = ?)';
+      params.push(req.user.id, `%${req.user.lastName || ''}%`, req.user.department || '');
     }
 
     // Server-side paging (Phase 2 follow-up): capped so history downloads stay small.
@@ -186,14 +214,20 @@ router.post('/', async (req, res) => {
     const finalUrgency = normalizeUrgency(urgencyLevel || priority);
     const finalReqType = requestType === 'Urgent Request' || finalUrgency === 'High Risk' ? 'Urgent Request' : 'Standard Request';
     const finalFormFilled = isStandardFormFilled !== undefined ? isStandardFormFilled : (finalReqType !== 'Urgent Request');
+    const isDraft = Boolean(req.body.isDraft);
+
+    // All submitted job requests enter the workflow in 'Pending' status.
+    const initialStatus = 'Pending';
+    const requesterApproved = 1;
+    const requesterApprovedAt = new Date();
 
     await conn.beginTransaction();
     const ticketNo = await generateTicketNo(conn);
 
     const [result] = await conn.query(
       `INSERT INTO job_requests
-        (ticket_no, requester_id, location_id, category, description, urgency_level, request_type, is_standard_form_filled, immediate_supervisor, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+        (ticket_no, requester_id, location_id, category, description, urgency_level, request_type, is_standard_form_filled, immediate_supervisor, status, requester_approved, requester_approved_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         ticketNo,
         req.user.id,
@@ -203,40 +237,372 @@ router.post('/', async (req, res) => {
         finalUrgency,
         finalReqType,
         finalFormFilled,
-        immediateSupervisor || null
+        immediateSupervisor || null,
+        initialStatus,
+        requesterApproved,
+        requesterApprovedAt
       ]
     );
 
     await conn.query(
       'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, NULL, ?, ?, ?)',
-      [result.insertId, 'Pending', req.user.id, finalReqType === 'Urgent Request' ? 'Urgent Request Submitted' : 'Standard Request Submitted']
+      [result.insertId, initialStatus, req.user.id, isDraft ? 'Saved as Draft' : 'Submitted & Electronically Approved by Requester']
     );
 
-    // Tri-party notification: Notify PDAS Admins of new ticket
-    const alertPrefix = finalUrgency === 'High Risk' ? '🚨 High Risk Facility Alert' : 'New Job Request';
-    await notifyAdmins(
-      conn,
-      alertPrefix,
-      `${ticketNo} was submitted by ${req.user.email} (${finalUrgency}).`,
-      `/job-requests/${result.insertId}`
-    );
+    if (!isDraft) {
+      // Step 2: High Risk instant notification to Admin for rapid response
+      if (finalUrgency === 'High Risk') {
+        await notifyAdmins(
+          conn,
+          '🚨 High Risk Facility Alert',
+          `URGENT: ${ticketNo} submitted at location (${finalCategory}). Rapid response required.`,
+          `/job-requests/${result.insertId}`
+        );
+      }
 
-    // Notify requester of successful submission
-    await notify(
-      conn,
-      req.user.id,
-      'Job Request Submitted',
-      `Your request ${ticketNo} has been queued for PDAS Admin review.`,
-      `/job-requests/${result.insertId}`
-    );
+      // Routed directly to PDAS Admin for evaluation
+      await notifyAdmins(
+        conn,
+        'New Job Request for Evaluation',
+        `${ticketNo} submitted by ${req.user.email} (${finalUrgency}).`,
+        `/job-requests/${result.insertId}`
+      );
+
+      // Notify requester
+      await notify(
+        conn,
+        req.user.id,
+        'Job Request Submitted',
+        `Your request ${ticketNo} was submitted and queued for PDAS Admin review.`,
+        `/job-requests/${result.insertId}`
+      );
+    }
 
     await conn.commit();
-    await auditLog(pool, { actorId: req.user.id, action: 'request.submitted', entity: 'job_request', entityId: result.insertId, details: ticketNo });
-    res.status(201).json({ message: 'Job request submitted.', id: result.insertId, ticketNo });
+    await auditLog(pool, { actorId: req.user.id, action: isDraft ? 'request.draft' : 'request.submitted', entity: 'job_request', entityId: result.insertId, details: ticketNo });
+    res.status(201).json({ message: isDraft ? 'Job request saved as draft.' : 'Job request submitted and approved.', id: result.insertId, ticketNo, status: initialStatus });
   } catch (err) {
     await conn.rollback();
     console.error('POST /job-requests error:', err);
     res.status(500).json({ message: 'Failed to submit job request.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// Step 3 (2): POST /api/job-requests/:id/supervisor-action
+router.post('/:id/supervisor-action', requireRole('supervisor', 'admin'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { action, remarks } = req.body; // action: 'approve' | 'reject'
+    await conn.beginTransaction();
+    const [rows] = await conn.query('SELECT * FROM job_requests WHERE id = ? FOR UPDATE', [req.params.id]);
+    const jr = rows[0];
+    if (!jr) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Job request not found.' });
+    }
+
+    if (action === 'approve') {
+      await conn.query(
+        `UPDATE job_requests SET 
+           supervisor_approved = 1, 
+           supervisor_approved_at = NOW(), 
+           supervisor_remarks = ?, 
+           supervisor_id = ?, 
+           status = 'Pending' 
+         WHERE id = ?`,
+        [remarks || 'Electronically Approved by Immediate Supervisor', req.user.id, req.params.id]
+      );
+      await conn.query(
+        'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, ?, ?, ?)',
+        [req.params.id, jr.status, 'Pending', req.user.id, `Approved by Immediate Supervisor: ${remarks || 'Approved'}`]
+      );
+      await notifyAdmins(conn, 'Job Request Approved by Supervisor', `${jr.ticket_no} approved by Immediate Supervisor and routed to PDAS Admin.`, `/job-requests/${jr.id}`);
+      await notify(conn, jr.requester_id, 'Supervisor Approved Request', `Your request ${jr.ticket_no} was approved by your Immediate Supervisor and forwarded to PDAS Admin.`, `/job-requests/${jr.id}`);
+      await auditLog(conn, { actorId: req.user.id, action: 'request.supervisor.approved', entity: 'job_request', entityId: jr.id, details: remarks || 'Approved' });
+      await conn.commit();
+      return res.json({ message: 'Request approved by supervisor and routed to PDAS Admin.', status: 'Pending' });
+    } else {
+      if (!remarks || !remarks.trim()) {
+        await conn.rollback();
+        return res.status(400).json({ message: 'Rejection requires remarks.' });
+      }
+      await conn.query(
+        `UPDATE job_requests SET 
+           status = 'Rejected', 
+           rejection_stage = 'supervisor', 
+           rejection_remarks = ?, 
+           supervisor_remarks = ? 
+         WHERE id = ?`,
+        [remarks.trim(), remarks.trim(), req.params.id]
+      );
+      await conn.query(
+        'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, ?, ?, ?)',
+        [req.params.id, jr.status, 'Rejected', req.user.id, `Returned by Immediate Supervisor: ${remarks.trim()}`]
+      );
+      await notify(conn, jr.requester_id, 'Request Returned by Supervisor', `Your request ${jr.ticket_no} was returned for revision: ${remarks.trim()}`, `/job-requests/${jr.id}`);
+      await auditLog(conn, { actorId: req.user.id, action: 'request.supervisor.rejected', entity: 'job_request', entityId: jr.id, details: remarks.trim() });
+      await conn.commit();
+      return res.json({ message: 'Request returned to requester for revision.', status: 'Rejected' });
+    }
+  } catch (err) {
+    await conn.rollback();
+    console.error('POST /supervisor-action error:', err);
+    res.status(500).json({ message: 'Failed to process supervisor action.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// Step 3 (3): POST /api/job-requests/:id/admin-action
+router.post('/:id/admin-action', requireRole('admin'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { action, remarks, fieldRemarks } = req.body; // action: 'approve' | 'reject' | 'evaluate'
+    await conn.beginTransaction();
+    const [rows] = await conn.query('SELECT * FROM job_requests WHERE id = ? FOR UPDATE', [req.params.id]);
+    const jr = rows[0];
+    if (!jr) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Job request not found.' });
+    }
+
+    if (action === 'evaluate') {
+      await conn.query('UPDATE job_requests SET status = "Under Review" WHERE id = ?', [req.params.id]);
+      await conn.query('INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, "Under Review", ?, ?)',
+        [req.params.id, jr.status, req.user.id, 'Admin evaluation begun']);
+      await notify(conn, jr.requester_id, 'Evaluation Underway', `PDAS Admin has begun evaluation of ${jr.ticket_no}.`, `/job-requests/${jr.id}`);
+      await conn.commit();
+      return res.json({ message: 'Evaluation begun. Status is Under Review.', status: 'Under Review' });
+    }
+
+    if (action === 'approve') {
+      const fRemarksStr = fieldRemarks ? (typeof fieldRemarks === 'object' ? JSON.stringify(fieldRemarks) : String(fieldRemarks)) : null;
+      await conn.query(
+        `UPDATE job_requests SET 
+           admin_approved = 1, 
+           admin_approved_at = NOW(), 
+           admin_remarks = ?, 
+           admin_field_remarks = ?, 
+           status = 'Awaiting Signatures' 
+         WHERE id = ?`,
+        [remarks || 'Electronically Approved by PDAS Head', fRemarksStr, req.params.id]
+      );
+      await conn.query(
+        'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, "Awaiting Signatures", ?, ?)',
+        [req.params.id, jr.status, req.user.id, `Admin Approved & Routed to Campus Admin: ${remarks || 'Approved'}`]
+      );
+      await notifyApprovers(conn, 'Awaiting Signatures / Final Approval', `${jr.ticket_no} has received PDAS Admin approval and awaits your final signatory review.`, `/campus-admin-dashboard`);
+      await notify(conn, jr.requester_id, 'PDAS Admin Approved', `Your request ${jr.ticket_no} was approved by PDAS Head and is now Awaiting Signatures with Campus Administrator.`, `/job-requests/${jr.id}`);
+      await auditLog(conn, { actorId: req.user.id, action: 'request.admin.approved', entity: 'job_request', entityId: jr.id, details: remarks || 'Admin approved' });
+      await conn.commit();
+      return res.json({ message: 'Request approved by Admin and routed to Campus Administrator.', status: 'Awaiting Signatures' });
+    } else {
+      const combinedRemarks = remarks || (fieldRemarks ? JSON.stringify(fieldRemarks) : 'Needs revision');
+      await conn.query(
+        `UPDATE job_requests SET 
+           status = 'Rejected', 
+           rejection_stage = 'admin', 
+           rejection_remarks = ?, 
+           admin_remarks = ?, 
+           admin_field_remarks = ? 
+         WHERE id = ?`,
+        [combinedRemarks, remarks || null, fieldRemarks ? JSON.stringify(fieldRemarks) : null, req.params.id]
+      );
+      await conn.query(
+        'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, "Rejected", ?, ?)',
+        [req.params.id, jr.status, req.user.id, `Returned by PDAS Admin: ${combinedRemarks}`]
+      );
+      await notify(conn, jr.requester_id, 'Request Returned for Revision', `PDAS Admin returned ${jr.ticket_no} for revision: ${combinedRemarks}`, `/job-requests/${jr.id}`);
+      await auditLog(conn, { actorId: req.user.id, action: 'request.admin.rejected', entity: 'job_request', entityId: jr.id, details: combinedRemarks });
+      await conn.commit();
+      return res.json({ message: 'Request returned to requester for revision.', status: 'Rejected' });
+    }
+  } catch (err) {
+    await conn.rollback();
+    console.error('POST /admin-action error:', err);
+    res.status(500).json({ message: 'Failed to process admin action.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// Step 3 (4): POST /api/job-requests/:id/approver-action
+router.post('/:id/approver-action', requireRole('campus_admin', 'admin'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { action, remarks } = req.body; // action: 'approve' | 'reject'
+    await conn.beginTransaction();
+    const [rows] = await conn.query('SELECT * FROM job_requests WHERE id = ? FOR UPDATE', [req.params.id]);
+    const jr = rows[0];
+    if (!jr) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Job request not found.' });
+    }
+
+    if (action === 'approve') {
+      await conn.query(
+        `UPDATE job_requests SET 
+           campus_admin_approved = 1, 
+           campus_admin_approved_at = NOW(), 
+           campus_admin_remarks = ?, 
+           signed_form_confirmed = 1, 
+           signed_form_confirmed_by = ?, 
+           signed_form_confirmed_at = NOW(), 
+           status = 'Approved', 
+           approved_by = ? 
+         WHERE id = ?`,
+        [remarks || 'Electronically Approved by Campus Administrator', req.user.id, req.user.id, req.params.id]
+      );
+      await conn.query(
+        'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, "Approved", ?, ?)',
+        [req.params.id, jr.status, req.user.id, `Campus Admin Final Approval: ${remarks || 'Approved'}`]
+      );
+      await notifyAdmins(conn, 'Final Approval Granted', `${jr.ticket_no} has received final approval from Campus Administrator. Please generate tracking number and assign maintenance personnel.`, `/job-requests/${jr.id}`);
+      await notify(conn, jr.requester_id, 'Final Approval Granted', `Your request ${jr.ticket_no} has received Final Approval from Campus Administrator. Work order assignment in progress.`, `/job-requests/${jr.id}`);
+      await auditLog(conn, { actorId: req.user.id, action: 'request.approver.approved', entity: 'job_request', entityId: jr.id, details: remarks || 'Approved' });
+      await conn.commit();
+      return res.json({ message: 'Final approval recorded. Ticket is Approved and returned to Admin for assignment.', status: 'Approved' });
+    } else {
+      if (!remarks || !remarks.trim()) {
+        await conn.rollback();
+        return res.status(400).json({ message: 'Disapproval requires written grounds.' });
+      }
+      await conn.query(
+        `UPDATE job_requests SET 
+           status = 'Rejected', 
+           rejection_stage = 'approver', 
+           rejection_remarks = ?, 
+           campus_admin_remarks = ? 
+         WHERE id = ?`,
+        [remarks.trim(), remarks.trim(), req.params.id]
+      );
+      await conn.query(
+        'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, "Rejected", ?, ?)',
+        [req.params.id, jr.status, req.user.id, `Disapproved by Campus Administrator: ${remarks.trim()}`]
+      );
+      await notifyAdmins(conn, 'Request Disapproved by Campus Admin', `${jr.ticket_no} was disapproved by Campus Administrator: ${remarks.trim()}`, `/job-requests/${jr.id}`);
+      await notify(conn, jr.requester_id, 'Request Disapproved', `${jr.ticket_no} was returned by Campus Administrator: ${remarks.trim()}`, `/job-requests/${jr.id}`);
+      await auditLog(conn, { actorId: req.user.id, action: 'request.approver.rejected', entity: 'job_request', entityId: jr.id, details: remarks.trim() });
+      await conn.commit();
+      return res.json({ message: 'Request disapproved and returned through Admin to requester.', status: 'Rejected' });
+    }
+  } catch (err) {
+    await conn.rollback();
+    console.error('POST /approver-action error:', err);
+    res.status(500).json({ message: 'Failed to process approver action.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// Step 4: POST /api/job-requests/:id/assign-technician
+router.post('/:id/assign-technician', requireRole('admin'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { assignedTo, trackingNo, scheduledDate } = req.body;
+    if (!assignedTo) {
+      return res.status(400).json({ message: 'Maintenance personnel assignment is required.' });
+    }
+    await conn.beginTransaction();
+    const [rows] = await conn.query('SELECT * FROM job_requests WHERE id = ? FOR UPDATE', [req.params.id]);
+    const jr = rows[0];
+    if (!jr) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Job request not found.' });
+    }
+
+    const officialTracking = trackingNo || jr.official_tracking_no || `TRK-${new Date().getFullYear()}-${String(jr.id).padStart(4, '0')}`;
+
+    await conn.query(
+      `UPDATE job_requests SET 
+         assigned_to = ?, 
+         official_tracking_no = ?, 
+         scheduled_date = COALESCE(?, scheduled_date, CURDATE()), 
+         status = 'Ongoing' 
+       WHERE id = ?`,
+      [assignedTo, officialTracking, scheduledDate || null, req.params.id]
+    );
+
+    await conn.query(
+      'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, "Ongoing", ?, ?)',
+      [req.params.id, jr.status, req.user.id, `Tracking ${officialTracking} generated and assigned to personnel ID ${assignedTo}`]
+    );
+
+    await notify(
+      conn,
+      assignedTo,
+      'Work Order Assigned',
+      `You have been assigned to ${jr.ticket_no} (Tracking: ${officialTracking}). Work is now Ongoing.`,
+      `/job-requests/${jr.id}`
+    );
+
+    await notify(
+      conn,
+      jr.requester_id,
+      'Maintenance Personnel Dispatched',
+      `Your request ${jr.ticket_no} (Tracking: ${officialTracking}) has been assigned to PDAS maintenance staff and is now Ongoing.`,
+      `/job-requests/${jr.id}`
+    );
+
+    await auditLog(conn, { actorId: req.user.id, action: 'request.assigned', entity: 'job_request', entityId: jr.id, details: `Tracking: ${officialTracking}, Assignee: ${assignedTo}` });
+    await conn.commit();
+    res.json({ message: 'Tracking number generated and maintenance personnel assigned. Status is now Ongoing.', officialTrackingNo: officialTracking, status: 'Ongoing' });
+  } catch (err) {
+    await conn.rollback();
+    console.error('POST /assign-technician error:', err);
+    res.status(500).json({ message: 'Failed to assign maintenance personnel.' });
+  } finally {
+    conn.release();
+  }
+});
+
+// Step 4: POST /api/job-requests/:id/replacement-flag
+router.post('/:id/replacement-flag', requireRole('maintenance', 'technician', 'admin'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { reason, itemSpecs } = req.body;
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ message: 'Reason for replacement and disposal flag is required.' });
+    }
+    await conn.beginTransaction();
+    const [rows] = await conn.query('SELECT * FROM job_requests WHERE id = ? FOR UPDATE', [req.params.id]);
+    const jr = rows[0];
+    if (!jr) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Job request not found.' });
+    }
+
+    await conn.query(
+      `UPDATE job_requests SET 
+         is_replacement_flagged = 1, 
+         replacement_reason = ?, 
+         replacement_item_specs = ?, 
+         replacement_procurement_status = 'Pending Procurement' 
+       WHERE id = ?`,
+      [reason.trim(), itemSpecs || null, req.params.id]
+    );
+
+    await conn.query(
+      'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, ?, ?, ?)',
+      [req.params.id, jr.status, jr.status, req.user.id, `Replacement and Disposal Flag raised: ${reason.trim()}`]
+    );
+
+    await notifyAdmins(
+      conn,
+      '⚠️ Replacement and Disposal Flag Raised',
+      `Item marked irreparable on ${jr.ticket_no} by maintenance staff: ${reason.trim()}. Initiate procurement/replacement.`,
+      `/replacement-requests`
+    );
+
+    await auditLog(conn, { actorId: req.user.id, action: 'request.replacement_flag', entity: 'job_request', entityId: jr.id, details: reason.trim() });
+    await conn.commit();
+    res.json({ message: 'Replacement and Disposal Flag raised successfully. PDAS Admin notified.', isReplacementFlagged: true });
+  } catch (err) {
+    await conn.rollback();
+    console.error('POST /replacement-flag error:', err);
+    res.status(500).json({ message: 'Failed to raise replacement flag.' });
   } finally {
     conn.release();
   }

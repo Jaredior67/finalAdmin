@@ -73,7 +73,7 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
   );
   const techActiveCount = techTasks.filter(r => r.status !== 'Completed').length;
   const techEmergencyCount = techTasks.filter(r => (r.urgency === 'Urgent' || r.urgency === 'High') && r.status !== 'Completed').length;
-  const replacementCount = (requisitions || []).filter(r => r.replacementFlag?.isFlagged).length;
+  const replacementCount = (requisitions || []).filter(r => r.replacementFlag?.isFlagged || r.maintenanceFlag?.type === 'Disposal').length;
 
   const renderNavList = (items) => (
     <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>

@@ -126,6 +126,7 @@ export const UserManagement = () => {
       fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (u.email && u.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (u.department && u.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (u.office && u.office.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (u.designation && u.designation.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (u.idNumber && u.idNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (u.phone && u.phone.includes(searchTerm));
@@ -140,6 +141,7 @@ export const UserManagement = () => {
       fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.gmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (r.department && r.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (r.office && r.office.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (r.idNumber && r.idNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
       r.contactNumber.includes(searchTerm)
     );
@@ -487,6 +489,11 @@ export const UserManagement = () => {
                       </td>
                       <td style={{ fontSize: '12.5px', color: '#334155' }}>
                         <div>{user.department}</div>
+                        {user.office && (
+                          <div style={{ fontSize: '11.5px', color: '#1d4ed8', fontWeight: '600' }}>
+                            Office: {user.office}
+                          </div>
+                        )}
                         {user.specialization && (
                           <div style={{ fontSize: '11px', color: '#d97706', fontWeight: '600' }}>
                             Trade: {user.specialization}
@@ -683,7 +690,7 @@ export const UserManagement = () => {
                         </span>
                       </td>
                       <td style={{ fontSize: '12.5px', color: '#334155' }}>
-                        {reg.department}
+                        {reg.office || reg.department}
                       </td>
                       <td style={{ fontSize: '12.5px', color: '#475569' }}>
                         {reg.contactNumber}
@@ -1060,7 +1067,7 @@ export const UserManagement = () => {
                   Department / Office:
                 </span>
                 <div style={{ fontWeight: '700', color: '#047857' }}>
-                  {selectedPendingReg.department}
+                  {selectedPendingReg.office || selectedPendingReg.department}
                 </div>
               </div>
               <div>

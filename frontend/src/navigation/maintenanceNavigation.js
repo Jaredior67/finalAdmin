@@ -11,7 +11,7 @@ import {
 
 export const maintenanceNavigation = {
   operations: [
-    { id: 'tech-tasks', label: 'Assigned Work Orders', icon: Wrench, badgeKey: 'techActiveCount', badgeColor: '#d97706' },
+    { id: 'tech-tasks', label: 'Assigned Requests', icon: Wrench, badgeKey: 'techActiveCount', badgeColor: '#d97706' },
     { id: 'tech-emergency', label: 'Urgent Queue', icon: AlertTriangle, badgeKey: 'techEmergencyCount', badgeColor: '#dc2626' },
     { id: 'tech-history', label: 'Completed Work Logs', icon: CheckCircle2 }
   ],

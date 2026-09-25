@@ -82,7 +82,7 @@
   /* Layout Dimensions */
   --sidebar-width: 216px;
   --sidebar-collapsed-width: 60px;
-  --navbar-height: 68px;
+  --navbar-height: 64px;
   --sidebar-accent: #001f9c;
 
   /* Fonts — Inter primary, Verdana as institutional fallback */
@@ -452,6 +452,37 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+/* ---- Header ↔ sidebar column alignment ----
+   The brand block occupies exactly the sidebar column (navbar has 24px left
+   padding), with a divider on the sidebar's right edge so the search bar
+   starts where the content area starts. Row layout for the brand itself is
+   enforced by the final override block at the end of this file. */
+.top-navbar .navbar-brand-section {
+  flex: 0 0 auto;
+  width: calc(var(--sidebar-width) - 24px);
+  padding-right: 8px;
+  margin-right: 8px;
+  border-right: 1px solid var(--border-default);
+}
+
+.top-navbar.is-sidebar-collapsed .navbar-brand-section {
+  width: calc(var(--sidebar-collapsed-width) - 24px);
+  padding-right: 0;
+}
+
+.top-navbar.is-sidebar-collapsed .navbar-brand-text {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .top-navbar .navbar-brand-section {
+    width: auto;
+    padding-right: 0;
+    margin-right: 0;
+    border-right: none;
+  }
 }
 
 .brand-badge {
@@ -3071,6 +3102,45 @@ img, svg, video, canvas {
   min-width: 0;
 }
 
+/* ==========================================================================
+   Brand row — FINAL OVERRIDE
+   The logo must sit before the campus name on ONE horizontal line. This block
+   is last in the file on purpose: earlier zoom-resilience rules set
+   `flex-wrap: wrap` on .navbar-brand-section, which stacked the logo above
+   the text. Everything here is nowrap + shrink-safe and wins by order.
+   ========================================================================== */
+.top-navbar .navbar-brand-section,
+.top-navbar .navbar-brand-section.navbar-brand-section {
+  display: flex;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.top-navbar .navbar-brand-section > img {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.top-navbar .navbar-brand-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  align-self: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.top-navbar .navbar-brand-text > span {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .login-desktop-shell {
   width: min(1060px, calc(100vw - 24px));
 }
@@ -3084,6 +3154,269 @@ img, svg, video, canvas {
 
 .form-input, .form-textarea, .form-select, .search-input, .select-filter {
   max-width: 100%;
+}
+
+/* ==========================================================================
+   ZOOM / VIEWPORT RESPONSIVENESS
+   Browser zoom shrinks the CSS viewport, so these breakpoints also fire when
+   the user zooms in. Rules are ordered narrowest-last so the smallest layout
+   always wins, and they are placed at the end of the file to beat any earlier
+   conflicting rule.
+   ========================================================================== */
+
+/* --- Shell: never let the page scroll sideways ---
+   `overflow-x: hidden` is deliberately NOT used on html/body: it turns them
+   into scroll containers and silently breaks the sidebar's position: sticky.
+   Allowing flex/grid children to shrink (min-width: 0) fixes the overflow at
+   the source instead. */
+.app-container,
+.main-layout {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* The content column must be allowed to shrink inside the flex row,
+   otherwise wide tables push the whole layout sideways. */
+.content-area {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* --- Fluid type: headings shrink as the viewport narrows --- */
+@media (max-width: 1366px) {
+  .page-title {
+    font-size: 25px;
+  }
+  .page-subtitle {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .page-title {
+    font-size: 22px;
+  }
+  .page-subtitle {
+    font-size: 13.5px;
+  }
+  .page-header {
+    margin-bottom: 18px;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 760px) {
+  .page-title {
+    font-size: 20px;
+  }
+  .page-subtitle {
+    font-size: 13px;
+  }
+  .content-card {
+    padding: 16px;
+  }
+}
+
+/* --- KPI / stat grids: fluid auto-fit so they stack instead of squeezing --- */
+@media (max-width: 1180px) {
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .kpi-grid,
+  .admin-stats-grid,
+  .faculty-stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  }
+  .kpi-card {
+    padding: 14px 12px;
+    gap: 10px;
+  }
+  .kpi-icon-box {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+  }
+}
+
+/* --- Filter bars: search takes a full row, filters wrap below it --- */
+@media (max-width: 900px) {
+  .filter-bar {
+    gap: 10px;
+  }
+
+  .search-input-wrapper {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .select-filter {
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+}
+
+/* --- Tables scroll inside their own card rather than stretching the page --- */
+.table-responsive {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 900px) {
+  .data-table {
+    font-size: 13.5px;
+  }
+  .data-table th,
+  .data-table td {
+    padding: 10px 12px;
+  }
+}
+
+/* --- Inline form grids collapse to one column when space is tight.
+   Many forms build 2- and 3-column rows with inline grid styles, which media
+   queries cannot reach, so force them to stack once the viewport is small. --- */
+@media (max-width: 900px) {
+  .form-grid-2,
+  .form-grid-3 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* --- Modals and drawers stay inside the viewport at high zoom --- */
+@media (max-width: 900px) {
+  .modal-card {
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+}
+
+/* --- Sidebar becomes a scrollable bottom bar on small viewports.
+   Selectors match the markup Sidebar.jsx actually renders (a scrollable nav
+   body div containing role lists), not the older class names. --- */
+@media (max-width: 760px) {
+  .app-sidebar,
+  .app-sidebar.is-collapsed {
+    width: 100%;
+    height: 68px;
+    min-height: 68px;
+    padding: 0;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: 50;
+    border-right: 0;
+    border-top: 1px solid var(--border-default);
+    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.12);
+    background: var(--bg-card);
+    flex-direction: row;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  /* Workspace header and Sign Out bar are not useful in a bottom strip. */
+  .app-sidebar > div:first-of-type,
+  .app-sidebar > div:last-of-type {
+    display: none;
+  }
+
+  /* The nav body becomes a horizontally scrollable strip. */
+  .app-sidebar > div:nth-of-type(2) {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-sidebar > div:nth-of-type(2)::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Each role list lays its items out in a row; labels shrink away. */
+  .app-sidebar > div:nth-of-type(2) ul {
+    flex-direction: row !important;
+    flex: 0 0 auto;
+    gap: 6px;
+  }
+
+  .app-sidebar > div:nth-of-type(2) li {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    width: 60px;
+    min-height: 52px;
+    padding: 6px 4px;
+    font-size: 11px;
+    text-align: center;
+  }
+
+  .app-sidebar > div:nth-of-type(2) li > span {
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .app-sidebar > div:nth-of-type(2) li > span > span:last-child {
+    font-size: 9.5px;
+    line-height: 1.2;
+    white-space: normal;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  /* Section headings ("OVERVIEW", "OPERATIONS", ...) add no value here. */
+  .app-sidebar > div:nth-of-type(2) > div {
+    display: none;
+  }
+}
+
+/* Leave room for the bottom bar so content is never hidden behind it. */
+@media (max-width: 760px) {
+  .main-layout {
+    min-height: calc(100vh - var(--navbar-height) - 68px);
+  }
+
+  .content-area {
+    padding: 16px 12px 92px 12px;
+  }
+}
+
+/* --- Navbar: keep search and actions usable on narrow viewports --- */
+@media (max-width: 900px) {
+  .top-navbar {
+    padding: 8px 12px !important;
+    gap: 8px;
+  }
+
+  .navbar-search-bar {
+    order: 3;
+    flex-basis: 100% !important;
+    max-width: none;
+    margin: 0 !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .user-meta-info {
+    display: none !important;
+  }
+  .top-navbar .navbar-brand-section {
+    min-width: 0;
+  }
 }
 
 

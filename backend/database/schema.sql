@@ -27,8 +27,9 @@ CREATE TABLE IF NOT EXISTS `users` (
   `last_name`      VARCHAR(100) NOT NULL,
   `email`          VARCHAR(150) NOT NULL UNIQUE,
   `password_hash`  VARCHAR(255) NOT NULL,
-  `role`           ENUM('admin','faculty','staff','maintenance') NOT NULL,
+  `role`           ENUM('admin','campus_admin','faculty','staff','maintenance','technician') NOT NULL,
   `department`     VARCHAR(150) DEFAULT NULL,
+  `office`         VARCHAR(150) DEFAULT NULL,
   `contact_number` VARCHAR(30)  DEFAULT NULL,
   `gender`         VARCHAR(30)  DEFAULT NULL,
   `address`        TEXT         DEFAULT NULL,
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS `registration_requests` (
   `password_hash`    VARCHAR(255) NOT NULL,
   `role`             ENUM('faculty','staff') NOT NULL,
   `department`       VARCHAR(150) DEFAULT NULL,
+  `office`           VARCHAR(150) DEFAULT NULL,
   `contact_number`   VARCHAR(30)  DEFAULT NULL,
   `gender`           VARCHAR(30)  DEFAULT NULL,
   `address`          TEXT         DEFAULT NULL,
@@ -213,9 +215,20 @@ CREATE TABLE IF NOT EXISTS `documents` (
   `file_name`      VARCHAR(255) NOT NULL,
   `file_path`      VARCHAR(500) NOT NULL,
   `file_type`      VARCHAR(100) DEFAULT NULL,
+  `file_size`      INT UNSIGNED DEFAULT NULL,
   `created_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_doc_job`  FOREIGN KEY (`job_request_id`) REFERENCES `job_requests`(`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_doc_user` FOREIGN KEY (`uploaded_by`)    REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ------------------------------------------------------------
+-- ticket_sequences
+-- Atomic ticket number generation; prevents race conditions.
+-- One row per year, incremented inside a transaction.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `ticket_sequences` (
+  `year`    YEAR NOT NULL PRIMARY KEY,
+  `last_no` INT  NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------

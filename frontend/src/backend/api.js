@@ -21,6 +21,8 @@ const normalizeRole = (value) => {
   const role = String(value || '').trim().toLowerCase();
   if (!role) return 'faculty';
   if (['admin', 'administrator'].includes(role)) return 'admin';
+  if (['campus_admin', 'campus administrator', 'approver'].includes(role)) return 'campus_admin';
+  if (['supervisor', 'immediate supervisor', 'dept head', 'department head'].includes(role)) return 'supervisor';
   if (['faculty', 'faculty member', 'teacher', 'instructor'].includes(role)) return 'faculty';
   if (['staff', 'staff member', 'employee'].includes(role)) return 'staff';
   if (['maintenance', 'technician', 'tech', 'maintenance personnel'].includes(role)) return 'maintenance';
@@ -31,6 +33,10 @@ const normalizeRoleTitle = (role) => {
   switch (role) {
     case 'admin':
       return 'PDAS Director (Admin)';
+    case 'campus_admin':
+      return 'Approver (Campus Administrator)';
+    case 'supervisor':
+      return 'Immediate Supervisor';
     case 'maintenance':
       return 'Maintenance Personnel';
     case 'staff':
@@ -62,6 +68,7 @@ const normalizeUser = (user) => {
     name: displayName,
     email: user.email || user.gmail || '',
     department: user.department || '',
+    office: user.office || '',
     contactNumber: user.contact_number ?? user.contactNumber ?? user.phone ?? '',
     gender: user.gender || '',
     address: user.address || '',
@@ -91,6 +98,7 @@ const normalizeRegistration = (row) => {
     email: row.email || row.gmail || '',
     contactNumber: row.contact_number ?? row.contactNumber ?? row.phone ?? '',
     department: row.department || '',
+    office: row.office || '',
     gender: row.gender || '',
     address: row.address || '',
     birthday: row.birthday || '',
@@ -178,7 +186,8 @@ export const apiRegister = async (regData = {}) => {
     email: regData.email ?? regData.gmail ?? '',
     password: regData.password ?? '',
     role: normalizeRole(regData.role ?? regData.userType ?? regData.user_type),
-    department: regData.department || regData.office || null,
+    department: regData.department || null,
+    office: regData.office || null,
     contactNumber: regData.contactNumber ?? regData.contact_number ?? regData.phone ?? null,
     gender: regData.gender || null,
     address: regData.address || null,
@@ -229,7 +238,8 @@ export const apiCreateUser = async (userData = {}) => {
     email: userData.email ?? userData.gmail ?? '',
     password: userData.password ?? '',
     role: normalizeRole(userData.role ?? userData.userType ?? 'maintenance'),
-    department: userData.department || userData.office || null,
+    department: userData.department || null,
+    office: userData.office || null,
     contactNumber: userData.contactNumber ?? userData.contact_number ?? userData.phone ?? null,
     gender: userData.gender || null,
     address: userData.address || null,
@@ -250,6 +260,7 @@ export const apiUpdateUser = async (userId, updatedFields = {}) => {
     middleName: updatedFields.middleName ?? updatedFields.middle_name ?? null,
     lastName: updatedFields.lastName ?? updatedFields.last_name ?? null,
     department: updatedFields.department ?? null,
+    office: updatedFields.office ?? null,
     contactNumber: updatedFields.contactNumber ?? updatedFields.contact_number ?? updatedFields.phone ?? null,
     gender: updatedFields.gender ?? null,
     address: updatedFields.address ?? null,
@@ -285,10 +296,43 @@ export const apiCreatePreventiveSchedule = async (scheduleData) =>
   });
 
 // Job Requests API (live MySQL data for Reports & Analytics)
-export const apiGetJobRequests = async () => request('/job-requests');
+export const apiGetJobRequests = async (params = {}) => {
+  const qs = new URLSearchParams();
+  if (params.limit) qs.set('limit', params.limit);
+  if (params.offset) qs.set('offset', params.offset);
+  if (params.archived) qs.set('archived', params.archived);
+  const query = qs.toString() ? `?${qs}` : '';
+  return request(`/job-requests${query}`);
+};
+
+// Notifications API (live MySQL — replaces localStorage)
+export const apiGetNotifications = async ({ limit = 50, offset = 0, unread = false } = {}) => {
+  const qs = new URLSearchParams({ limit, offset });
+  if (unread) qs.set('unread', 'true');
+  const data = await request(`/notifications?${qs}`);
+  // Support both old array shape and new { notifications, unread_count } shape
+  if (Array.isArray(data)) return { notifications: data, unread_count: 0 };
+  return data;
+};
+export const apiMarkNotificationRead = (id) => request(`/notifications/${id}/read`, { method: 'PUT' });
+export const apiMarkAllNotificationsRead = () => request('/notifications/read-all', { method: 'PUT' });
+export const apiDeleteNotification = (id) => request(`/notifications/${id}`, { method: 'DELETE' });
+export const apiClearAllNotifications = () => request('/notifications', { method: 'DELETE' });
+
 
 // Evaluations API (live ISO/IEC 25010 results)
 export const apiGetEvaluations = async () => request('/evaluations');
+export const apiSubmitEvaluation = async (evalData) => request('/evaluations', { method: 'POST', body: JSON.stringify(evalData) });
+
+// 4-Party Approval Workflow API calls
+export const apiCreateJobRequest = async (requestData) => request('/job-requests', { method: 'POST', body: JSON.stringify(requestData) });
+export const apiUpdateJobRequestStatus = async (id, statusData) => request(`/job-requests/${id}/status`, { method: 'PUT', body: JSON.stringify(statusData) });
+export const apiSupervisorAction = async (id, actionData) => request(`/job-requests/${id}/supervisor-action`, { method: 'POST', body: JSON.stringify(actionData) });
+export const apiAdminAction = async (id, actionData) => request(`/job-requests/${id}/admin-action`, { method: 'POST', body: JSON.stringify(actionData) });
+export const apiApproverAction = async (id, actionData) => request(`/job-requests/${id}/approver-action`, { method: 'POST', body: JSON.stringify(actionData) });
+export const apiAssignTechnician = async (id, assignData) => request(`/job-requests/${id}/assign-technician`, { method: 'POST', body: JSON.stringify(assignData) });
+export const apiFlagReplacement = async (id, flagData) => request(`/job-requests/${id}/replacement-flag`, { method: 'POST', body: JSON.stringify(flagData) });
+export const apiArchiveJobRequest = async (id) => request(`/job-requests/${id}/archive`, { method: 'PUT' });
 
 // Audit trail API (PDAS Admin, read-only accountability log)
 export const apiGetAuditLog = async (limit = 200) => request(`/audit-log?limit=${limit}`);

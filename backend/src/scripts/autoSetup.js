@@ -83,6 +83,7 @@ export async function autoSetup() {
       await ensureColumn(rootConn, dbName, 'users', 'birthday', 'DATE DEFAULT NULL');
       await ensureColumn(rootConn, dbName, 'users', 'age', 'INT DEFAULT NULL');
       await ensureColumn(rootConn, dbName, 'users', 'id_photo_url', 'VARCHAR(500) DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'users', 'office', 'VARCHAR(150) DEFAULT NULL AFTER department');
 
       // 2. registration_requests columns
       await ensureColumn(rootConn, dbName, 'registration_requests', 'middle_name', 'VARCHAR(100) DEFAULT NULL AFTER first_name');
@@ -91,6 +92,7 @@ export async function autoSetup() {
       await ensureColumn(rootConn, dbName, 'registration_requests', 'birthday', 'DATE DEFAULT NULL');
       await ensureColumn(rootConn, dbName, 'registration_requests', 'age', 'INT DEFAULT NULL');
       await ensureColumn(rootConn, dbName, 'registration_requests', 'id_photo_url', 'VARCHAR(500) DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'registration_requests', 'office', 'VARCHAR(150) DEFAULT NULL AFTER department');
 
       // 3. job_requests columns & enums
       await ensureColumn(rootConn, dbName, 'job_requests', 'urgency_level', "ENUM('Low Risk','Medium Risk','High Risk') NOT NULL DEFAULT 'Medium Risk' AFTER description");
@@ -106,6 +108,24 @@ export async function autoSetup() {
       await ensureColumn(rootConn, dbName, 'job_requests', 'signed_form_confirmed', "BOOLEAN NOT NULL DEFAULT FALSE");
       await ensureColumn(rootConn, dbName, 'job_requests', 'signed_form_confirmed_by', "INT DEFAULT NULL");
       await ensureColumn(rootConn, dbName, 'job_requests', 'signed_form_confirmed_at', "DATETIME DEFAULT NULL");
+
+      // 4-Party Approval Chain & Tracking columns
+      await ensureColumn(rootConn, dbName, 'job_requests', 'requester_approved', "TINYINT(1) NOT NULL DEFAULT 0");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'requester_approved_at', "DATETIME DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'supervisor_id', "INT DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'supervisor_approved', "TINYINT(1) NOT NULL DEFAULT 0");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'supervisor_approved_at', "DATETIME DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'supervisor_remarks', "TEXT DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'admin_approved', "TINYINT(1) NOT NULL DEFAULT 0");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'admin_approved_at', "DATETIME DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'admin_remarks', "TEXT DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'admin_field_remarks', "TEXT DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'campus_admin_approved', "TINYINT(1) NOT NULL DEFAULT 0");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'campus_admin_approved_at', "DATETIME DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'campus_admin_remarks', "TEXT DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'official_tracking_no', "VARCHAR(50) DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'rejection_stage', "VARCHAR(50) DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'rejection_remarks', "TEXT DEFAULT NULL");
 
       // Login hardening columns (Phase 2)
       await ensureColumn(rootConn, dbName, 'users', 'failed_login_attempts', "INT NOT NULL DEFAULT 0");
@@ -125,6 +145,17 @@ export async function autoSetup() {
           INDEX \`idx_audit_entity\` (\`entity\`, \`entity_id\`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
       `);
+
+      // ticket_sequences table: atomic, race-condition-safe ticket numbering.
+      await rootConn.query(`
+        CREATE TABLE IF NOT EXISTS \`ticket_sequences\` (
+          \`year\`    YEAR NOT NULL PRIMARY KEY,
+          \`last_no\` INT  NOT NULL DEFAULT 0
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+
+      // documents: add file_size for storage quota tracking
+      await ensureColumn(rootConn, dbName, 'documents', 'file_size', 'INT UNSIGNED DEFAULT NULL');
 
       // Update status enum for job_requests
       try {

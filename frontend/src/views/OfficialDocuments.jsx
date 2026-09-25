@@ -26,7 +26,7 @@ export const OfficialDocuments = () => {
     <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Official Documents & Work Orders</h1>
+          <h1 className="page-title">Official Documents & Job Requests</h1>
           <p className="page-subtitle">Edit every field in the overlay, then generate & print the aligned QF-PDAS-DC-01 sheet</p>
         </div>
       </div>
@@ -38,7 +38,7 @@ export const OfficialDocuments = () => {
               <FileText size={22} />
             </div>
             <div>
-              <div style={{ fontWeight: '700', fontSize: '15px' }}>Job Work Order</div>
+              <div style={{ fontWeight: '700', fontSize: '15px' }}>Job Request</div>
               <div style={{ fontSize: '12px', color: '#64748b' }}>Form QF-PDAS-DC-01 • Tracking issued only on Final Approval</div>
             </div>
           </div>

@@ -240,7 +240,7 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
     <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Job Requests & Work Orders</h1>
+          <h1 className="page-title">Job Requests</h1>
         </div>
       </div>
 

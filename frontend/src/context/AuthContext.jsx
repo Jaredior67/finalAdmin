@@ -27,6 +27,13 @@ export const TEST_PERSONAS = [
     iconText: '🏛️',
   },
   {
+    key: 'supervisor',
+    roleName: 'Immediate Supervisor',
+    title: 'Immediate Supervisor / Dept Head',
+    email: 'supervisor@isatu.edu.ph',
+    iconText: '👔',
+  },
+  {
     key: 'faculty',
     roleName: 'Faculty Requester',
     title: 'Faculty / College Dean',
@@ -145,6 +152,7 @@ export const AuthProvider = ({ children }) => {
 
   const normalizedRole = String(currentUser?.role || currentUser?.userType || '').toLowerCase();
   const isCampusAdmin = Boolean(currentUser && (normalizedRole === 'campus_admin' || normalizedRole === 'campus_administrator'));
+  const isSupervisor = Boolean(currentUser && normalizedRole === 'supervisor');
   const isAdmin = Boolean(currentUser && (normalizedRole === 'admin' || currentUser.isAdmin));
   const isFaculty = Boolean(currentUser && normalizedRole === 'faculty');
   const isStaff = Boolean(currentUser && normalizedRole === 'staff');
@@ -157,6 +165,7 @@ export const AuthProvider = ({ children }) => {
         currentUser,
         isAdmin,
         isCampusAdmin,
+        isSupervisor,
         isFaculty,
         isStaff,
         isMaintenance,

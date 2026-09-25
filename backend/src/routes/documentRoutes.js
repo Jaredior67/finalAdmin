@@ -56,9 +56,9 @@ router.post('/', upload.single('file'), async (req, res) => {
     const { jobRequestId } = req.body;
 
     const [result] = await pool.query(
-      `INSERT INTO documents (job_request_id, uploaded_by, file_name, file_path, file_type)
-       VALUES (?, ?, ?, ?, ?)`,
-      [jobRequestId || null, req.user.id, req.file.originalname, req.file.filename, req.file.mimetype]
+      `INSERT INTO documents (job_request_id, uploaded_by, file_name, file_path, file_type, file_size)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [jobRequestId || null, req.user.id, req.file.originalname, req.file.filename, req.file.mimetype, req.file.size || null]
     );
 
     res.status(201).json({ message: 'File uploaded.', id: result.insertId, fileName: req.file.filename });
@@ -71,6 +71,16 @@ router.post('/', upload.single('file'), async (req, res) => {
 // GET /api/documents/job-request/:jobRequestId
 router.get('/job-request/:jobRequestId', async (req, res) => {
   try {
+    // Ownership guard: admins see all; others must own the ticket.
+    if (!['admin', 'campus_admin'].includes(req.user.role)) {
+      const [jr] = await pool.query(
+        'SELECT requester_id, assigned_to FROM job_requests WHERE id = ?',
+        [req.params.jobRequestId]
+      );
+      if (jr.length === 0) return res.status(404).json({ message: 'Job request not found.' });
+      const allowed = jr[0].requester_id === req.user.id || jr[0].assigned_to === req.user.id;
+      if (!allowed) return res.status(403).json({ message: 'You do not have permission to view these documents.' });
+    }
     const [rows] = await pool.query(
       'SELECT * FROM documents WHERE job_request_id = ? ORDER BY created_at DESC',
       [req.params.jobRequestId]

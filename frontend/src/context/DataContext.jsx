@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from './AuthContext';
 import { useToast } from '../components/ui/Toast';
 import {
@@ -14,6 +14,11 @@ import {
   apiSetUserStatus,
   apiRemoveUser,
   apiCreatePreventiveSchedule,
+  apiGetNotifications,
+  apiMarkNotificationRead,
+  apiMarkAllNotificationsRead,
+  apiDeleteNotification,
+  apiClearAllNotifications,
 } from '../backend/api';
 
 const DataContext = createContext();
@@ -336,7 +341,7 @@ const INITIAL_REQUISITIONS = [
       itemSpecs: '3.0 HP Inverter Precision Cooling Compressor Unit (R410A compliant)',
       flaggedBy: 'Mark Villanueva (Lead Technician)',
       flaggedDate: '2026-09-01 02:15 PM',
-      procurementStatus: 'Pending Director PR Approval'
+      procurementStatus: 'Pending Purchase Request (PR)'
     },
     isArchived: false,
     archivedAt: null,
@@ -529,10 +534,10 @@ export const DataProvider = ({ children }) => {
   const { toast } = useToast();
   const [offices, setOffices] = useState(() => JSON.parse(localStorage.getItem('fixit_pdas_offices_v4') || JSON.stringify(INITIAL_OFFICES)));
   const [departments, setDepartments] = useState(() => JSON.parse(localStorage.getItem('fixit_pdas_departments_v4') || JSON.stringify(INITIAL_DEPARTMENTS)));
-  const [requisitions, setRequisitions] = useState(() => {
-    const saved = localStorage.getItem('fixit_pdas_requisitions_v3');
-    return saved ? JSON.parse(saved) : INITIAL_REQUISITIONS;
-  });
+  // requisitions are fetched from the MySQL backend on login.
+  // INITIAL_REQUISITIONS is only used if the backend is unreachable (offline mode).
+  const [requisitions, setRequisitions] = useState([]);
+  const [isLoadingRequisitions, setIsLoadingRequisitions] = useState(false);
 
   const [approvalHistory, setApprovalHistory] = useState(() => {
     const saved = localStorage.getItem('fixit_pdas_approvals_v3');
@@ -579,6 +584,69 @@ export const DataProvider = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
 
+  // ── Live Requisitions from MySQL ──────────────────────────────────────────
+  const refreshRequisitions = React.useCallback(async () => {
+    if (!currentUser) return;
+    setIsLoadingRequisitions(true);
+    try {
+      const { apiGetJobRequests } = await import('../backend/api');
+      const rows = await apiGetJobRequests({ limit: 200 });
+      if (Array.isArray(rows) && rows.length > 0) {
+        // Normalize DB shape to the shape the UI expects
+        const normalized = rows.map(r => ({
+          ...r,
+          id_raw: r.id,
+          id: r.ticket_no || r.id,
+          ticket_no: r.ticket_no,
+          controlNo: r.official_tracking_no || r.ticket_no || r.id,
+          officialTrackingNo: r.official_tracking_no || '',
+          date: (r.created_at || '').slice(0, 10),
+          category: r.category ? (r.category.charAt(0).toUpperCase() + r.category.slice(1)) : 'Other',
+          urgency: r.urgency_level || 'Medium Risk',
+          status: r.status || 'Pending',
+          location: [r.building, r.floor, r.room].filter(Boolean).join(' - ') || r.location || '',
+          requestedBy: r.requester_name || r.requestedBy || '',
+          department: r.requester_dept || r.department || '',
+          assignedTo: r.assignee_name || r.assignedTo || null,
+          isArchived: !!r.is_archived,
+          requesterApproved: !!r.requester_approved,
+          requesterApprovedAt: r.requester_approved_at,
+          immediateSupervisor: r.immediate_supervisor || '',
+          supervisorApproved: !!r.supervisor_approved,
+          supervisorApprovedAt: r.supervisor_approved_at,
+          supervisorRemarks: r.supervisor_remarks || '',
+          adminApproved: !!r.admin_approved,
+          adminApprovedAt: r.admin_approved_at,
+          adminRemarks: r.admin_remarks || '',
+          adminFieldRemarks: r.admin_field_remarks,
+          campusAdminApproved: !!r.campus_admin_approved,
+          campusAdminApprovedAt: r.campus_admin_approved_at,
+          campusAdminRemarks: r.campus_admin_remarks || '',
+          rejectionStage: r.rejection_stage || null,
+          rejectionRemarks: r.rejection_remarks || '',
+          replacementFlag: {
+            isFlagged: !!r.is_replacement_flagged,
+            reason: r.replacement_reason || '',
+            itemSpecs: r.replacement_item_specs || '',
+            procurementStatus: r.replacement_procurement_status || 'None',
+          },
+          timeline: r.history || r.timeline || [],
+        }));
+        setRequisitions(normalized);
+      } else if (rows.length === 0) {
+        setRequisitions([]);
+      }
+    } catch {
+      // Backend offline — keep existing state (seed data or last fetch)
+    } finally {
+      setIsLoadingRequisitions(false);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    refreshRequisitions();
+  }, [refreshRequisitions]);
+
   useEffect(() => {
     if (!currentUser) {
       setMessageParticipants([]);
@@ -595,20 +663,41 @@ export const DataProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : INITIAL_MESSAGES;
   });
 
-  const [allNotifications, setAllNotifications] = useState(() => {
-    const saved = localStorage.getItem('fixit_pdas_all_notifications_v4');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch { /* corrupted cache falls through to seed data */ }
+  // Live notifications from MySQL — no localStorage fallback.
+  // Polling keeps the bell badge in sync without requiring a page refresh.
+  const [allNotifications, setAllNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const notifPollRef = useRef(null);
+
+  const fetchNotifications = React.useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const result = await apiGetNotifications({ limit: 100 });
+      const notifs = Array.isArray(result) ? result : (result.notifications || []);
+      const mapped = notifs.map(n => ({
+        id: n.id,
+        title: n.title,
+        text: n.message || n.text || '',
+        time: n.created_at || n.time || '',
+        unread: !n.is_read,
+        link: n.link || null,
+        // Keep recipientUserId so isNotificationForUser still works on any in-memory additions
+        recipientUserId: n.user_id || currentUser.id,
+      }));
+      setAllNotifications(mapped);
+      setUnreadCount(typeof result.unread_count === 'number' ? result.unread_count : mapped.filter(n => n.unread).length);
+    } catch {
+      // Offline or backend down — keep existing state, don't clear
     }
-    return INITIAL_SAMPLE_NOTIFICATIONS;
-  });
+  }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('fixit_pdas_all_notifications_v4', JSON.stringify(allNotifications));
-  }, [allNotifications]);
+    fetchNotifications();
+    notifPollRef.current = setInterval(fetchNotifications, 30 * 1000); // 30-second poll
+    return () => clearInterval(notifPollRef.current);
+  }, [fetchNotifications]);
+
+  // Notifications are persisted in MySQL — no localStorage sync needed.
 
   // ── Daily Preventive Maintenance Reminders ─────────────────────────────────
   // Fires on mount (login) and every 60 minutes. Sends a notification for each
@@ -677,30 +766,39 @@ export const DataProvider = ({ children }) => {
   };
 
   const markAllNotificationsRead = async () => {
-    setAllNotifications(prev => prev.map(n => {
-      if (isNotificationForUser(n, currentUser, { isAdmin, isMaintenance, isFacultyOrStaff })) {
-        return { ...n, unread: false };
-      }
-      return n;
-    }));
+    try {
+      await apiMarkAllNotificationsRead();
+    } catch { /* best-effort */ }
+    setAllNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+    setUnreadCount(0);
   };
 
-  const markNotificationRead = (id) => {
+  const markNotificationRead = async (id) => {
+    try {
+      await apiMarkNotificationRead(id);
+    } catch { /* best-effort */ }
     setAllNotifications(prev => prev.map(n => (n.id === id ? { ...n, unread: false } : n)));
+    setUnreadCount(prev => Math.max(0, prev - 1));
   };
 
-  const deleteNotification = (id) => {
-    setAllNotifications(prev => prev.filter(n => n.id !== id));
+  const deleteNotification = async (id) => {
+    try {
+      await apiDeleteNotification(id);
+    } catch { /* best-effort */ }
+    setAllNotifications(prev => {
+      const n = prev.find(x => x.id === id);
+      if (n?.unread) setUnreadCount(c => Math.max(0, c - 1));
+      return prev.filter(x => x.id !== id);
+    });
     toast('Notification deleted.', 'info');
   };
 
-  const clearAllNotifications = () => {
-    const visibleIds = new Set(
-      allNotifications
-        .filter(n => isNotificationForUser(n, currentUser, { isAdmin, isMaintenance, isFacultyOrStaff }))
-        .map(n => n.id)
-    );
-    setAllNotifications(prev => prev.filter(n => !visibleIds.has(n.id)));
+  const clearAllNotifications = async () => {
+    try {
+      await apiClearAllNotifications();
+    } catch { /* best-effort */ }
+    setAllNotifications([]);
+    setUnreadCount(0);
     toast('All notifications cleared.', 'info');
   };
 
@@ -736,9 +834,7 @@ export const DataProvider = ({ children }) => {
     localStorage.setItem('fixit_pdas_departments_v4', JSON.stringify(departments));
   }, [departments]);
 
-  useEffect(() => {
-    localStorage.setItem('fixit_pdas_requisitions_v3', JSON.stringify(requisitions));
-  }, [requisitions]);
+  // Requisitions are stored in MySQL — no localStorage sync needed.
 
   useEffect(() => {
     localStorage.setItem('fixit_pdas_approvals_v3', JSON.stringify(approvalHistory));
@@ -950,6 +1046,7 @@ export const DataProvider = ({ children }) => {
         isFlagged: false,
         reason: '',
         itemSpecs: '',
+        disposition: 'replacement',
         requestType: newReq.requestType || (isUrgent ? 'Urgent Request' : 'Standard Request'),
         pdasFormName: newReq.pdasFormName || '',
         flaggedBy: '',
@@ -978,6 +1075,8 @@ export const DataProvider = ({ children }) => {
     };
 
     setRequisitions(prev => [entry, ...prev]);
+    // Sync with backend so DB ticket_no replaces the temp local ID
+    setTimeout(() => refreshRequisitions(), 1500);
     toast(`Request ${requestId} submitted and queued for PDAS review.`);
 
     setNotifications(prev => [
@@ -1368,6 +1467,7 @@ export const DataProvider = ({ children }) => {
     setRequisitions(prev =>
       prev.map(r => {
         if (r.id === reqId || r.controlNo === reqId) {
+          const isDisposal = flagData.type === 'Disposal';
           return {
             ...r,
             maintenanceFlag: {
@@ -1378,6 +1478,12 @@ export const DataProvider = ({ children }) => {
               scheduledTime: flagData.scheduledTime || '',
               flaggedBy,
               flaggedDate: nowStr
+            },
+            // Keep disposition marker on replacementFlag so the
+            // For Replacement list can indicate Replacement vs Disposal.
+            replacementFlag: {
+              ...r.replacementFlag,
+              ...(isDisposal ? { disposition: 'disposal', reason: flagData.reason, flaggedBy, flaggedDate: nowStr } : {})
             },
             status: flagData.type === 'Cannot Complete' ? 'Unable to Complete' : r.status,
             timeline: [
@@ -1419,9 +1525,10 @@ export const DataProvider = ({ children }) => {
               isFlagged: true,
               reason: flagData.reason,
               itemSpecs: flagData.itemSpecs,
+              disposition: 'replacement',
               flaggedBy: flagData.flaggedBy || 'Maintenance Personnel',
               flaggedDate: nowStr,
-              procurementStatus: 'Pending Director PR Approval'
+              procurementStatus: 'Pending Purchase Request (PR)'
             },
             maintenanceFlag: {
               type: 'Replacement',
@@ -1829,6 +1936,8 @@ export const DataProvider = ({ children }) => {
         refreshUserData,
         messages,
         notifications,
+        unreadCount,
+        fetchNotifications,
         markAllNotificationsRead,
         markNotificationRead,
         deleteNotification,
@@ -1862,6 +1971,8 @@ export const DataProvider = ({ children }) => {
         raiseMaintenanceFlag,
         raiseReplacementFlag,
         updateProcurementStatus,
+        isLoadingRequisitions,
+        refreshRequisitions,
         addRequisition,
         completeStandardFormForUrgent,
         updateActionTaken,

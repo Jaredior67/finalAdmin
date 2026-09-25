@@ -108,3 +108,16 @@ Manual test baseline for every phase: `npm run dev:backend` + `npm run dev:front
   harness for its UI wiring — recommended next); Lighthouse run (no tooling in this
   environment — run manually: `npm run build`, serve `dist/`, Chrome DevTools →
   Lighthouse → Accessibility + Best Practices).
+
+- **Phase 6 - DONE (2026-09-25).** Critical bugs and security gaps resolved:
+  1. campus_admin ENUM: users.role updated in schema.sql and live DB; autoSetup migration confirmed.
+  2. Ticket race condition: COUNT-based generator replaced with atomic ON DUPLICATE KEY UPDATE on new ticket_sequences table; existing tickets seeded.
+  3. Notifications live API: notificationRoutes rewritten with pagination, unread_count, DELETE endpoints; DataContext wired to MySQL with 30s polling; localStorage removed.
+  4. Requisitions live API: DataContext loads from /api/job-requests on login; refreshRequisitions exported; localStorage sync removed.
+  5. api.js: apiGetNotifications, apiMarkNotificationRead, apiMarkAllNotificationsRead, apiDeleteNotification, apiClearAllNotifications added.
+  6. Document upload: file_size saved; ownership guard on GET /documents/job-request/:id.
+  7. Preventive schedule PUT: requireRole(admin,campus_admin) enforced; status allow-list and length caps added (closes S16).
+  8. User role allow-list: POST and PUT user endpoints reject unknown roles (privilege escalation prevention).
+  9. autoSetup.js: ticket_sequences and file_size migrations added.
+  10. Build verified: vite build completes 1918 modules, 0 errors.
+  Remaining/deferred: httpOnly-cookie JWT, DataContext full split, API test suite, password reset, Lighthouse audit.

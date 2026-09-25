@@ -56,10 +56,19 @@ router.post('/', requireRole('admin'), async (req, res) => {
   }
 });
 
-// PUT /api/preventive-schedules/:id - Update status or assignment
-router.put('/:id', async (req, res) => {
+// PUT /api/preventive-schedules/:id - Update status or assignment (Admin/CampusAdmin only)
+router.put('/:id', requireRole('admin', 'campus_admin'), async (req, res) => {
   try {
     const { title, category, scheduledDate, timeWindow, location, assignedTo, inChargeName, status } = req.body;
+
+    // Input guards
+    if (title && String(title).length > 255) return res.status(400).json({ message: 'title must be 255 characters or fewer.' });
+    if (location && String(location).length > 255) return res.status(400).json({ message: 'location must be 255 characters or fewer.' });
+    const allowedStatuses = ['Scheduled', 'In Progress', 'Completed', 'Cancelled'];
+    if (status && !allowedStatuses.includes(status)) {
+      return res.status(400).json({ message: `status must be one of: ${allowedStatuses.join(', ')}.` });
+    }
+
     const [result] = await pool.query(
       `UPDATE preventive_maintenance_schedules SET
          title = COALESCE(?, title),
