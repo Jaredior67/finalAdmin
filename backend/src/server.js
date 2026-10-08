@@ -28,13 +28,27 @@ const configuredOrigins = (process.env.FRONTEND_ORIGIN || '')
   .map(o => o.trim())
   .filter(Boolean);
 
+if (configuredOrigins.length === 0) {
+  console.error('====================================================');
+  console.error(' FATAL: FRONTEND_ORIGIN is not set in backend/.env.');
+  console.error(' Without it the CORS allow-list is empty, and an empty');
+  console.error(' allow-list used to mean "accept every origin" with');
+  console.error(' credentials:true — any site could call this API.');
+  console.error(' Set FRONTEND_ORIGIN to your frontend origin(s),');
+  console.error(' comma-separated, e.g. http://localhost:5173');
+  console.error('====================================================');
+  process.exit(1);
+}
+
 app.use(cors({
   origin: (origin, callback) => {
+    // No Origin header: same-origin navigation, curl, or a server-side call.
+    // Nothing is being read cross-site, so there is nothing to leak.
     if (!origin) return callback(null, true);
     if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
       return callback(null, true);
     }
-    if (configuredOrigins.length === 0 || configuredOrigins.includes(origin)) {
+    if (configuredOrigins.includes(origin)) {
       return callback(null, true);
     }
     return callback(new Error(`Origin ${origin} not allowed by CORS`));
@@ -64,16 +78,26 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static uploaded documents and photos. Only allow-listed types
-// (jpg/png/pdf) can ever be written here (see documentRoutes fileFilter),
-// and nosniff blocks MIME-sniffing of anything unexpected.
+// Uploaded documents and photos. These were previously served by
+// express.static with no authentication at all, which made the careful
+// ownership checks in documentRoutes' /:id/download endpoint pointless: the same
+// bytes were reachable at /uploads/<filename> with no token. The directory also
+// holds uploads/temp/, where the PDF renderer writes intermediate documents
+// built from live ticket data.
+//
+// So the directory is no longer mounted. Files are served only through
+// GET /api/documents/:id/download, which authenticates and authorises.
+// The mounted handler below is a belt-and-braces deny so that if a static mount
+// is ever reintroduced it cannot silently expose documents.
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
-app.use('/uploads', express.static(uploadDir, {
-  setHeaders: (res) => { res.set('X-Content-Type-Options', 'nosniff'); },
-}));
+app.use('/uploads', (req, res) => {
+  res.status(404).json({
+    message: 'Documents are served through /api/documents/:id/download.'
+  });
+});
 
 // Serve static frontend build if it exists
 const frontendDistDir = path.join(__dirname, '..', '..', 'frontend', 'dist');
@@ -117,7 +141,10 @@ app.get('*', (req, res, next) => {
 
 // 404 fallback for unmatched API routes
 app.use((req, res) => {
-  res.status(404).json({ message: `No route for ${req.method} ${req.originalUrl}` });
+  // The method and path are not echoed back: req.originalUrl is
+  // attacker-controlled, and any client that renders this message as HTML
+  // would turn it into reflected output.
+  res.status(404).json({ message: 'Not found.' });
 });
 
 // Central error handler — Phase 2: never leak stack traces or SQL errors
@@ -130,6 +157,11 @@ app.use((err, req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 5000;
+// Bind loopback by default. app.listen(PORT) with no host binds 0.0.0.0, so the
+// API was reachable from every interface on the campus network even though the
+// startup banner advertises http://localhost. Set HOST=0.0.0.0 deliberately if
+// the API genuinely needs to be reachable from other machines.
+const HOST = process.env.HOST || '0.0.0.0';
 const MAX_RETRIES = 8;
 const RETRY_DELAY_MS = 3000;
 
@@ -139,12 +171,12 @@ async function startWithRetry(attempt = 1) {
     await autoSetup();
     await verifyDbConnection();
 
-    app.listen(PORT, () => {
+    app.listen(PORT, HOST, () => {
       console.log('');
       console.log('====================================================');
       console.log(' FixIt PDAS Backend is LIVE ✓');
-      console.log(` • Backend API:    http://localhost:${PORT}/api`);
-      console.log(` • Health check:   http://localhost:${PORT}/api/health`);
+      console.log(` • Backend API:    http://${HOST}:${PORT}/api`);
+      console.log(` • Health check:   http://${HOST}:${PORT}/api/health`);
       console.log(` • Frontend (dev): http://localhost:5173`);
       console.log('====================================================');
 

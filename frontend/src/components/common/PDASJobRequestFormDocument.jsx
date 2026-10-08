@@ -1,4 +1,5 @@
 import isatuLogo from '../../assets/isatu-logo.png';
+import { PDAS_HEAD_TITLE, APPROVER_TITLE, signatoryName, approvalStamp, formatGovTimestamp } from '../../utils/approvalSignatures';
 
 export const PDASJobRequestFormDocument = ({ req }) => {
   if (!req) return null;
@@ -6,9 +7,21 @@ export const PDASJobRequestFormDocument = ({ req }) => {
   const scope = req.scopeOfWorks || {};
   const actionTaken = req.actionTaken || {};
   const finalAction = req.finalAction || {};
+
+  /* Signatories. A personal name prints only when the form or the database
+     recorded one; otherwise the line is left blank for wet ink and the
+     "Electronically approved" stamp is suppressed. */
+  const pdasSignatory = signatoryName(actionTaken.pdasHeadName, req.pdasHeadName);
+  const pdasStamp = approvalStamp(actionTaken.pdasHeadName, req.pdasHeadName);
+  const pdasApproved = Boolean(
+    req.adminApproved || ['Pending Final Approval', 'Approved', 'Ongoing', 'Completed'].includes(req.status)
+  );
+  const approverSignatory = signatoryName(finalAction.approverName, req.approverName);
+  const approverStamp = approvalStamp(finalAction.approverName, req.approverName);
+  const approverApproved = Boolean(
+    req.campusAdminApproved || ['Approved', 'Ongoing', 'Completed'].includes(req.status) || finalAction.status === 'Approved'
+  );
   // Same as the print sheet: urgent dispatches hide wet-ink blanks — signatures
-  // are collected later on the signed hardcopy.
-  const isUrgent = req.requestType === 'Urgent Request';
 
   const getChecked = (catKey, optName) => {
     const section = scope[catKey];
@@ -75,24 +88,29 @@ export const PDASJobRequestFormDocument = ({ req }) => {
       {/* 2. Tracking & Requester Details */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', marginBottom: '14px' }}>
         <div>
-          <strong>Tracking Number:</strong> <span style={{ textDecoration: 'underline', fontWeight: 'bold' }}>{req.controlNo || 'PENDING — issued on Final Approval'}</span>
+          <strong>Tracking Number:</strong> <span style={{ textDecoration: 'underline', fontWeight: 'bold' }}>{req.controlNo || 'PENDING, issued when the work order is assigned'}</span>
         </div>
         <div>
           <strong>Date of Request:</strong> <span style={{ textDecoration: 'underline' }}>{req.date}</span>
         </div>
         <div>
           <strong>Name of Client:</strong> <span style={{ textDecoration: 'underline' }}>{req.requestedBy}</span>
+          {(req.requesterApproved || req.status !== 'Draft') && (
+            <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10.5px', marginTop: '2px', fontStyle: 'italic' }}>
+              ✓ Electronically approved: {req.requestedBy || 'Requester'}{req.requesterApprovedAt ? ` on ${formatGovTimestamp(req.requesterApprovedAt)}` : ''}
+            </div>
+          )}
         </div>
-        {!isUrgent && (
-          <div>
-            <strong>Signature:</strong> <span style={{ textDecoration: 'underline' }}>________________________</span> <span style={{ fontSize: '10px', color: '#64748b' }}>(Wet-Ink Physical Signature)</span>
-          </div>
-        )}
         <div>
           <strong>Office of Client:</strong> <span style={{ textDecoration: 'underline' }}>{req.department || req.location}</span>
         </div>
         <div>
-          <strong>Immediate Supervisor:</strong> <span style={{ textDecoration: 'underline' }}>{req.immediateSupervisor || 'Department Head'}</span>
+          <strong>Immediate Supervisor:</strong> <span style={{ textDecoration: 'underline' }}>{req.immediateSupervisor || 'Department Head / Supervisor'}</span>
+          {(req.supervisorApproved || ['Pending', 'Under Review', 'Pending Final Approval', 'Approved', 'Ongoing', 'Completed'].includes(req.status)) && (
+            <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10.5px', marginTop: '2px', fontStyle: 'italic' }}>
+              ✓ Electronically approved: {req.immediateSupervisor || 'Immediate Supervisor'}{req.supervisorApprovedAt ? ` on ${formatGovTimestamp(req.supervisorApprovedAt)}` : ''}
+            </div>
+          )}
         </div>
       </div>
 
@@ -243,8 +261,13 @@ export const PDASJobRequestFormDocument = ({ req }) => {
         </div>
 
         <div style={{ textAlign: 'center', marginTop: '14px' }}>
-          <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>KRISTINE J. AMAR</div>
-          <div style={{ fontSize: '10px' }}>Head, PDAS / Director, Planning Development and Auxiliary Services</div>
+          {pdasApproved && pdasStamp && (
+            <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10.5px', marginBottom: '3px', fontStyle: 'italic' }}>
+              ✓ Electronically approved: {pdasStamp}{req.adminApprovedAt ? ` on ${formatGovTimestamp(req.adminApprovedAt)}` : ''}
+            </div>
+          )}
+          <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{pdasSignatory}</div>
+          <div style={{ fontSize: '10px' }}>{PDAS_HEAD_TITLE}</div>
         </div>
       </div>
 
@@ -254,18 +277,27 @@ export const PDASJobRequestFormDocument = ({ req }) => {
           <div style={{ fontWeight: 'bold' }}>FINAL ACTION:</div>
           <div style={{ display: 'flex', gap: '16px', fontWeight: 'bold' }}>
             <span>[{finalAction.status === 'Approved' || req.status === 'Approved' || req.status === 'Ongoing' || req.status === 'Completed' ? 'x' : ' '}] Approved</span>
-            <span>[{finalAction.status === 'Disapproved' || req.status === 'Rejected' ? 'x' : ' '}] Disapproved</span>
+            <span>[{finalAction.status === 'Disapproved' || req.status === 'Rejected' || req.status === 'Returned' ? 'x' : ' '}] Disapproved</span>
           </div>
           <div>Remarks: <span style={{ textDecoration: 'underline' }}>{finalAction.remarks || req.notes || 'N/A'}</span></div>
         </div>
 
         <div style={{ textAlign: 'center', marginTop: '14px' }}>
-          <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>RAMIL G. LUMAUAG, Ed.D., DIT</div>
-          <div style={{ fontSize: '10px' }}>Campus Administrator</div>
+          {approverApproved && approverStamp && (
+            <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10.5px', marginBottom: '3px', fontStyle: 'italic' }}>
+              ✓ Electronically approved: {approverStamp}{req.campusAdminApprovedAt ? ` on ${formatGovTimestamp(req.campusAdminApprovedAt)}` : ''}
+            </div>
+          )}
+          <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{approverSignatory}</div>
+          <div style={{ fontSize: '10px' }}>{APPROVER_TITLE}</div>
         </div>
 
         <div style={{ fontSize: '9.5px', marginTop: '8px', color: '#475569', textAlign: 'right' }}>
           Copy distribution: 1 – PDAS, 1 – GSM, 1 – Client
+        </div>
+
+        <div style={{ fontSize: '8.5px', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #000000', color: '#334155', fontStyle: 'italic', textAlign: 'center', lineHeight: 1.35 }}>
+          <strong>Notice / Disclaimer:</strong> The electronic approvals recorded on this form are internal, timestamped, auditable administrative confirmations and do not constitute legally binding digital signatures. This official document is automatically generated and archived for university facility audit, inventory, and printing purposes.
         </div>
       </div>
     </div>

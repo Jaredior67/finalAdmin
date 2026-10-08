@@ -170,7 +170,7 @@ export const CommunicationBox = () => {
       }}>
 
         {/* ── LEFT: Thread List ───────────────────────────────────────────── */}
-        <div style={{ borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
+        <div style={{ borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', background: 'var(--bg-sunken)' }}>
 
           {/* Search bar */}
           <div style={{ padding: '12px 12px 10px 12px', borderBottom: '1px solid #e2e8f0' }}>
@@ -318,7 +318,7 @@ export const CommunicationBox = () => {
                       <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>•</span>
                       <span style={{
                         fontSize: '10px', fontWeight: '700', padding: '1px 7px',
-                        borderRadius: '4px', background: '#f1f5f9', color: '#475569',
+                        borderRadius: '4px', background: 'var(--bg-muted)', color: '#475569',
                         fontFamily: 'monospace'
                       }}>
                         {activeThread.controlNo}
@@ -341,7 +341,7 @@ export const CommunicationBox = () => {
               <div style={{
                 flex: 1, padding: '20px', overflowY: 'auto',
                 display: 'flex', flexDirection: 'column', gap: '16px',
-                background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)'
+                background: 'linear-gradient(180deg, var(--bg-sunken) 0%, var(--bg-card) 100%)'
               }}>
                 {activeThread.thread.map((item, idx) => {
                   const isMine = (isAdmin && item.sender.includes('Director')) ||
@@ -447,7 +447,7 @@ export const CommunicationBox = () => {
                   onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend(e)}
                   style={{
                     flex: 1, padding: '10px 14px', borderRadius: '10px',
-                    border: '1.5px solid #e2e8f0', background: '#f8fafc',
+                    border: '1.5px solid #e2e8f0', background: 'var(--bg-sunken)',
                     fontSize: '13px', color: '#0f172a', outline: 'none',
                     transition: 'border-color 0.15s ease'
                   }}
@@ -476,7 +476,7 @@ export const CommunicationBox = () => {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '12px', color: '#94a3b8' }}>
               <div style={{
                 width: '64px', height: '64px', borderRadius: '50%',
-                background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                background: 'var(--bg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>
                 <MessageSquare size={28} style={{ color: '#cbd5e1' }} />
               </div>
@@ -510,6 +510,7 @@ export const CommunicationBox = () => {
         <Modal
           isOpen={isComposeOpen}
           onClose={() => setIsComposeOpen(false)}
+          onBack={() => setIsComposeOpen(false)}
           title="New PDAS Dispatch Message"
           maxWidth="520px"
         >
@@ -551,7 +552,7 @@ export const CommunicationBox = () => {
               </datalist>
               {approvedParticipants.length > 0 && (
                 <div style={{ marginTop: '4px', fontSize: '11px', color: '#059669' }}>
-                  ✓ {approvedParticipants.length} participant{approvedParticipants.length === 1 ? '' : 's'} available
+                  {approvedParticipants.length} approved participant{approvedParticipants.length === 1 ? '' : 's'} available
                 </div>
               )}
             </div>

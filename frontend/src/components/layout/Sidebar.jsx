@@ -9,7 +9,10 @@ import { adminNavigation } from '../../navigation/adminNavigation';
 import { facultyNavigation } from '../../navigation/facultyNavigation';
 import { maintenanceNavigation } from '../../navigation/maintenanceNavigation';
 import { campusAdminNavigation } from '../../navigation/campusAdminNavigation';
+import { supervisorNavigation } from '../../navigation/supervisorNavigation';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { buildMyQueue } from '../maintenance/queueConfig';
+import { filterMyRequests } from '../../utils/myRequests';
 
 const SECTION_LABEL = {
   fontSize: '10px',
@@ -21,7 +24,7 @@ const SECTION_LABEL = {
 };
 
 export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCollapse }) => {
-  const { currentUser, logout, isAdmin, isCampusAdmin, isMaintenance, isFacultyOrStaff } = useAuth();
+  const { currentUser, logout, isAdmin, isCampusAdmin, isSupervisor, isMaintenance, isFacultyOrStaff } = useAuth();
   const { unreadMessagesCount, pendingApprovals, pendingRegistrationsCount, requisitions } = useData();
 
   // Collapse control can live in the navbar or the sidebar header — the
@@ -49,31 +52,37 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
     : isMaintenance
       ? 'MAINTENANCE'
       : isFacultyOrStaff
-        ? 'FACULTY & STAFF'
+        ? (isSupervisor ? 'FACULTY & STAFF (SUPERVISOR)' : 'FACULTY & STAFF')
         : 'PDAS ADMIN';
 
   // Counts for Dynamic Badges
-  const pendingCampusAdminApprovalsCount = (requisitions || []).filter(r => !r.isArchived && (!r.finalAction?.status || r.finalAction?.status === 'Pending')).length;
+  const pendingCampusAdminApprovalsCount = (requisitions || []).filter(r =>
+    !r.isArchived &&
+    (!r.finalAction?.status || r.finalAction?.status === 'Pending') &&
+    (r.status === 'Pending Final Approval' || r.status === 'Awaiting Signatures' || (!['Draft', 'Pending Supervisor Approval', 'Pending', 'Under Review', 'Completed', 'Rejected'].includes(r.status)))
+  ).length;
+  const pendingSupervisorApprovalsCount = (requisitions || []).filter(r =>
+    !r.isArchived && (r.status === 'Pending Supervisor Approval' || (!r.supervisorApproved && r.status === 'Pending' && r.immediateSupervisor))
+  ).length;
 
-  const facultyTickets = (requisitions || []).filter(r =>
-    (currentUser?.email && r.requesterEmail?.toLowerCase() === currentUser.email.toLowerCase()) ||
-    (currentUser?.name && r.requestedBy?.toLowerCase().includes(currentUser.name.toLowerCase()))
-  );
-  const facultyActiveTicketsCount = facultyTickets.filter(r => r.status !== 'Completed' && r.status !== 'Rejected').length;
+  /* Same predicate as the Dashboard tiles and the ticket lists, so this badge
+     never reports a number those pages would not show. */
+  const facultyActiveTicketsCount = filterMyRequests(requisitions, currentUser)
+    .filter(r => r.status !== 'Completed' && r.status !== 'Rejected').length;
 
-  const techTasks = (requisitions || []).filter(r =>
-    !currentUser?.name ||
-    r.assignedTo?.toLowerCase().includes(currentUser.name.toLowerCase()) ||
-    r.assignedTo?.toLowerCase().includes('mark') ||
-    r.assignedTo?.toLowerCase().includes('villanueva') ||
-    r.status === 'Ongoing' ||
-    r.status === 'In Progress' ||
-    r.status === 'On Hold' ||
-    r.status === 'Pending'
-  );
-  const techActiveCount = techTasks.filter(r => r.status !== 'Completed').length;
-  const techEmergencyCount = techTasks.filter(r => (r.urgency === 'Urgent' || r.urgency === 'High') && r.status !== 'Completed').length;
+  // The maintenance queue badge must agree with the Work Queue page, so both
+  // derive the ticket set from the same shared helper.
+  const techQueue = buildMyQueue(requisitions, currentUser);
+  const techActiveCount = techQueue.filter(r => r.status !== 'Completed').length;
   const replacementCount = (requisitions || []).filter(r => r.replacementFlag?.isFlagged || r.maintenanceFlag?.type === 'Disposal').length;
+
+  // badgeKey -> count, so nav items stay declarative instead of nested ternaries
+  const maintenanceBadges = {
+    techActiveCount: techActiveCount || null,
+    replacementCount: replacementCount || null,
+    unreadMessagesCount: unreadMessagesCount || null
+  };
+  const badgeFor = (item) => (item.badgeKey ? maintenanceBadges[item.badgeKey] ?? null : null);
 
   const renderNavList = (items) => (
     <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -88,7 +97,7 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
             title={item.label}
             onClick={() => onTabChange(item.id)}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onTabChange(item.id); }}
-            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = '#f1f5f9'; }}
+            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'; }}
             onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
             style={{
               display: 'flex',
@@ -168,7 +177,7 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           style={{
-            background: '#f8fafc',
+            background: 'var(--bg-sunken)',
             border: '1px solid #e2e8f0',
             borderRadius: '6px',
             width: '26px',
@@ -201,7 +210,7 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
               ...item,
               badge: item.badgeKey === 'pendingCampusAdminApprovalsCount' ? (pendingCampusAdminApprovalsCount || null) : null
             }))))}
-            {renderSection('Executive Oversight', renderNavList(campusAdminNavigation.management.map(item => ({
+            {renderSection('Approvals', renderNavList(campusAdminNavigation.management.map(item => ({
               ...item,
               badge: item.badgeKey === 'unreadMessagesCount' ? (unreadMessagesCount || null) : null
             }))), true)}
@@ -230,7 +239,21 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
 
         {isFacultyOrStaff && (
           <>
-            {renderSection('Overview', renderNavList(facultyNavigation.requisition.slice(0, 1)))}
+            {/* Supervisor queue — shown above own requests when designated */}
+            {isSupervisor && (
+              <>
+                {renderSection('Supervisor Queue', renderNavList([
+                  {
+                    id: 'supervisor-queue',
+                    label: 'My Supervisees\u2019 Requests',
+                    icon: supervisorNavigation[0].icon,
+                    badge: pendingSupervisorApprovalsCount || null,
+                    badgeColor: '#d97706'
+                  }
+                ]))}
+              </>
+            )}
+            {renderSection(isSupervisor ? 'My Own Requests' : 'Overview', renderNavList(facultyNavigation.requisition.slice(0, 1)), isSupervisor)}
             {renderSection('Requests', renderNavList(facultyNavigation.requisition.slice(1).map(item => ({
               ...item,
               badge: item.badgeKey === 'facultyActiveTicketsCount'
@@ -248,19 +271,13 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
 
         {isMaintenance && (
           <>
-            {renderSection('Work Queue', renderNavList(maintenanceNavigation.operations.map(item => ({
+            {renderSection('Operations', renderNavList(maintenanceNavigation.operations.map(item => ({
               ...item,
-              badge: item.badgeKey === 'techActiveCount'
-                ? (techActiveCount || null)
-                : item.badgeKey === 'techEmergencyCount'
-                  ? (techEmergencyCount || null)
-                  : item.badgeKey === 'replacementCount'
-                    ? (replacementCount || null)
-                    : null
+              badge: badgeFor(item)
             }))))}
             {renderSection('Support', renderNavList(maintenanceNavigation.facility.map(item => ({
               ...item,
-              badge: item.badgeKey === 'unreadMessagesCount' ? (unreadMessagesCount || null) : null
+              badge: badgeFor(item)
             }))), true)}
           </>
         )}

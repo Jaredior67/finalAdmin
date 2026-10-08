@@ -18,13 +18,23 @@ router.get('/campus-locations', verifyToken, async (req, res) => {
 // POST /api/lookups/campus-locations - admin only
 router.post('/campus-locations', verifyToken, requireRole('admin'), async (req, res) => {
   try {
-    const { building, floor, room, description } = req.body;
+    const { building, floor, room, description, qrCode } = req.body;
     if (!building) {
       return res.status(400).json({ message: 'building is required.' });
     }
+    /* The tag is what the scanner matches on, and the database enforces
+       uniqueness on it — so a duplicate is rejected here with a readable
+       message instead of surfacing as an opaque ER_DUP_ENTRY 500. */
+    const tag = typeof qrCode === 'string' ? qrCode.trim().slice(0, 64) : null;
+    if (tag) {
+      const [dupe] = await pool.query('SELECT id FROM campus_locations WHERE qr_code = ?', [tag]);
+      if (dupe.length > 0) {
+        return res.status(409).json({ message: `QR tag ${tag} is already registered to another location.` });
+      }
+    }
     const [result] = await pool.query(
-      'INSERT INTO campus_locations (building, floor, room, description) VALUES (?, ?, ?, ?)',
-      [building, floor || null, room || null, description || null]
+      'INSERT INTO campus_locations (building, floor, room, description, qr_code) VALUES (?, ?, ?, ?, ?)',
+      [building, floor || null, room || null, description || null, tag]
     );
     res.status(201).json({ message: 'Location added.', id: result.insertId });
   } catch (err) {
@@ -36,15 +46,26 @@ router.post('/campus-locations', verifyToken, requireRole('admin'), async (req, 
 // PUT /api/lookups/campus-locations/:id - admin only
 router.put('/campus-locations/:id', verifyToken, requireRole('admin'), async (req, res) => {
   try {
-    const { building, floor, room, description } = req.body;
+    const { building, floor, room, description, qrCode } = req.body;
+    const tag = qrCode === undefined || qrCode === null ? null : String(qrCode).trim().slice(0, 64);
+    if (tag) {
+      const [dupe] = await pool.query(
+        'SELECT id FROM campus_locations WHERE qr_code = ? AND id <> ?',
+        [tag, req.params.id]
+      );
+      if (dupe.length > 0) {
+        return res.status(409).json({ message: `QR tag ${tag} is already registered to another location.` });
+      }
+    }
     const [result] = await pool.query(
       `UPDATE campus_locations SET
          building = COALESCE(?, building),
          floor = COALESCE(?, floor),
          room = COALESCE(?, room),
-         description = COALESCE(?, description)
+         description = COALESCE(?, description),
+         qr_code = COALESCE(?, qr_code)
        WHERE id = ?`,
-      [building, floor, room, description, req.params.id]
+      [building, floor, room, description, tag, req.params.id]
     );
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Location not found.' });

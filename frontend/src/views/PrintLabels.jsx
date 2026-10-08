@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Printer, QrCode, Search, Building2, MapPin, Tag,
   Plus, Edit2, Trash2, Layers, LayoutGrid, Table as TableIcon,
@@ -60,6 +60,61 @@ export const PrintLabels = () => {
     return Array.from(map.values());
   }, [campusLocations, requisitions]);
 
+  /* Real, scannable QR images for the printed tags.
+     The label drew the lucide <QrCode /> glyph — a decorative square pattern no
+     camera can decode — directly above a "SCAN ME" caption, so a printed tag
+     told people to scan something that was not a QR code. The scanner accepts a
+     raw `qrCodeRef` string (QrCodeScannerModal.parseQrText, direct match), so
+     encoding that value is all a working tag needs. */
+  const [qrImages, setQrImages] = useState({});
+
+  useEffect(() => {
+    let live = true;
+    const targets = allLocations.filter((loc) => loc.qrCodeRef);
+    if (targets.length === 0) {
+      setQrImages({});
+      return () => { live = false; };
+    }
+    import('qrcode')
+      .then((m) => {
+        const toDataURL = (m.default || m).toDataURL;
+        return Promise.all(
+          targets.map(async (loc) => {
+            try {
+              const url = await toDataURL(String(loc.qrCodeRef), {
+                width: 240,
+                margin: 1,
+                errorCorrectionLevel: 'M'
+              });
+              return [loc.qrCodeRef, url];
+            } catch {
+              return [loc.qrCodeRef, null];
+            }
+          })
+        );
+      })
+      .then((pairs) => { if (live) setQrImages(Object.fromEntries(pairs)); })
+      .catch(() => { if (live) setQrImages({}); });
+    return () => { live = false; };
+  }, [allLocations]);
+
+  // Live preview of the tag being typed in the registration modal, so the admin
+  // sees the exact code that will be printed rather than a decorative glyph.
+  const [previewQr, setPreviewQr] = useState('');
+  useEffect(() => {
+    const value = (formData.qrCodeRef || '').trim();
+    if (!value) {
+      setPreviewQr('');
+      return () => {};
+    }
+    let live = true;
+    import('qrcode')
+      .then((m) => (m.default || m).toDataURL(value, { width: 200, margin: 1, errorCorrectionLevel: 'M' }))
+      .then((url) => { if (live) setPreviewQr(url); })
+      .catch(() => { if (live) setPreviewQr(''); });
+    return () => { live = false; };
+  }, [formData.qrCodeRef]);
+
   // Unique list of registered buildings for filtering and dropdowns
   const uniqueBuildings = useMemo(() => {
     const bldgMap = new Map();
@@ -112,8 +167,8 @@ export const PrintLabels = () => {
   const handleOpenRegister = () => {
     setEditingLoc(null);
     setFormData({
-      building: uniqueBuildings[0]?.name || 'College of Engineering & Architecture (CEA)',
-      bldgShort: uniqueBuildings[0]?.short || 'CEA',
+      building: uniqueBuildings[0]?.name || 'Administration Building',
+      bldgShort: uniqueBuildings[0]?.short || 'Admin',
       floor: 'Ground Floor',
       room: '',
       qrCodeRef: ''
@@ -376,7 +431,7 @@ export const PrintLabels = () => {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#475569', fontWeight: '700' }}>
+                <tr style={{ background: 'var(--bg-sunken)', borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#475569', fontWeight: '700' }}>
                   <th style={{ padding: '12px 14px', width: '40px' }}>
                     <input 
                       type="checkbox" 
@@ -434,7 +489,7 @@ export const PrintLabels = () => {
                       </div>
                     </td>
                     <td style={{ padding: '12px 14px' }}>
-                      <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontSize: '11.5px', color: '#0f172a' }}>
+                      <code style={{ background: 'var(--bg-muted)', padding: '2px 6px', borderRadius: '4px', fontSize: '11.5px', color: '#0f172a' }}>
                         {loc.qrCodeRef}
                       </code>
                     </td>
@@ -535,7 +590,7 @@ export const PrintLabels = () => {
                 {/* Main Content with QR simulation */}
                 <div style={{ display: 'flex', gap: '14px', alignItems: 'center', marginBottom: '12px' }}>
                   <div style={{
-                    background: '#f8fafc',
+                    background: 'var(--bg-sunken)',
                     border: '1.5px solid #e2e8f0',
                     borderRadius: '10px',
                     padding: '8px',
@@ -545,7 +600,20 @@ export const PrintLabels = () => {
                     justifyContent: 'center',
                     flexShrink: 0
                   }}>
-                    <QrCode size={labelFormat === 'sheet' ? 52 : 64} color="#001f9c" />
+                    {qrImages[loc.qrCodeRef] ? (
+                      <img
+                        src={qrImages[loc.qrCodeRef]}
+                        alt={`QR tag for ${loc.room}`}
+                        style={{
+                          width: labelFormat === 'sheet' ? 52 : 64,
+                          height: labelFormat === 'sheet' ? 52 : 64,
+                          display: 'block',
+                          imageRendering: 'pixelated'
+                        }}
+                      />
+                    ) : (
+                      <QrCode size={labelFormat === 'sheet' ? 52 : 64} color="#001f9c" />
+                    )}
                     <span style={{ fontSize: '8.5px', fontWeight: '800', color: '#64748b', marginTop: '3px' }}>
                       SCAN ME
                     </span>
@@ -646,7 +714,7 @@ export const PrintLabels = () => {
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="e.g. College of Engineering & Architecture (CEA)"
+                  placeholder="e.g. Technology Building"
                   value={formData.building}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -667,7 +735,7 @@ export const PrintLabels = () => {
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, building: b.name, bldgShort: b.short }))}
                       style={{
-                        background: '#f1f5f9',
+                        background: 'var(--bg-muted)',
                         border: '1px solid #e2e8f0',
                         borderRadius: '4px',
                         padding: '1px 6px',
@@ -754,7 +822,7 @@ export const PrintLabels = () => {
                     cursor: 'pointer'
                   }}
                 >
-                  ⚡ Auto Generate Tag
+                  Generate tag
                 </button>
               </div>
               <input
@@ -771,7 +839,7 @@ export const PrintLabels = () => {
 
             {/* Live Visual Label Preview Box */}
             <div style={{
-              background: '#f8fafc',
+              background: 'var(--bg-sunken)',
               border: '1.5px dashed #cbd5e1',
               borderRadius: '10px',
               padding: '14px',
@@ -786,7 +854,11 @@ export const PrintLabels = () => {
                 padding: '8px',
                 textAlign: 'center'
               }}>
-                <QrCode size={48} color="#001f9c" />
+                {previewQr ? (
+                  <img src={previewQr} alt="QR tag preview" style={{ width: 48, height: 48, display: 'block', imageRendering: 'pixelated' }} />
+                ) : (
+                  <QrCode size={48} color="#001f9c" />
+                )}
                 <div style={{ fontSize: '8px', fontWeight: '800', color: '#64748b', marginTop: '2px' }}>PREVIEW</div>
               </div>
               <div>

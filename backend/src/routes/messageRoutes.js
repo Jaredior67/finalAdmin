@@ -1,18 +1,28 @@
 import { Router } from 'express';
 import pool from '../config/db.js';
-import { verifyToken } from '../middleware/auth.js';
+import { verifyToken, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 router.use(verifyToken);
 
 // GET /api/messages/participants - approved users available for messaging
-router.get('/participants', async (req, res) => {
+// This answers with id, name, email, ROLE and department for every active
+// account, i.e. a full directory dump rather than a message-related read — so
+// it needs the same gate as any other directory listing. Operational roles
+// (admin, campus_admin, maintenance, technician) keep the compose box;
+// faculty/staff, who only need to answer people already writing to them, get
+// 403 instead of an enumerable account list.
+router.get('/participants', requireRole('admin', 'campus_admin', 'maintenance', 'technician'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, first_name, last_name, email, role, department, status
        FROM users
        WHERE status = 'active'
-         AND role IN ('admin', 'faculty', 'staff', 'maintenance')
+         /* Every role in the users enum is a legitimate correspondent. This
+            list omitted campus_admin, supervisor and technician, so those
+            people simply did not exist as far as the compose box was
+            concerned. */
+         AND role IN ('admin', 'campus_admin', 'supervisor', 'faculty', 'staff', 'maintenance', 'technician')
        ORDER BY first_name ASC, last_name ASC`
     );
     res.json(rows);

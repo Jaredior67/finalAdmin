@@ -34,7 +34,13 @@ export const SettingsPage = () => {
   const { trackingConfig, updateTrackingConfig, peekNextTrackingNumber } = useData();
 
   // Active Tab State
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTabState] = useState(() => {
+    return (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fixit_settings_tab')) || 'profile';
+  });
+  const setActiveTab = (tab) => {
+    setActiveTabState(tab);
+    try { sessionStorage.setItem('fixit_settings_tab', tab); } catch {}
+  };
 
   // Form State
   const [photo, setPhoto] = useState(currentUser?.avatarUrl || '');
@@ -438,7 +444,7 @@ export const SettingsPage = () => {
                     className="form-input"
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
-                    placeholder="e.g. College of Engineering and Architecture (CEA)"
+                    placeholder="e.g. Technology Building"
                   />
                 </div>
 
@@ -486,7 +492,7 @@ export const SettingsPage = () => {
                     className="form-input"
                     value={currentUser?.email || currentUser?.gmail || 'user@isatu.edu.ph'}
                     disabled
-                    style={{ background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' }}
+                    style={{ background: 'var(--bg-muted)', color: '#64748b', cursor: 'not-allowed' }}
                   />
                 </div>
 
@@ -497,7 +503,7 @@ export const SettingsPage = () => {
                     className="form-input"
                     value={currentUser?.idNumber || 'ISATU-EMP-2026-001'}
                     disabled
-                    style={{ background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' }}
+                    style={{ background: 'var(--bg-muted)', color: '#64748b', cursor: 'not-allowed' }}
                   />
                 </div>
               </div>
@@ -709,7 +715,7 @@ export const SettingsPage = () => {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '14px 16px',
-                    background: sess.isCurrent ? '#eff6ff' : '#f8fafc',
+                    background: sess.isCurrent ? '#eff6ff' : 'var(--bg-sunken)',
                     border: sess.isCurrent ? '1.5px solid #bfdbfe' : '1px solid #e2e8f0',
                     borderRadius: '10px'
                   }}
@@ -773,7 +779,7 @@ export const SettingsPage = () => {
                   Request Lifecycle Updates
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                  Receive alerts when ticket status updates (Pending → Under Review → Awaiting Signatures → Approved → In Progress → Completed).
+                  Receive alerts when ticket status updates (Pending → Under Review → Pending Final Approval → Approved → Ongoing → Completed).
                 </div>
               </div>
               <label className="toggle-switch">
@@ -923,7 +929,7 @@ export const SettingsPage = () => {
             </div>
 
             <div className="permission-matrix-item">
-              <div className="permission-icon-box" style={{ background: isFacultyOrStaff ? '#f8fafc' : '#eff6ff', color: isFacultyOrStaff ? '#94a3b8' : '#001f9c' }}>
+              <div className="permission-icon-box" style={{ background: isFacultyOrStaff ? 'var(--bg-sunken)' : '#eff6ff', color: isFacultyOrStaff ? 'var(--text-light)' : '#001f9c' }}>
                 <Key size={18} />
               </div>
               <div>
@@ -940,7 +946,7 @@ export const SettingsPage = () => {
             </div>
 
             <div className="permission-matrix-item">
-              <div className="permission-icon-box" style={{ background: !isMaintenance && isFacultyOrStaff ? '#f8fafc' : '#fffbeb', color: !isMaintenance && isFacultyOrStaff ? '#94a3b8' : '#d97706' }}>
+              <div className="permission-icon-box" style={{ background: !isMaintenance && isFacultyOrStaff ? 'var(--bg-sunken)' : '#fffbeb', color: !isMaintenance && isFacultyOrStaff ? 'var(--text-light)' : '#d97706' }}>
                 <Wrench size={18} />
               </div>
               <div>
@@ -957,7 +963,7 @@ export const SettingsPage = () => {
             </div>
 
             <div className="permission-matrix-item">
-              <div className="permission-icon-box" style={{ background: !isMaintenance && isFacultyOrStaff ? '#f8fafc' : '#fef2f2', color: !isMaintenance && isFacultyOrStaff ? '#94a3b8' : '#dc2626' }}>
+              <div className="permission-icon-box" style={{ background: !isMaintenance && isFacultyOrStaff ? 'var(--bg-sunken)' : '#fef2f2', color: !isMaintenance && isFacultyOrStaff ? 'var(--text-light)' : '#dc2626' }}>
                 <AlertTriangle size={18} />
               </div>
               <div>
@@ -991,7 +997,7 @@ export const SettingsPage = () => {
             </div>
 
             <div className="permission-matrix-item">
-              <div className="permission-icon-box" style={{ background: isFacultyOrStaff ? '#f8fafc' : '#eff6ff', color: isFacultyOrStaff ? '#94a3b8' : '#001f9c' }}>
+              <div className="permission-icon-box" style={{ background: isFacultyOrStaff ? 'var(--bg-sunken)' : '#eff6ff', color: isFacultyOrStaff ? 'var(--text-light)' : '#001f9c' }}>
                 <Sliders size={18} />
               </div>
               <div>
@@ -1105,7 +1111,7 @@ export const SettingsPage = () => {
           <div className="settings-card-header">
             <div>
               <div className="settings-card-title"><FileText size={18} color="#001f9c" /> Tracking Number Sequence (QF-PDAS-DC-01)</div>
-              <div className="settings-card-subtitle">Issued ONLY on Final Approver approval. Set where numbering starts / ends. Example preview: <strong>{peekNextTrackingNumber?.() || '—'}</strong></div>
+              <div className="settings-card-subtitle">Issued when the work order is assigned, after final approval. Set where numbering starts / ends. Example preview: <strong>{peekNextTrackingNumber?.() || '—'}</strong></div>
             </div>
           </div>
           {(() => {

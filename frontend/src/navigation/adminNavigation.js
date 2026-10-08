@@ -1,7 +1,6 @@
 import {
   LayoutGrid,
   Mail,
-  Clock,
   Folder,
   Calendar,
   Archive,
@@ -18,7 +17,6 @@ export const adminNavigation = {
   operations: [
     { id: 'executive-dashboard', label: 'Dashboard', icon: LayoutGrid },
     { id: 'job-requests', label: 'Job Requests', icon: Mail, badgeKey: 'pendingApprovals', badgeColor: '#f59e0b' },
-    { id: 'approval-history', label: 'Approval History', icon: Clock },
     { id: 'preventive-calendar', label: 'Preventive Calendar', icon: Calendar }
   ],
   management: [

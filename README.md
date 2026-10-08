@@ -17,7 +17,7 @@ It digitizes maintenance requests, replacing manual, verbal, and handwritten rep
 
 - Risk levels: **Low Risk / Medium Risk / High Risk** (colored badges with icons).
 - **No digital signatures.** The official QF-PDAS-DC-01 form is printed and physically
-  signed (client, immediate supervisor, PDAS Head, Campus Administrator).
+  signed (client, immediate supervisor, Administrator, Campus Administrator).
 - A ticket **cannot** move to Approved or Ongoing until PDAS Admin confirms the
   signed hardcopy (`PUT /api/job-requests/:id/signed-form`).
 - Every status change is written to `job_request_status_history` **and** `audit_log`.

@@ -43,14 +43,14 @@ export function FormField({ label, required = false, hint = null, error = null, 
   );
 }
 
-export function TextInput({ className = '', ...props }) {
-  return <input type="text" {...props} className={`form-input${className ? ` ${className}` : ''}`} />;
+export function TextInput({ className = '', value, ...props }) {
+  return <input type="text" value={value ?? ''} {...props} className={`form-input${className ? ` ${className}` : ''}`} />;
 }
 
-export function TextArea({ className = '', ...props }) {
-  return <textarea {...props} className={`form-textarea${className ? ` ${className}` : ''}`} />;
+export function TextArea({ className = '', value, ...props }) {
+  return <textarea value={value ?? ''} {...props} className={`form-textarea${className ? ` ${className}` : ''}`} />;
 }
 
-export function SelectInput({ className = '', ...props }) {
-  return <select {...props} className={`form-select${className ? ` ${className}` : ''}`} />;
+export function SelectInput({ className = '', value, ...props }) {
+  return <select value={value ?? ''} {...props} className={`form-select${className ? ` ${className}` : ''}`} />;
 }

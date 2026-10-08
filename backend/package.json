@@ -10,6 +10,16 @@
     "seed:admin": "node src/scripts/seedAdmin.js",
     "seed:test-accounts": "node src/scripts/seedTestAccounts.js",
     "seed:all": "node src/scripts/seedAdmin.js && node src/scripts/seedTestAccounts.js",
+    "repair:roles": "node scripts/repairRoleEnum.mjs",
+    "repair:text": "node scripts/widenTextColumns.mjs",
+    "repair:enums": "node scripts/repairEnums.mjs",
+    "repair:all": "node scripts/repairEnums.mjs && node scripts/repairRoleEnum.mjs && node scripts/widenTextColumns.mjs",
+    "check:login": "node scripts/check-login.mjs",
+    "check:stats": "node scripts/checkStats.mjs",
+    "check:routes": "node scripts/checkRoutes.mjs",
+    "smoke:live": "node scripts/smokeLive.mjs",
+    "smoke:chain": "node scripts/chainSmoke.mjs",
+    "reset:password": "node scripts/reset-password.mjs",
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {

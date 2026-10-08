@@ -22,15 +22,23 @@ export const StatusBadge = ({ status }) => {
       case 'under-review':
       case 'review':
         return { cls: 'status-under-review', icon: FileSearch, label: 'Under Review' };
+      case 'pending-final-approval':
+      case 'pending-final':
       case 'awaiting-signatures':
       case 'awaiting':
-        return { cls: 'status-awaiting', icon: Clock, label: 'Awaiting Signatures' };
+        return { cls: 'status-awaiting', icon: Clock, label: 'Pending Final Approval' };
       case 'approved':
         return { cls: 'status-approved', icon: CheckCircle2, label: 'Approved' };
       case 'in-progress':
       case 'ongoing':
       case 'ongoing-work-orders':
         return { cls: 'status-progress', icon: PlayCircle, label: 'Ongoing' };
+      case 'on-hold':
+        return { cls: 'status-on-hold', icon: Minus, label: 'On Hold' };
+      case 'returned':
+      case 'returned-for-revision':
+      case 'needs-revision':
+        return { cls: 'status-returned', icon: ArrowUpRight, label: 'Returned' };
       case 'completed':
       case 'resolved':
       case 'completed-repairs':
@@ -89,7 +97,7 @@ export const UrgencyBadge = ({ urgency }) => {
 
 export const CategoryPill = ({ category }) => {
   return (
-    <span className="category-pill" style={{ display: 'inline-block', padding: '3px 8px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '11.5px', fontWeight: '500', color: '#475569' }}>
+    <span className="category-pill" style={{ display: 'inline-block', padding: '3px 8px', background: 'var(--bg-muted)', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '11.5px', fontWeight: '500', color: '#475569' }}>
       {category || 'General'}
     </span>
   );

@@ -23,7 +23,7 @@ export const EmptyState = ({
         width: '56px',
         height: '56px',
         borderRadius: '50%',
-        background: '#f1f5f9',
+        background: 'var(--bg-muted)',
         color: '#64748b',
         display: 'flex',
         alignItems: 'center',

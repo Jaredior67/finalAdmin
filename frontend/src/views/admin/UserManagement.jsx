@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Users, 
   Plus,
@@ -19,9 +19,12 @@ import {
   Pencil,
   UserCheck,
   UserX,
-  Trash2
+  Trash2,
+  Landmark
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
+import { useToast } from '../../components/ui/Toast';
+import { apiGetSupervisors, apiGetSupervisorAssignments, apiAssignSupervisor } from '../../backend/api';
 import { Modal } from '../../components/common/Modal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { RegisterModal } from '../../components/auth/RegisterModal';
@@ -29,6 +32,8 @@ import { RegisterModal } from '../../components/auth/RegisterModal';
 const userRoleLabel = (user) => {
   const role = String(user?.role || user?.userType || '').trim().toLowerCase();
   if (role === 'admin' || role === 'administrator') return 'Admin';
+  if (role === 'campus_admin' || role === 'campus_administrator' || role === 'approver') return 'Approver';
+  if (role === 'supervisor') return 'Supervisor';
   if (role === 'technician' || role === 'maintenance' || role === 'tech') return 'Maintenance Personnel';
   if (role === 'staff') return 'Staff';
   if (role === 'faculty') return 'Faculty';
@@ -43,6 +48,22 @@ const getRoleBadgeStyle = (user) => {
       color: '#991b1b',
       border: '1px solid #fecaca',
       icon: <Shield size={13} />
+    };
+  }
+  if (role === 'campus_admin' || role === 'campus_administrator' || role === 'approver') {
+    return {
+      bg: '#fef3c7',
+      color: '#92400e',
+      border: '1px solid #fde68a',
+      icon: <Landmark size={13} />
+    };
+  }
+  if (role === 'supervisor') {
+    return {
+      bg: '#e0e7ff',
+      color: '#3730a3',
+      border: '1px solid #c7d2fe',
+      icon: <UserCheck size={13} />
     };
   }
   if (role === 'maintenance' || role === 'technician' || role === 'tech') {
@@ -87,10 +108,36 @@ export const UserManagement = () => {
     addOffice,
     addDepartment
   } = useData();
+  const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState('verified'); // 'verified' | 'pending-id' | 'rejected-logs'
+  const [activeTab, setActiveTabState] = useState(() => {
+    return (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fixit_user_mgmt_tab')) || 'verified';
+  });
+  const setActiveTab = (tab) => {
+    setActiveTabState(tab);
+    try { sessionStorage.setItem('fixit_user_mgmt_tab', tab); } catch {}
+  };
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+
+  /* Supervisor assignment (paper: admin designates the Supervisor function,
+     then assigns which Faculty/Staff accounts report to each Supervisor).
+     Options come from GET /users/supervisors; the account being edited has its
+     current supervisor resolved from GET /users/supervisor-assignments, because
+     GET /users does not return supervisor_id. */
+  const [supervisors, setSupervisors] = useState([]);
+  const [editSupervisorId, setEditSupervisorId] = useState('');
+  // Sequence token for the assignment lookup: a slow response for the account
+  // that was edited first must not overwrite the one now on screen.
+  const editFetchRef = useRef(0);
+
+  useEffect(() => {
+    let live = true;
+    apiGetSupervisors()
+      .then(rows => { if (live) setSupervisors(rows); })
+      .catch(requestError => toast(requestError.message || 'The supervisors list could not be loaded.', 'error'));
+    return () => { live = false; };
+  }, [toast]);
   
   // Maintenance creation modal
   const [isTechModalOpen, setIsTechModalOpen] = useState(false);
@@ -130,8 +177,13 @@ export const UserManagement = () => {
       (u.designation && u.designation.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (u.idNumber && u.idNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (u.phone && u.phone.includes(searchTerm));
-    const userRole = u.role === 'Technician' || u.userType === 'Maintenance' ? 'Maintenance' : (u.role || u.userType || 'Faculty');
-    const matchesType = typeFilter === 'all' || userRole.toLowerCase() === typeFilter.toLowerCase();
+    const normalizedRole = userRoleLabel(u).toLowerCase();
+    const targetType = typeFilter.toLowerCase();
+    const matchesType = typeFilter === 'all' ||
+      normalizedRole === targetType ||
+      (targetType === 'approver' && (normalizedRole.includes('approver') || String(u.role).toLowerCase().includes('campus_admin'))) ||
+      (targetType === 'maintenance' && normalizedRole.includes('maintenance')) ||
+      String(u.role || '').toLowerCase() === targetType;
     return matchesSearch && matchesType;
   });
 
@@ -228,9 +280,43 @@ export const UserManagement = () => {
       department: user.department || '',
       designation: user.designation || '',
       phone: user.phone || user.contactNumber || '',
-      role: normalizedRole
+      role: normalizedRole,
+      isSupervisor: Boolean(user.isSupervisor || user.is_supervisor || rawRole === 'supervisor')
     });
+    setEditSupervisorId('');
     setIsEditModalOpen(true);
+
+    // Resolve who this account currently reports to. It is not part of the
+    // list the table renders, so it is read here, when the edit form opens.
+    const fetchSeq = ++editFetchRef.current;
+    apiGetSupervisorAssignments()
+      .then(data => {
+        if (fetchSeq !== editFetchRef.current) return;
+        const employee = (data?.employees || []).find(e => Number(e.id) === Number(user.id));
+        setEditSupervisorId(employee?.supervisor_id ? String(employee.supervisor_id) : '');
+      })
+      .catch(requestError => {
+        if (fetchSeq !== editFetchRef.current) return;
+        toast(requestError.message || 'The current supervisor could not be loaded.', 'error');
+      });
+  };
+
+  /* PUT /users/:id/assign-supervisor — the paper allows reassignment at any
+     time, so this saves on change instead of waiting for "Save Changes"
+     (which only carries profile fields). A rejected assignment rolls the
+     select back to the last value the server accepted and says why. */
+  const handleChangeSupervisor = async (event) => {
+    if (!editingUser) return;
+    const nextValue = event.target.value;
+    const previousValue = editSupervisorId;
+    setEditSupervisorId(nextValue);
+    try {
+      const result = await apiAssignSupervisor(editingUser.id, nextValue === '' ? null : Number(nextValue));
+      toast(result?.message || 'Supervisor assignment updated.');
+    } catch (requestError) {
+      setEditSupervisorId(previousValue);
+      toast(requestError.message || 'The supervisor assignment could not be saved.', 'error');
+    }
   };
 
   const handleSaveEdit = (event) => {
@@ -238,8 +324,13 @@ export const UserManagement = () => {
     if (!editingUser) return;
     const roleFields = editForm.role === 'Maintenance'
       ? { role: 'Technician', userType: 'Maintenance' }
-      : { role: editForm.role, userType: editForm.role };
-    updateUser(editingUser.id, { ...editForm, ...roleFields });
+      : editForm.role === 'Campus Admin' || editForm.role === 'Approver'
+        ? { role: 'campus_admin', userType: 'campus_admin' }
+        : { role: editForm.role, userType: editForm.role };
+    // The designation flag rides along with the profile fields, so a refused
+    // save (bad role, server down) must say so: userDataError is never rendered.
+    updateUser(editingUser.id, { ...editForm, ...roleFields, isSupervisor: Boolean(editForm.isSupervisor), is_supervisor: editForm.isSupervisor ? 1 : 0 })
+      .catch(requestError => toast(requestError.message || 'The account changes could not be saved.', 'error'));
     setIsEditModalOpen(false);
     setEditingUser(null);
   };
@@ -308,7 +399,7 @@ export const UserManagement = () => {
           <form onSubmit={handleAddOffice}>
             <label className="form-label">Add Office</label>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <input className="form-input" value={newOffice} onChange={event => setNewOffice(event.target.value)} placeholder="e.g. Office of the Registrar" required />
+              <input className="form-input" value={newOffice ?? ''} onChange={event => setNewOffice(event.target.value)} placeholder="e.g. Office of the Registrar" required />
               <button type="submit" className="btn btn-primary"><Plus size={15} /> Add</button>
             </div>
             <div style={{ fontSize: '12px', color: '#64748b', marginTop: '8px' }}>{offices.length} offices available</div>
@@ -316,7 +407,7 @@ export const UserManagement = () => {
           <form onSubmit={handleAddDepartment}>
             <label className="form-label">Add Department / Program</label>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <input className="form-input" value={newDepartment} onChange={event => setNewDepartment(event.target.value)} placeholder="e.g. BS Architecture" required />
+              <input className="form-input" value={newDepartment ?? ''} onChange={event => setNewDepartment(event.target.value)} placeholder="e.g. BS Architecture" required />
               <button type="submit" className="btn btn-primary"><Plus size={15} /> Add</button>
             </div>
             <div style={{ fontSize: '12px', color: '#64748b', marginTop: '8px' }}>{departments.length} departments/programs available</div>
@@ -428,7 +519,9 @@ export const UserManagement = () => {
             <option value="all">All Roles</option>
             <option value="Faculty">Faculty</option>
             <option value="Staff">Staff</option>
+            <option value="Supervisor">Supervisor</option>
             <option value="Maintenance">Maintenance Personnel</option>
+            <option value="Approver">Approver (Campus Admin)</option>
             <option value="Admin">Admin</option>
           </select>
         )}
@@ -469,21 +562,39 @@ export const UserManagement = () => {
                         {(() => {
                           const badge = getRoleBadgeStyle(user);
                           return (
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              padding: '3px 9px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: '700',
-                              background: badge.bg,
-                              color: badge.color,
-                              border: badge.border
-                            }}>
-                              {badge.icon}
-                              {userRoleLabel(user)}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '3px 9px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                background: badge.bg,
+                                color: badge.color,
+                                border: badge.border
+                              }}>
+                                {badge.icon}
+                                {userRoleLabel(user)}
+                              </span>
+                              {Boolean(user.isSupervisor || user.is_supervisor) && (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  background: '#e0e7ff',
+                                  color: '#3730a3',
+                                  border: '1px solid #c7d2fe'
+                                }}>
+                                  <UserCheck size={12} /> Immediate Supervisor
+                                </span>
+                              )}
+                            </div>
                           );
                         })()}
                       </td>
@@ -593,7 +704,7 @@ export const UserManagement = () => {
         </div>
       )}
 
-      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit User Account" maxWidth="520px">
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} onBack={() => setIsEditModalOpen(false)} title="Edit User Account" maxWidth="520px">
         <form onSubmit={handleSaveEdit}>
           {['name', 'email', 'department', 'designation', 'phone'].map(field => (
             <div className="form-group" key={field}>
@@ -601,7 +712,7 @@ export const UserManagement = () => {
               <input
                 className="form-input"
                 type={field === 'email' ? 'email' : 'text'}
-                value={editForm[field]}
+                value={editForm[field] ?? ''}
                 onChange={event => setEditForm({ ...editForm, [field]: event.target.value })}
                 required={field === 'name' || field === 'email'}
               />
@@ -618,8 +729,52 @@ export const UserManagement = () => {
               <option value="Faculty">Faculty</option>
               <option value="Staff">Staff</option>
               <option value="Maintenance">Maintenance Personnel</option>
+              <option value="Campus Admin">Campus Admin / Approver</option>
             </select>
           </div>
+
+          {(editForm.role === 'Faculty' || editForm.role === 'Staff') && (
+            <>
+              <div className="form-group" style={{ background: 'var(--bg-sunken)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle, #e2e8f0)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', color: '#0f172a', fontSize: '13px' }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(editForm.isSupervisor)}
+                    onChange={e => setEditForm({ ...editForm, isSupervisor: e.target.checked })}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <span>Designate as Immediate Supervisor / Program Head</span>
+                </label>
+                <p style={{ margin: '4px 0 0 24px', fontSize: '11.5px', color: '#64748b' }}>
+                  Grants approval authority over pending job requests submitted by department faculty and staff.
+                </p>
+              </div>
+
+              {/* Employee → Supervisor side of the same paper feature: which
+                  Supervisor this Faculty/Staff account falls under. Saved as
+                  soon as it is changed, since the server owns the assignment. */}
+              <div className="form-group">
+                <label className="form-label">Reports to (Immediate Supervisor)</label>
+                <select
+                  className="form-select"
+                  value={editSupervisorId}
+                  onChange={handleChangeSupervisor}
+                >
+                  <option value="">Unassigned</option>
+                  {supervisors
+                    .filter(sup => Number(sup.id) !== Number(editingUser?.id))
+                    .map(sup => (
+                      <option key={sup.id} value={String(sup.id)}>
+                        {sup.name}{sup.department ? ` — ${sup.department}` : ''}
+                      </option>
+                    ))}
+                </select>
+                <div className="form-help">
+                  Saved immediately. Choose &quot;Unassigned&quot; to clear this account&apos;s supervisor.
+                </div>
+              </div>
+            </>
+          )}
           <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Save Changes</button>
         </form>
       </Modal>
@@ -810,6 +965,7 @@ export const UserManagement = () => {
       <Modal
         isOpen={isRejectModalOpen}
         onClose={() => setIsRejectModalOpen(false)}
+        onBack={() => setIsRejectModalOpen(false)}
         title="Reject Registration Application"
         maxWidth="520px"
       >
@@ -867,12 +1023,13 @@ export const UserManagement = () => {
       <Modal
         isOpen={isTechModalOpen}
         onClose={() => setIsTechModalOpen(false)}
+        onBack={() => setIsTechModalOpen(false)}
         title="Create Maintenance Personnel Account (Admin Only)"
         maxWidth="600px"
       >
         <form onSubmit={handleCreateTechnician}>
           <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
-            Maintenance personnel accounts are <strong>strictly created by the PDAS Director</strong>. No public self-registration is allowed for this role.
+            Maintenance accounts are created by the PDAS Director. They cannot be self-registered.
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
@@ -1036,7 +1193,7 @@ export const UserManagement = () => {
           <div>
             {/* User Info Details */}
             <div style={{
-              background: '#f8fafc',
+              background: 'var(--bg-sunken)',
               border: '1px solid #e2e8f0',
               borderRadius: '12px',
               padding: '16px',
@@ -1094,19 +1251,31 @@ export const UserManagement = () => {
                 background: '#0f172a',
                 overflow: 'hidden'
               }}>
-                <img
-                  src={selectedPendingReg.idPreviewUrl}
-                  alt="Attached Photo of ID"
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '340px',
-                    borderRadius: '8px',
-                    objectFit: 'contain'
-                  }}
-                />
+                {selectedPendingReg.idPhotoUrl ? (
+                  <img
+                    src={selectedPendingReg.idPhotoUrl}
+                    alt="Attached Photo of ID"
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '340px',
+                      borderRadius: '8px',
+                      objectFit: 'contain'
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    padding: '28px 16px',
+                    color: '#94a3b8',
+                    fontSize: '13px',
+                    background: '#1e293b',
+                    borderRadius: '8px'
+                  }}>
+                    No ID photo was attached to this application.
+                  </div>
+                )}
               </div>
               <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '6px', textAlign: 'center' }}>
-                File: <code>{selectedPendingReg.idFileName}</code>
+                Attached by the applicant for identity confirmation.
               </div>
             </div>
           </div>

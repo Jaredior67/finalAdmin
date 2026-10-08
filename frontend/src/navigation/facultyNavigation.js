@@ -4,7 +4,6 @@ import {
   FileText,
   History,
   MessageSquare,
-  Folder,
   Tags,
   Settings
 } from 'lucide-react';
@@ -18,7 +17,6 @@ export const facultyNavigation = {
   ],
   campus: [
     { id: 'faculty-messages', label: 'Messages', icon: MessageSquare, badgeKey: 'unreadMessagesCount', badgeColor: '#f59e0b' },
-    { id: 'faculty-documents', label: 'Official Job Orders', icon: Folder },
     { id: 'replacement-requests', label: 'Add Replacement', icon: Tags, badgeKey: 'replacementCount', badgeColor: '#dc2626' },
     { id: 'settings', label: 'Settings', icon: Settings }
   ]

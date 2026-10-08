@@ -3,7 +3,8 @@ import { Lock, AlertCircle, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { useAuth, TEST_PERSONAS } from '../../context/AuthContext';
 import { RegisterModal } from './RegisterModal';
-import fixitLogo from '../../assets/fixit-logo.png';
+import { Spinner } from '../ui/Spinner';
+import fixitLogo from '../../assets/fixit-official-logo.png';
 
 export const LoginModal = () => {
   const { isLoginModalOpen, setIsLoginModalOpen, loginWithCredentials } = useAuth();
@@ -22,13 +23,17 @@ export const LoginModal = () => {
     setError('');
   };
 
+  const [isLoading, setIsLoading] = useState(false);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) {
       setError('Please provide your username/email and password.');
       return;
     }
+    setIsLoading(true);
     const res = await loginWithCredentials(email, password, selectedRole);
+    setIsLoading(false);
     if (res.success) {
       setError('');
       setIsLoginModalOpen(false);
@@ -81,7 +86,7 @@ export const LoginModal = () => {
 
           {/* Quick Demo Persona Pills */}
           <div style={{
-            background: '#f8fafc',
+            background: 'var(--bg-sunken)',
             border: '1px solid #e2e8f0',
             borderRadius: '12px',
             padding: '10px',
@@ -198,9 +203,10 @@ export const LoginModal = () => {
               type="submit"
               className="btn btn-primary"
               style={{ flex: 2 }}
+              disabled={isLoading}
             >
-              <Lock size={16} />
-              Sign In
+              {isLoading ? <Spinner size={16} color="#ffffff" /> : <Lock size={16} />}
+              {isLoading ? 'Signing In…' : 'Sign In'}
             </button>
           </div>
 

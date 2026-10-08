@@ -7,9 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node scripts/queue-smoke.mjs && node scripts/faculty-smoke.mjs && node scripts/faculty-dashboard-smoke.mjs && node scripts/calendar-smoke.mjs && node scripts/request-intake-smoke.mjs && node scripts/persistence-smoke.mjs && node scripts/charts-smoke.mjs"
   },
   "dependencies": {
+    "html5-qrcode": "^2.3.8",
+    "jsqr": "^1.4.0",
     "jszip": "^3.10.2",
     "lucide-react": "^1.39.0",
     "qrcode": "^1.5.4",

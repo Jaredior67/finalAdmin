@@ -41,7 +41,7 @@ export const DataTable = ({
       boxShadow: 'var(--shadow-subtle)'
     }}>
       <table className="data-table table-nowrap" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13.5px' }}>
-        <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 5, borderBottom: '1px solid #e2e8f0' }}>
+        <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-sunken)', zIndex: 5, borderBottom: '1px solid #e2e8f0' }}>
           <tr>
             {columns.map((col, idx) => (
               <th
@@ -72,8 +72,8 @@ export const DataTable = ({
                 cursor: onRowClick ? 'pointer' : 'default',
                 transition: 'background 0.15s'
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#f8fafc'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-card)'; }}
             >
               {columns.map((col, cIdx) => (
                 <td

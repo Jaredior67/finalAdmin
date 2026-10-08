@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import isatuLogo from '../../assets/isatu-logo.png';
-import { SCOPE_SECTIONS } from './JobRequestFormOverlay';
+import { SCOPE_SECTIONS } from '../../utils/jobRequestIntake';
+import { PDAS_HEAD_TITLE, APPROVER_TITLE, signatoryName, approvalStamp, formatGovTimestamp } from '../../utils/approvalSignatures';
 
 // Print-safe QF-PDAS-DC-01 sheet. Simple, aligned, black-and-white.
 // Used inside a .print-only wrapper so window.print() outputs only this sheet.
 export const JobRequestPrintSheet = ({ req }) => {
   const [qrUrl, setQrUrl] = useState('');
-  const tracking = req?.controlNo || 'PENDING — issued on Final Approval';
+  const tracking = req?.controlNo || 'PENDING, issued when the work order is assigned';
 
-  // Verification QR (tracking + date + form code) for the printed hardcopy.
+  // Verification QR for the printed hardcopy. The payload MUST match the one
+  // the server embeds in the DOCX/PDF (docxJobRequestGenerator.js) or a scanned
+  // QR resolves differently depending on which output it came from.
   useEffect(() => {
     if (!req) return;
     let live = true;
-    const payload = `FIXIT-PDAS|${tracking}|${req.date || ''}|QF-PDAS-DC-01`;
+    const payload = `FIXIT-REQ:${tracking}`;
     import('qrcode')
       .then((m) => (m.default || m).toDataURL(payload, { width: 96, margin: 1 }))
       .then((url) => { if (live) setQrUrl(url); })
@@ -24,9 +27,20 @@ export const JobRequestPrintSheet = ({ req }) => {
   const scope = req.scopeOfWorks || {};
   const actionTaken = req.actionTaken || {};
   const finalAction = req.finalAction || {};
-  // Urgent dispatches skip wet-ink capture on the system sheet — signatures
-  // are collected later on the signed hardcopy, so hide the blank lines.
-  const isUrgent = req.requestType === 'Urgent Request';
+
+  /* Signatories. A personal name is printed only when the form or the database
+     actually recorded one; otherwise the line stays blank for wet ink and the
+     stamp is suppressed entirely. */
+  const pdasSignatory = signatoryName(actionTaken.pdasHeadName, req.pdasHeadName);
+  const pdasStamp = approvalStamp(actionTaken.pdasHeadName, req.pdasHeadName);
+  const pdasApproved = Boolean(
+    req.adminApproved || ['Pending Final Approval', 'Approved', 'Ongoing', 'Completed'].includes(req.status)
+  );
+  const approverSignatory = signatoryName(finalAction.approverName, req.approverName);
+  const approverStamp = approvalStamp(finalAction.approverName, req.approverName);
+  const approverApproved = Boolean(
+    req.campusAdminApproved || ['Approved', 'Ongoing', 'Completed'].includes(req.status) || finalAction.status === 'Approved'
+  );
 
   const hasOpt = (key, opt) => {
     const sec = scope[key];
@@ -76,15 +90,29 @@ export const JobRequestPrintSheet = ({ req }) => {
             <td style={{ padding: '3px 0' }}><strong>Date of Request:</strong> <u>{req.date || ''}</u></td>
           </tr>
           <tr>
-            <td style={{ padding: '3px 0' }}><strong>Name of Client:</strong> <u>{req.requestedBy || ''}</u></td>
-            {!isUrgent && <td style={{ padding: '3px 0' }}><strong>Signature:</strong> ____________________</td>}
+            <td style={{ padding: '3px 0' }}>
+              <strong>Name of Client:</strong> <u>{req.requestedBy || ''}</u>
+              {(req.requesterApproved || req.status !== 'Draft') && (
+                <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10px', fontStyle: 'italic' }}>
+                  ✓ Electronically approved: {req.requestedBy || 'Requester'}{req.requesterApprovedAt ? ` on ${formatGovTimestamp(req.requesterApprovedAt)}` : ''}
+                </div>
+              )}
+            </td>
+            <td style={{ padding: '3px 0' }}>
+              <strong>Immediate Supervisor:</strong> <u>{req.immediateSupervisor || ''}</u>
+              {(req.supervisorApproved || ['Pending', 'Under Review', 'Pending Final Approval', 'Approved', 'Ongoing', 'Completed'].includes(req.status)) && (
+                <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10px', fontStyle: 'italic' }}>
+                  ✓ Electronically approved: {req.immediateSupervisor || 'Immediate Supervisor'}{req.supervisorApprovedAt ? ` on ${formatGovTimestamp(req.supervisorApprovedAt)}` : ''}
+                </div>
+              )}
+            </td>
           </tr>
           <tr>
             <td style={{ padding: '3px 0' }}><strong>Office of Client:</strong> <u>{req.department || req.office || ''}</u></td>
-            <td style={{ padding: '3px 0' }}><strong>Immediate Supervisor:</strong> <u>{req.immediateSupervisor || ''}</u>{!isUrgent && <> ____ Sig: ____</>}</td>
+            <td style={{ padding: '3px 0' }}><strong>Location:</strong> <u>{req.location || 'Campus Facilities'}</u></td>
           </tr>
-          {req.location && (
-            <tr><td colSpan={2} style={{ padding: '3px 0' }}><strong>Location:</strong> <u>{req.location}</u>{req.contactNumber ? <> &nbsp; <strong>Contact:</strong> <u>{req.contactNumber}</u></> : null}</td></tr>
+          {req.contactNumber && (
+            <tr><td colSpan={2} style={{ padding: '3px 0' }}><strong>Contact:</strong> <u>{req.contactNumber}</u></td></tr>
           )}
         </tbody>
       </table>
@@ -116,22 +144,35 @@ export const JobRequestPrintSheet = ({ req }) => {
         <div>[{actionTaken.endorsedGSMHead?.checked ? 'x' : ' '}] <strong>Endorsed to GSM Head for Work Order</strong> &nbsp; Received by: <u>{actionTaken.endorsedGSMHead?.receivedBy || req.assignedTo || '__________'}</u> Date: <u>{actionTaken.endorsedGSMHead?.date || req.date || '____'}</u></div>
         <div>[{actionTaken.returnedToClient?.checked ? 'x' : ' '}] <strong>Returned to Client</strong> — {actionTaken.returnedToClient?.reason || 'Request cannot be done / PR / JR as per remarks'} &nbsp; Remarks: <u>{actionTaken.returnedToClient?.remarks || req.notes || 'None'}</u></div>
         <div style={{ textAlign: 'center', marginTop: '10px' }}>
-          <div style={{ fontWeight: 'bold' }}><u>{actionTaken.pdasHeadName || 'Head, PDAS'}</u></div>
-          <div style={{ fontSize: '10px' }}>Head, PDAS / Director, Planning Development and Auxiliary Services</div>
+          {pdasApproved && pdasStamp && (
+            <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10px', fontStyle: 'italic', marginBottom: '2px' }}>
+              ✓ Electronically approved: {pdasStamp}{req.adminApprovedAt ? ` on ${formatGovTimestamp(req.adminApprovedAt)}` : ''}
+            </div>
+          )}
+          <div style={{ fontWeight: 'bold' }}><u>{pdasSignatory}</u></div>
+          <div style={{ fontSize: '10px' }}>{PDAS_HEAD_TITLE}</div>
         </div>
       </div>
 
       {/* Final Action */}
       <div style={{ border: '1.5px solid #000', padding: '6px 8px', fontSize: '11px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-          <div><strong>FINAL ACTION:</strong> [{finalAction.status === 'Approved' ? 'x' : ' '}] Approved [{finalAction.status === 'Disapproved' ? 'x' : ' '}] Disapproved</div>
+          <div><strong>FINAL ACTION:</strong> [{finalAction.status === 'Approved' || ['Approved', 'Ongoing', 'Completed'].includes(req.status) ? 'x' : ' '}] Approved [{finalAction.status === 'Disapproved' || req.status === 'Rejected' || req.status === 'Returned' ? 'x' : ' '}] Disapproved</div>
           <div>Remarks: <u>{finalAction.remarks || 'N/A'}</u></div>
         </div>
         <div style={{ textAlign: 'center', marginTop: '10px' }}>
-          <div style={{ fontWeight: 'bold' }}><u>{finalAction.approverName || 'Approver'}</u></div>
-          <div style={{ fontSize: '10px' }}>Approver (Final Action)</div>
+          {approverApproved && approverStamp && (
+            <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10px', fontStyle: 'italic', marginBottom: '2px' }}>
+              ✓ Electronically approved: {approverStamp}{req.campusAdminApprovedAt ? ` on ${formatGovTimestamp(req.campusAdminApprovedAt)}` : ''}
+            </div>
+          )}
+          <div style={{ fontWeight: 'bold' }}><u>{approverSignatory}</u></div>
+          <div style={{ fontSize: '10px' }}>{APPROVER_TITLE}</div>
         </div>
         <div style={{ fontSize: '9px', textAlign: 'right', marginTop: '6px' }}>Copy distribution: 1 – PDAS, 1 – GSM, 1 – Client</div>
+        <div style={{ fontSize: '8.5px', marginTop: '6px', paddingTop: '5px', borderTop: '1px dashed #000', color: '#334155', fontStyle: 'italic', textAlign: 'center', lineHeight: 1.35 }}>
+          <strong>Notice / Disclaimer:</strong> The electronic approvals recorded on this form are internal, timestamped, auditable administrative confirmations and do not constitute legally binding digital signatures. This official document is automatically generated and archived for university facility audit, inventory, and official printing.
+        </div>
       </div>
 
       {/* Verification strip — scan the hardcopy to check it against the record */}

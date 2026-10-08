@@ -35,12 +35,25 @@ CREATE TABLE IF NOT EXISTS `users` (
   `address`        TEXT         DEFAULT NULL,
   `birthday`       DATE         DEFAULT NULL,
   `age`            INT          DEFAULT NULL,
-  `id_photo_url`   VARCHAR(500) DEFAULT NULL,
+  -- id_photo_url holds a base64 data-URL of the registrant's ID. It used to be
+  -- VARCHAR(500), which silently truncated every realistic photo to garbage
+  -- because this MariaDB runs WITHOUT STRICT_TRANS_TABLES (see the ENUM
+  -- VOCABULARY note below). MEDIUMTEXT holds 16MB; autoSetup widens any older
+  -- VARCHAR column on boot.
+  `id_photo_url`   MEDIUMTEXT   DEFAULT NULL,
   `status`         ENUM('active','inactive') NOT NULL DEFAULT 'active',
   `failed_login_attempts` INT NOT NULL DEFAULT 0,
   `locked_until`          DATETIME DEFAULT NULL,
+  -- is_supervisor: designation flag set by System Administrator on faculty/staff.
+  -- Supervisor is NOT a role; it is an admin-managed flag on this account.
+  `is_supervisor`  TINYINT(1) NOT NULL DEFAULT 0,
+  -- supervisor_id: the designated supervisor assigned to this Faculty/Staff member.
+  `supervisor_id`  INT DEFAULT NULL,
+  -- consent_at: timestamp when the user accepted the data privacy notice (RA 10173).
+  `consent_at`     DATETIME DEFAULT NULL,
   `created_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `updated_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `fk_user_supervisor` FOREIGN KEY (`supervisor_id`) REFERENCES `users`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------
@@ -63,9 +76,12 @@ CREATE TABLE IF NOT EXISTS `registration_requests` (
   `address`          TEXT         DEFAULT NULL,
   `birthday`         DATE         DEFAULT NULL,
   `age`              INT          DEFAULT NULL,
-  `id_photo_url`     VARCHAR(500) DEFAULT NULL,
+  -- MEDIUMTEXT, not VARCHAR(500): see the note on `users`.`id_photo_url`.
+  `id_photo_url`     MEDIUMTEXT   DEFAULT NULL,
   `status`           ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
   `rejection_reason` VARCHAR(255) DEFAULT NULL,
+  -- consent_at: timestamp when the registrant accepted the data privacy notice (RA 10173).
+  `consent_at`       DATETIME DEFAULT NULL,
   `reviewed_by`      INT DEFAULT NULL,
   `reviewed_at`      TIMESTAMP NULL DEFAULT NULL,
   `created_at`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -80,29 +96,69 @@ CREATE TABLE IF NOT EXISTS `campus_locations` (
   `building`    VARCHAR(150) NOT NULL,
   `floor`       VARCHAR(50)  DEFAULT NULL,
   `room`        VARCHAR(100) DEFAULT NULL,
+  -- qr_code: the payload printed on the room/building tag. Chapter 3 states the
+  -- location table lists campus areas "together with their QR codes", so the
+  -- column is part of the requirement, not an extra. The scanner accepts this
+  -- raw value directly (see QrCodeScannerModal.jsx payload parsing).
+  `qr_code`     VARCHAR(64)  DEFAULT NULL,
   `description` VARCHAR(255) DEFAULT NULL,
-  `created_at`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `created_at`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_cl_qr_code` (`qr_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------
 -- job_requests  (a.k.a. "requisitions")
+-- ------------------------------------------------------------
+-- THIS IS THE AUTHORITATIVE DEFINITION.
+--
+-- It used to describe only the original eight columns, while the 4-party
+-- approval chain (supervisor_id, admin_approved, campus_admin_approved,
+-- official_tracking_no, rejection_stage, …) existed solely as ensureColumn()
+-- migrations in scripts/autoSetup.js. Those migrations ran only in the "table
+-- already exists" branch, so importing this file on a clean database produced a
+-- job_requests table that the INSERT in requisitionRoutes could not write to at
+-- all. The table below is the post-migration shape, so a fresh import and a
+-- migrated database are now identical.
+--
+-- ENUM VOCABULARY
+-- `category` and `status` must be a superset of every value the application can
+-- write (see REQUEST_CATEGORIES / REQUEST_STATUSES in scripts/autoSetup.js).
+-- This MariaDB runs WITHOUT STRICT_TRANS_TABLES, so an ENUM value that does not
+-- match is not rejected — it is silently stored as '' with no warning, and the
+-- API still reports success. That failure mode previously destroyed the
+-- category of every ticket except "Electrical". backend/tests/enumVocabulary.test.js
+-- fails if these lists and the application's lists diverge.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `job_requests` (
   `id`                            INT AUTO_INCREMENT PRIMARY KEY,
   `ticket_no`                     VARCHAR(30) NOT NULL UNIQUE,
   `requester_id`                  INT NOT NULL,
   `location_id`                   INT DEFAULT NULL,
-  `category`                      ENUM('electrical','plumbing','carpentry','ict','janitorial','other') NOT NULL DEFAULT 'other',
+  `category`                      ENUM('Electrical','Air Conditioning','Mechanical','Water/Sanitary','Physical Structures','Drawing/Design','Safety & Compliance','Urgent Hazard') NOT NULL DEFAULT 'Electrical',
   `description`                   TEXT NOT NULL,
   `urgency_level`                 ENUM('Low Risk','Medium Risk','High Risk') NOT NULL DEFAULT 'Medium Risk',
   `request_type`                  ENUM('Standard Request','Urgent Request') NOT NULL DEFAULT 'Standard Request',
   `is_standard_form_filled`       BOOLEAN NOT NULL DEFAULT TRUE,
   `immediate_supervisor`          VARCHAR(150) DEFAULT NULL,
-  `status`                        ENUM('Pending','Under Review','Awaiting Signatures','Approved','Ongoing','Completed','Rejected') NOT NULL DEFAULT 'Pending',
+  -- photo_url: the optional photo the requester attaches to the request.
+  -- Chapter 1 and Chapter 3 both require it ("submit a maintenance request with
+  -- a photo"). It is stored inline as a base64 data-URL in MEDIUMTEXT. The list
+  -- endpoint strips it so a page of tickets never carries a page of images.
+  `photo_url`                     MEDIUMTEXT DEFAULT NULL,
+  `photo_name`                    VARCHAR(255) DEFAULT NULL,
+  -- qr_code_ref: the campus_locations tag this request was filed against —
+  -- scanned at intake, or composed from the room name when it was typed by
+  -- hand. It is what lets a ticket be traced back to the physical tag on the
+  -- wall, which is the whole point of printing the tags.
+  `qr_code_ref`                   VARCHAR(64) DEFAULT NULL,
+  `priority`                      ENUM('low','medium','high','urgent') NOT NULL DEFAULT 'medium',
+  `status`                        ENUM('Draft','Pending Supervisor Approval','Pending','Under Review','Pending Final Approval','Awaiting Signatures','Approved','Ongoing','On Hold','Returned','Completed','Rejected') NOT NULL DEFAULT 'Pending',
   `assigned_to`                   INT DEFAULT NULL,
   `approved_by`                   INT DEFAULT NULL,
   `scheduled_date`                DATE DEFAULT NULL,
   `completed_at`                  DATETIME DEFAULT NULL,
+  `created_at`                    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`                    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `is_archived`                   BOOLEAN NOT NULL DEFAULT FALSE,
   `archived_at`                   DATETIME DEFAULT NULL,
   `is_replacement_flagged`        BOOLEAN NOT NULL DEFAULT FALSE,
@@ -112,15 +168,39 @@ CREATE TABLE IF NOT EXISTS `job_requests` (
   `signed_form_confirmed`         BOOLEAN NOT NULL DEFAULT FALSE,
   `signed_form_confirmed_by`      INT DEFAULT NULL,
   `signed_form_confirmed_at`      DATETIME DEFAULT NULL,
-  `created_at`                    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at`                    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  -- 4-party approval chain: requester -> Immediate Supervisor -> PDAS -> Campus Admin
+  `requester_approved`            BOOLEAN NOT NULL DEFAULT FALSE,
+  `requester_approved_at`         DATETIME DEFAULT NULL,
+  `supervisor_id`                 INT DEFAULT NULL,
+  `supervisor_approved`           BOOLEAN NOT NULL DEFAULT FALSE,
+  `supervisor_approved_at`        DATETIME DEFAULT NULL,
+  `supervisor_remarks`            TEXT DEFAULT NULL,
+  `admin_approved`                BOOLEAN NOT NULL DEFAULT FALSE,
+  `admin_approved_at`             DATETIME DEFAULT NULL,
+  `admin_remarks`                 TEXT DEFAULT NULL,
+  `admin_field_remarks`           TEXT DEFAULT NULL,
+  `campus_admin_approved`         BOOLEAN NOT NULL DEFAULT FALSE,
+  `campus_admin_approved_at`      DATETIME DEFAULT NULL,
+  `campus_admin_remarks`          TEXT DEFAULT NULL,
+  -- The control number printed on the signed QF-PDAS-DC-01 form. Issued from
+  -- tracking_sequences with an atomic upsert, and overridable by hand, so it
+  -- needs a unique index: two tickets must never carry the same control number
+  -- on paper. MySQL permits many NULLs in a UNIQUE index, so un-numbered rows
+  -- are unaffected.
+  `official_tracking_no`          VARCHAR(50) DEFAULT NULL,
+  `rejection_stage`               VARCHAR(50) DEFAULT NULL,
+  `rejection_remarks`             TEXT DEFAULT NULL,
   CONSTRAINT `fk_jr_requester` FOREIGN KEY (`requester_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_jr_location`  FOREIGN KEY (`location_id`)  REFERENCES `campus_locations`(`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_jr_assignee`  FOREIGN KEY (`assigned_to`)  REFERENCES `users`(`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_jr_approver`  FOREIGN KEY (`approved_by`)  REFERENCES `users`(`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_jr_supervisor` FOREIGN KEY (`supervisor_id`) REFERENCES `users`(`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_jr_signed_by` FOREIGN KEY (`signed_form_confirmed_by`) REFERENCES `users`(`id`) ON DELETE SET NULL,
+  UNIQUE KEY `uq_jr_official_tracking_no` (`official_tracking_no`),
   INDEX `idx_jr_status` (`status`),
   INDEX `idx_jr_requester` (`requester_id`),
-  INDEX `idx_jr_assignee` (`assigned_to`)
+  INDEX `idx_jr_assignee` (`assigned_to`),
+  INDEX `idx_jr_supervisor` (`supervisor_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------
@@ -133,7 +213,7 @@ CREATE TABLE IF NOT EXISTS `job_request_status_history` (
   `from_status`    VARCHAR(50) DEFAULT NULL,
   `to_status`      VARCHAR(50) NOT NULL,
   `changed_by`     INT DEFAULT NULL,
-  `remarks`        VARCHAR(255) DEFAULT NULL,
+  `remarks`        TEXT DEFAULT NULL,
   `created_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_hist_job`  FOREIGN KEY (`job_request_id`) REFERENCES `job_requests`(`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_hist_user` FOREIGN KEY (`changed_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
@@ -151,6 +231,7 @@ CREATE TABLE IF NOT EXISTS `evaluations` (
   `usability`              TINYINT NOT NULL,
   `reliability`            TINYINT NOT NULL,
   `performance_efficiency` TINYINT NOT NULL,
+  `security`               TINYINT NOT NULL,
   `comments`               TEXT DEFAULT NULL,
   `created_at`             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_eval_job`  FOREIGN KEY (`job_request_id`) REFERENCES `job_requests`(`id`) ON DELETE CASCADE,
@@ -158,7 +239,8 @@ CREATE TABLE IF NOT EXISTS `evaluations` (
   CONSTRAINT `chk_eval_fs`  CHECK (`functional_suitability` BETWEEN 1 AND 5),
   CONSTRAINT `chk_eval_us`  CHECK (`usability` BETWEEN 1 AND 5),
   CONSTRAINT `chk_eval_rel` CHECK (`reliability` BETWEEN 1 AND 5),
-  CONSTRAINT `chk_eval_pe`  CHECK (`performance_efficiency` BETWEEN 1 AND 5)
+  CONSTRAINT `chk_eval_pe`  CHECK (`performance_efficiency` BETWEEN 1 AND 5),
+  CONSTRAINT `chk_eval_sec` CHECK (`security` BETWEEN 1 AND 5)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------
@@ -232,6 +314,16 @@ CREATE TABLE IF NOT EXISTS `ticket_sequences` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------
+-- tracking_sequences
+-- Atomic official tracking number generation upon final approval.
+-- Prevents race conditions and tracking number conflicts.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `tracking_sequences` (
+  `year`    YEAR NOT NULL PRIMARY KEY,
+  `last_no` INT  NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ------------------------------------------------------------
 -- notifications
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `notifications` (
@@ -258,6 +350,9 @@ CREATE TABLE IF NOT EXISTS `audit_log` (
   `entity_id`  VARCHAR(50) DEFAULT NULL,
   `details`    TEXT DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  -- SET NULL, never CASCADE: the audit trail is the accountability record and
+  -- must survive the deletion of the account that produced it.
+  CONSTRAINT `fk_audit_actor` FOREIGN KEY (`actor_id`) REFERENCES `users`(`id`) ON DELETE SET NULL,
   INDEX `idx_audit_actor` (`actor_id`),
   INDEX `idx_audit_entity` (`entity`, `entity_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

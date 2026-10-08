@@ -14,24 +14,17 @@ const AuthContext = createContext();
 export const TEST_PERSONAS = [
   {
     key: 'admin',
-    roleName: 'PDAS Director / Head',
-    title: 'PDAS Director',
+    roleName: 'System Administrator',
+    title: 'PDAS Administrator',
     email: 'adminisatu.edu.ph@gmail.com',
     iconText: '🛡️',
   },
   {
     key: 'campus_admin',
     roleName: 'Approver',
-    title: 'Approver',
+    title: 'Campus Administrator (Approver)',
     email: 'campusadmin@isatu.edu.ph',
-    iconText: '🏛️',
-  },
-  {
-    key: 'supervisor',
-    roleName: 'Immediate Supervisor',
-    title: 'Immediate Supervisor / Dept Head',
-    email: 'supervisor@isatu.edu.ph',
-    iconText: '👔',
+    iconText: '🏷️',
   },
   {
     key: 'faculty',
@@ -147,17 +140,28 @@ export const AuthProvider = ({ children }) => {
     // A proper token-based reset flow is a follow-up item (see DEPLOYMENT.md
     // known limitations). For now this is intentionally not implemented
     // against the real backend to avoid a fake success message.
-    return { success: false, error: 'Password reset is not available yet — contact the PDAS office.' };
+    return { success: false, error: 'Password reset is not available. Contact the PDAS office.' };
   };
 
   const normalizedRole = String(currentUser?.role || currentUser?.userType || '').toLowerCase();
   const isCampusAdmin = Boolean(currentUser && (normalizedRole === 'campus_admin' || normalizedRole === 'campus_administrator'));
-  const isSupervisor = Boolean(currentUser && normalizedRole === 'supervisor');
+  // A user is a supervisor if their role is 'supervisor' OR they have the
+  // is_supervisor designation flag set by an admin (faculty/staff users who
+  // also serve as program heads / department heads).
+  const isSupervisor = Boolean(currentUser && (
+    normalizedRole === 'supervisor' ||
+    currentUser.is_supervisor ||
+    currentUser.isSupervisor
+  ));
   const isAdmin = Boolean(currentUser && (normalizedRole === 'admin' || currentUser.isAdmin));
   const isFaculty = Boolean(currentUser && normalizedRole === 'faculty');
   const isStaff = Boolean(currentUser && normalizedRole === 'staff');
   const isMaintenance = Boolean(currentUser && (normalizedRole === 'technician' || normalizedRole === 'maintenance'));
+  // Designated supervisors log in as faculty/staff and use the Faculty/Staff
+  // dashboard (which shows a supervisor queue tab when is_supervisor=true).
+  // isFacultyOrStaff is now true for supervisors as well.
   const isFacultyOrStaff = Boolean(isFaculty || isStaff);
+
 
   return (
     <AuthContext.Provider

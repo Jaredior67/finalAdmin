@@ -87,3 +87,13 @@ export function useToast() {
   if (!ctx) throw new Error('useToast must be used within a ToastProvider');
   return ctx;
 }
+
+/* Same context read, but resolves to null instead of throwing when no provider
+   is mounted. Components that only *optionally* toast use this so they can call
+   it unconditionally at the top of the component: wrapping useToast() in a
+   try/catch is a rules-of-hooks violation, because the linter cannot prove the
+   call runs on every render — and a conditional hook is a real crash risk if
+   the branch ever changes between renders. */
+export function useOptionalToast() {
+  return useContext(ToastContext);
+}

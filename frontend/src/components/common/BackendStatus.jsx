@@ -94,7 +94,7 @@ export function BackendStatus() {
         {/* Message */}
         <div style={{ flex: 1, minWidth: '200px' }}>
           <div style={{ fontWeight: '700', fontSize: '13.5px', marginBottom: '2px' }}>
-            ⚠️ Backend server is not running
+            Server not running
           </div>
           <div style={{ fontSize: '12px', color: '#fca5a5', lineHeight: '1.5' }}>
             Login and all features will fail until the backend is started.

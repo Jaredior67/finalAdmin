@@ -38,10 +38,11 @@ Verified good: bcrypt hashing (cost 10) everywhere; parameterized queries throug
 |---|----------|---------|----------|
 | U1 | Med | Terminology mix: "Request" vs "Requisition" vs "work order" in ~100 user-visible strings (nav, headings, notifications, timeline notes). | e.g. `frontend/src/navigation/facultyNavigation.js:19`, `frontend/src/views/FacultyStaffPortal.jsx`, `frontend/src/context/DataContext.jsx:132,1222` |
 | U2 | Med | Date formats mixed: raw `YYYY-MM-DD` in tables, `toLocaleString` timestamps, `Sep 2, 2026` vs `September 2, 2026`. | `frontend/src/views/*`, `TimeGreeting.jsx:12` |
-| U3 | Med | Styling is one-off inline styles per view instead of shared components/tokens; duplicated portals (`FacultyStaffPortal` vs `views/faculty/*`, `MaintenanceFieldPortal` vs `views/maintenance/*`). | `frontend/src/views/` |
+| U3 | Med | ~~Styling is one-off inline styles per view; duplicated portals~~ — **maintenance side resolved**: `MaintenanceFieldPortal` plus the `views/maintenance/*` shims were collapsed into one `views/maintenance/WorkQueue.jsx` (dead `MaintenanceDashboard` deleted). Filter/queue/card/dialog styling now uses `.queue-*` / `.wo-card-*` / `.btn-flag` classes. The `FacultyStaffPortal` vs `views/faculty/*` duplication is still open. | `frontend/src/views/`, `frontend/src/index.css` |
 | U4 | Low | Dead components: `StatCard`, `DataTable` defined but never imported. | `frontend/src/components/common/` |
 | U5 | Low | Submit button has no loading/disabled double-submit guard (`isSubmitting` declared but unused). | `frontend/src/views/FacultyStaffPortal.jsx:149` |
 | — | — | Already fixed in working tree (verify + commit): stat-card icon slot/2-line labels, table `overflow-x` + category hide <1200px, sidebar scroll + pinned Sign Out, hamburger toggle, hover/focus states, 1366/1024/mobile breakpoints. | `ExecutiveDashboard.jsx`, `Sidebar.jsx`, `index.css` |
+| — | — | Already fixed in working tree: dangling `const oldAssignTechnician =` in `DataContext.jsx` left an orphaned function body, which was a hard syntax error — `npm run build` failed for the whole app. Dead block removed; `frontend` and `backend` tests now pass. | `frontend/src/context/DataContext.jsx:1444` |
 
 ## (c) Accessibility (WCAG 2.1 AA)
 
@@ -68,8 +69,8 @@ Verified good: bcrypt hashing (cost 10) everywhere; parameterized queries throug
 | # | Severity | Finding | Location |
 |---|----------|---------|----------|
 | Q1 | Med | `DataContext.jsx` (~2000 lines) is a god module: state, seed data, API sync, derived stats. Split in Phase 5. | `frontend/src/context/DataContext.jsx` |
-| Q2 | Low | `oxlint`: 0 errors, **121 warnings** — mostly unused imports/variables (`MaintenanceDashboard`, `FacultyStaffPortal`, `ReplacementRequests`, `CommunicationBox`, `PrintLabels`, `UserManagement`, `JobRequests`, `CampusAdminDashboard`, `ExecutiveDashboard`, `DataContext`, `SettingsModal`). | repo-wide |
-| Q3 | Low | Backend tests cover QR helpers only; no API/auth tests; no frontend tests. `npm test` = `node --test tests/`. | `backend/tests/` |
+| Q2 | Low | `oxlint`: 0 errors, **34 warnings** — down from 121; remaining are pre-existing unused exports/imports (`FacultyStaffPortal`, `ReplacementRequests`, `CommunicationBox`, `PrintLabels`, `UserManagement`, `JobRequests`, `CampusAdminDashboard`, `ExecutiveDashboard`, `SettingsModal`) plus `react-hooks/exhaustive-deps` in `DataContext.jsx`. | repo-wide |
+| Q3 | Low | Backend tests cover QR helpers + ticket policy only; no API/auth tests. ~~No frontend tests~~ — **partly resolved**: `frontend/scripts/queue-smoke.mjs` headless-renders the work queue (all saved views, legacy deep links, toolbar controls, card content). Other views are still untested. `npm test` runs both suites. | `backend/tests/`, `frontend/scripts/queue-smoke.mjs` |
 | Q4 | Low | `console.warn` only in `useOfflineAutoSave.js` (acceptable); verify no debug logs remain elsewhere before release. | `frontend/src/utils/useOfflineAutoSave.js` |
 | Q5 | Low | README exists; needs env/roles/lifecycle refresh per Phase 5. | `README.md`, `DEPLOYMENT.md` |
 

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { UserCheck, LogIn, UserPlus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { RegisterModal } from './RegisterModal';
-import fixitLogo from '../../assets/fixit-logo.png';
+import fixitLogo from '../../assets/fixit-official-logo.png';
 
 export const AdminGuard = ({ children }) => {
   const { currentUser, isAdmin, loginAsAdmin, setIsLoginModalOpen } = useAuth();
@@ -41,7 +41,7 @@ export const AdminGuard = ({ children }) => {
           </h2>
           
           <p className="access-denied-desc">
-            Administrative facility controls and executive approvals are restricted <strong>strictly to PDAS Administrators</strong>.
+            Reserved for PDAS Administrator accounts.
           </p>
 
           <div className="current-role-badge-box">
@@ -49,7 +49,7 @@ export const AdminGuard = ({ children }) => {
               <div>
                 Current Session: <strong>{currentUser.name}</strong> ({currentUser.roleTitle || currentUser.role})
                 <div style={{ fontSize: '11.5px', color: '#ef4444', marginTop: '4px', fontWeight: '600' }}>
-                  ⛔ Current role has read-only/standard access
+                  This account has read-only access
                 </div>
               </div>
             ) : (

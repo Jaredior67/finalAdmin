@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart3, CheckCircle2, Download, Filter, RotateCcw, WifiOff } from 'lucide-react';
-import { useData } from '../../context/DataContext';
+import { useData, toLocalISODate } from '../../context/DataContext';
 import { apiGetJobRequests, apiGetEvaluations } from '../../backend/api';
 import { TableSkeleton } from '../../components/common/Skeleton';
 import { EmptyState } from '../../components/common/EmptyState';
 import { FormField, TextInput, SelectInput } from '../../components/ui/FormField';
 
-// Backend (MySQL) rows use snake_case — normalize to the report shape.
+// Backend (MySQL) rows use snake_case â€” normalize to the report shape.
 const mapJobRow = (r) => ({
   controlNo: r.ticket_no || r.controlNo,
   date: String(r.created_at || r.date || '').slice(0, 10),
-  location: [r.building, r.room].filter(Boolean).join(' - ') || r.location || '—',
+  location: [r.building, r.room].filter(Boolean).join(' - ') || r.location || 'â€”',
   category: r.category || 'General',
   urgency: r.urgency_level || r.urgency || 'Medium Risk',
   status: r.status,
   requestType: r.request_type || r.requestType || 'Standard Request',
-  requestedBy: r.requester_name || r.requestedBy || '—',
+  requestedBy: r.requester_name || r.requestedBy || 'â€”',
 });
 
 const mapEvalRow = (e) => ({
@@ -23,6 +23,7 @@ const mapEvalRow = (e) => ({
   usability: e.usability,
   reliability: e.reliability,
   performanceEfficiency: e.performance_efficiency ?? e.performanceEfficiency,
+  security: e.security,
   category: e.category || 'General',
   location: e.building || e.location || 'Unknown',
   resolutionStatus: e.resolution_status || e.resolutionStatus || 'Unknown',
@@ -48,8 +49,14 @@ export const AnalyticsReports = () => {
     setLoadError('');
     try {
       const [jr, ev] = await Promise.all([apiGetJobRequests(), apiGetEvaluations()]);
-      setLiveRequests((jr || []).map(mapJobRow));
-      setLiveEvals((ev || []).map(mapEvalRow));
+      /* /job-requests answers { rows, total, limit, offset } while /evaluations
+         still answers a bare array. Unwrapping both defensively means a shape
+         change on either endpoint degrades to "no live data" instead of
+         throwing and putting the "Live server unreachable" banner up on every
+         visit — which is exactly what `(jr || []).map` did, because `jr` was a
+         truthy object and `.map` is not a function. */
+      setLiveRequests((Array.isArray(jr) ? jr : (jr?.rows || [])).map(mapJobRow));
+      setLiveEvals((Array.isArray(ev) ? ev : (ev?.rows || ev?.evaluations || [])).map(mapEvalRow));
       setUsingLive(true);
     } catch (err) {
       setLoadError(err.message || 'Could not reach the server.');
@@ -116,11 +123,12 @@ export const AnalyticsReports = () => {
     ['functionalSuitability', 'Functional Suitability'],
     ['usability', 'Usability'],
     ['reliability', 'Reliability'],
-    ['performanceEfficiency', 'Performance Efficiency']
+    ['performanceEfficiency', 'Performance Efficiency'],
+    ['security', 'Security']
   ];
   const evaluationAverage = (key, rows = evaluations) => {
     const values = rows.map(item => Number(item[key])).filter(value => value > 0);
-    return values.length ? (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2) : '—';
+    return values.length ? (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2) : 'â€”';
   };
   const evaluationGroups = Object.values(evaluations.reduce((groups, item) => {
     const groupKey = `${item.category || 'General'}|${item.location || 'Unknown'}|${item.resolutionStatus || 'Unknown'}`;
@@ -146,7 +154,7 @@ export const AnalyticsReports = () => {
       .join('\n');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    link.download = `pdas-requests-${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `pdas-requests-${toLocalISODate(new Date())}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
   };
@@ -167,66 +175,6 @@ export const AnalyticsReports = () => {
           <Download size={15} />
           Export Request Data
         </button>
-      </div>
-
-      {/* Report Filters: date range, status, location */}
-      <div className="content-card" style={{ padding: '16px 20px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-          <Filter size={15} color="#001f9c" />
-          <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>Filter Report</span>
-          <span style={{ fontSize: '12px', fontWeight: '400', color: '#64748b' }}>
-            Showing {filteredRequisitions.length} of {requisitions.length} requests
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
-          <FormField label="Date from" htmlFor="report-date-from" style={{ marginBottom: 0 }}>
-            <TextInput
-              id="report-date-from"
-              type="date"
-              value={dateFrom}
-              max={dateTo || undefined}
-              onChange={(e) => setDateFrom(e.target.value)}
-              style={{ height: '38px' }}
-            />
-          </FormField>
-          <FormField label="Date to" htmlFor="report-date-to" style={{ marginBottom: 0 }}>
-            <TextInput
-              id="report-date-to"
-              type="date"
-              value={dateTo}
-              min={dateFrom || undefined}
-              onChange={(e) => setDateTo(e.target.value)}
-              style={{ height: '38px' }}
-            />
-          </FormField>
-          <FormField label="Status" htmlFor="report-status" style={{ marginBottom: 0 }}>
-            <SelectInput
-              id="report-status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{ height: '38px', minWidth: '170px' }}
-            >
-              <option value="all">All statuses</option>
-              {uniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-            </SelectInput>
-          </FormField>
-          <FormField label="Location" htmlFor="report-location" style={{ marginBottom: 0 }}>
-            <SelectInput
-              id="report-location"
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value)}
-              style={{ height: '38px', minWidth: '200px' }}
-            >
-              <option value="all">All locations</option>
-              {uniqueLocations.map(l => <option key={l} value={l}>{l}</option>)}
-            </SelectInput>
-          </FormField>
-          {isFiltered && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={resetFilters} style={{ height: '38px' }}>
-              <RotateCcw size={14} /> Reset
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Metric Cards */}
@@ -294,8 +242,72 @@ export const AnalyticsReports = () => {
           </div>
         </div>
       </div>
+      </>
+      )}
+
+      {/* Report Filters: date range, status, location */}
+      <div className="content-card" style={{ padding: '16px 20px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+          <Filter size={15} color="#001f9c" />
+          <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>Filter Report</span>
+          <span style={{ fontSize: '12px', fontWeight: '400', color: '#64748b' }}>
+            Showing {filteredRequisitions.length} of {requisitions.length} requests
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+          <FormField label="Date from" htmlFor="report-date-from" style={{ marginBottom: 0 }}>
+            <TextInput
+              id="report-date-from"
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => setDateFrom(e.target.value)}
+              style={{ height: '38px' }}
+            />
+          </FormField>
+          <FormField label="Date to" htmlFor="report-date-to" style={{ marginBottom: 0 }}>
+            <TextInput
+              id="report-date-to"
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+              style={{ height: '38px' }}
+            />
+          </FormField>
+          <FormField label="Status" htmlFor="report-status" style={{ marginBottom: 0 }}>
+            <SelectInput
+              id="report-status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{ height: '38px', minWidth: '170px' }}
+            >
+              <option value="all">All statuses</option>
+              {uniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+            </SelectInput>
+          </FormField>
+          <FormField label="Location" htmlFor="report-location" style={{ marginBottom: 0 }}>
+            <SelectInput
+              id="report-location"
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              style={{ height: '38px', minWidth: '200px' }}
+            >
+              <option value="all">All locations</option>
+              {uniqueLocations.map(l => <option key={l} value={l}>{l}</option>)}
+            </SelectInput>
+          </FormField>
+          {isFiltered && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={resetFilters} style={{ height: '38px' }}>
+              <RotateCcw size={14} /> Reset
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Breakdown Charts Grid */}
+      {!loading && (requisitions.length > 0 || !usingLive) && (
+      <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         {/* Category Breakdown Bar */}
         <div className="content-card" style={{ padding: '24px' }}>
@@ -312,7 +324,7 @@ export const AnalyticsReports = () => {
                     <span style={{ color: '#0f172a' }}>{cat.name}</span>
                     <span style={{ color: '#64748b' }}>{cat.count} requests ({pct}%)</span>
                   </div>
-                  <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: '100%', height: '8px', background: 'var(--bg-muted)', borderRadius: '4px', overflow: 'hidden' }}>
                     <div style={{ width: `${Math.max(pct, 4)}%`, height: '100%', background: '#001f9c', borderRadius: '4px' }}></div>
                   </div>
                 </div>
@@ -334,7 +346,7 @@ export const AnalyticsReports = () => {
                   <span>{b.bldg}</span>
                   <span style={{ color: '#64748b' }}>{b.count} requests</span>
                 </div>
-                <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
+                <div style={{ width: '100%', height: '8px', background: 'var(--bg-muted)', borderRadius: '4px', overflow: 'hidden' }}>
                   <div style={{ width: `${Math.max(b.pct, 4)}%`, height: '100%', background: '#001f9c', borderRadius: '4px' }}></div>
                 </div>
               </div>
@@ -351,7 +363,7 @@ export const AnalyticsReports = () => {
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
               {evaluationCriteria.map(([key, label]) => (
-                <div key={key} style={{ padding: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                <div key={key} style={{ padding: '12px', background: 'var(--bg-sunken)', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
                   <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}>{label}</div>
                   <div style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a' }}>{evaluationAverage(key)}<span style={{ fontSize: '12px', color: '#64748b' }}> / 5</span></div>
                 </div>

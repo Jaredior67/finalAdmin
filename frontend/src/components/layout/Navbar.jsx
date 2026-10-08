@@ -5,22 +5,22 @@ import { useData } from '../../context/DataContext';
 import { NotificationDrawer } from './NotificationDrawer';
 import { Modal } from '../common/Modal';
 import { SettingsModal } from '../common/SettingsModal';
-import pdasLogo from '../../assets/fixit-logo.png';
+import fixitLogo from '../../assets/fixit-official-logo.png';
 
 export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed = false }) => {
   const { currentUser, logout, setIsLoginModalOpen } = useAuth();
-  const { notifications, setTicketSearch } = useData();
+  const { notifications, ticketSearch, setTicketSearch } = useData();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSignOutConfirmOpen, setIsSignOutConfirmOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
 
   const unreadNotifs = Array.isArray(notifications) ? notifications.filter(n => n && n.unread).length : 0;
 
   const handleSearchChange = (e) => {
     const val = e.target.value;
-    setSearchQuery(val);
+    // ticketSearch is the single shared query — the Work Queue toolbar writes
+    // to it too, so the two search boxes can never disagree.
     setTicketSearch(val);
     if (onSearch) onSearch(val);
   };
@@ -28,18 +28,18 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed
   return (
     <header className={`top-navbar${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`} style={{ height: '64px', background: '#ffffff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', position: 'sticky', top: 0, zIndex: 100 }}>
       {/* Left Brand Section: sidebar toggle + FixIT logo + ISAT U Dumangas Campus */}
-      <div className="navbar-brand-section" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+      <div className="navbar-brand-section" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', minWidth: 0, width: 'auto', maxWidth: '240px', marginLeft: '-4px' }}>
         <img
-          src={pdasLogo}
+          src={fixitLogo}
           alt="FixIT Logo"
-          style={{ height: '30px', width: '30px', objectFit: 'contain', flexShrink: 0, display: 'block', alignSelf: 'center' }}
-          onError={(e) => { e.target.src = '/fixit-logo.png'; }}
+          className="navbar-brand-mark"
+          onError={(e) => { e.target.src = '/fixit-official-logo.png'; }}
         />
-        <div className="navbar-brand-text" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignSelf: 'center', whiteSpace: 'nowrap', lineHeight: 1.25, minWidth: 0, overflow: 'hidden', flex: '0 1 auto' }}>
-          <span style={{ fontSize: '10.5px', fontWeight: '800', color: '#001f9c', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', width: '100%' }}>
+        <div className="navbar-brand-text" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignSelf: 'center', whiteSpace: 'nowrap', lineHeight: 1.15, minWidth: 0, overflow: 'hidden', flex: '1 1 auto' }}>
+          <span style={{ fontSize: '10.5px', fontWeight: '800', color: '#001f9c', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', width: '100%', lineHeight: 1.2 }}>
             ISAT U Dumangas Campus
           </span>
-          <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', width: '100%' }}>
+          <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', width: '100%', lineHeight: 1.2 }}>
             PDAS Facility Management
           </span>
         </div>
@@ -50,7 +50,7 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed
         <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
         <input
           type="text"
-          value={searchQuery}
+          value={ticketSearch || ''}
           onChange={handleSearchChange}
           placeholder="Search tracking no., location, requester..."
           aria-label="Search tracking number, location, or requester"
@@ -61,14 +61,14 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed
             paddingRight: '12px',
             borderRadius: '8px',
             border: '1px solid #cbd5e1',
-            background: '#f8fafc',
+            background: 'var(--bg-sunken)',
             fontSize: '13px',
             color: '#0f172a',
             outline: 'none',
             transition: 'all 0.15s'
           }}
           onFocus={(e) => { e.target.style.background = '#ffffff'; e.target.style.borderColor = '#001f9c'; }}
-          onBlur={(e) => { e.target.style.background = '#f8fafc'; e.target.style.borderColor = '#cbd5e1'; }}
+          onBlur={(e) => { e.target.style.background = 'var(--bg-sunken)'; e.target.style.borderColor = '#cbd5e1'; }}
         />
       </div>
 
@@ -205,7 +205,7 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed
                     cursor: 'pointer',
                     textAlign: 'left'
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = '#f8fafc'; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
                 >
                   <Settings size={15} color="#64748b" /> Profile & Settings

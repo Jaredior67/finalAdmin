@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
-  Printer,
   Search,
   Package,
   Trash2
@@ -66,28 +65,10 @@ export const ReplacementRequests = () => {
     <div>
       <div className="page-header">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h1 className="page-title">Replacement & Irreparable Asset Tracking</h1>
-            <span style={{
-              background: '#fef2f2',
-              color: '#dc2626',
-              fontSize: '11px',
-              fontWeight: '700',
-              padding: '2px 8px',
-              borderRadius: '6px'
-            }}>
-              Replacement & Disposal List
-            </span>
-          </div>
+          <h1 className="page-title">Replacement & Irreparable Asset Tracking</h1>
           <p className="page-subtitle">
-            List of equipment and facilities flagged by technicians for replacement or disposal
+            Flagged equipment and facilities requiring replacement or disposal review
           </p>
-        </div>
-
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button type="button" className="btn btn-secondary" onClick={() => window.print()}>
-            <Printer size={15} /> Print Replacement Report
-          </button>
         </div>
       </div>
 
@@ -110,22 +91,22 @@ export const ReplacementRequests = () => {
           onChange={(e) => setDispositionFilter(e.target.value)}
           aria-label="Filter by disposition"
         >
-          <option value="all">Replacement + Disposal ({flaggedRequests.length})</option>
-          <option value="replacement">For Replacement ({replacementCount})</option>
-          <option value="disposal">For Disposal ({disposalCount})</option>
+          <option value="all">All Items ({flaggedRequests.length})</option>
+          <option value="replacement">Replacement ({replacementCount})</option>
+          <option value="disposal">Disposal ({disposalCount})</option>
         </select>
       </div>
 
       {/* List of replacement with disposition indication */}
       <div className="content-card">
         <div className="card-header">
-          <h2 className="card-title">List of Replacement ({filteredRequests.length})</h2>
+          <h2 className="card-title">Replacement Requests ({filteredRequests.length})</h2>
           <span style={{ fontSize: '12.5px', color: '#64748b', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ background: '#eff6ff', color: '#1d4ed8', fontWeight: '700', padding: '2px 8px', borderRadius: '6px' }}>
-              For Replacement: {replacementCount}
+              Replacement: {replacementCount}
             </span>
-            <span style={{ background: '#f1f5f9', color: '#475569', fontWeight: '700', padding: '2px 8px', borderRadius: '6px' }}>
-              For Disposal: {disposalCount}
+            <span style={{ background: 'var(--bg-muted)', color: '#475569', fontWeight: '700', padding: '2px 8px', borderRadius: '6px' }}>
+              Disposal: {disposalCount}
             </span>
           </span>
         </div>
@@ -201,7 +182,7 @@ export const ReplacementRequests = () => {
 
                   {/* Defect Description */}
                   <div style={{
-                    background: '#f8fafc',
+                    background: 'var(--bg-sunken)',
                     border: '1px solid #f1f5f9',
                     borderRadius: '8px',
                     padding: '10px 14px',
@@ -214,7 +195,7 @@ export const ReplacementRequests = () => {
 
                   {disposition === 'disposal' && (
                     <div style={{
-                      background: '#f8fafc',
+                      background: 'var(--bg-sunken)',
                       border: '1px solid #e2e8f0',
                       borderRadius: '8px',
                       padding: '10px 14px',

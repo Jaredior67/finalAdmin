@@ -1,7 +1,5 @@
 import {
   Wrench,
-  AlertTriangle,
-  CheckCircle2,
   Calendar,
   MessageSquare,
   Folder,
@@ -9,11 +7,15 @@ import {
   Settings
 } from 'lucide-react';
 
+/* Maintenance workspace navigation.
+   The former "Assigned Requests / Urgent Queue / Completed Work Logs" trio is
+   now a single "Work Queue" entry — those three screens were the same list
+   with a different filter, and the queue cards inside the page switch views
+   instead. `tech-emergency` and `tech-history` remain valid tab ids so older
+   deep links still resolve (see LEGACY_TAB_VIEW in components/maintenance). */
 export const maintenanceNavigation = {
   operations: [
-    { id: 'tech-tasks', label: 'Assigned Requests', icon: Wrench, badgeKey: 'techActiveCount', badgeColor: '#d97706' },
-    { id: 'tech-emergency', label: 'Urgent Queue', icon: AlertTriangle, badgeKey: 'techEmergencyCount', badgeColor: '#dc2626' },
-    { id: 'tech-history', label: 'Completed Work Logs', icon: CheckCircle2 }
+    { id: 'tech-tasks', label: 'Work Queue', icon: Wrench, badgeKey: 'techActiveCount', badgeColor: '#d97706' }
   ],
   facility: [
     { id: 'tech-calendar', label: 'Preventive Calendar', icon: Calendar },

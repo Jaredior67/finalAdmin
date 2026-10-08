@@ -12,7 +12,7 @@ import { Modal } from './Modal';
 
 export const ModularFormPreviewPanel = ({ 
   formData, 
-  title = "Live QF-PDAS-DC-01 Form Preview",
+  title = "Form Preview (QF-PDAS-DC-01)",
   subtitle = "Official ISAT U Job Request Paper Preview",
   onPrint = null,
   showControls = true,
@@ -99,7 +99,7 @@ export const ModularFormPreviewPanel = ({
       {/* Header with Control Toolbar */}
       <div style={{
         padding: '12px 16px',
-        background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+        background: 'linear-gradient(180deg, var(--bg-sunken) 0%, var(--bg-card) 100%)',
         borderBottom: '1px solid #e2e8f0',
         display: 'flex',
         alignItems: 'center',
@@ -295,6 +295,7 @@ export const ModularFormPreviewPanel = ({
       <Modal
         isOpen={isMaximized}
         onClose={() => setIsMaximized(false)}
+        onBack={() => setIsMaximized(false)}
         title="Official PDAS Job Request Form (QF-PDAS-DC-01) - Full View"
         maxWidth="820px"
         footer={

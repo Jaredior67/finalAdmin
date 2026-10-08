@@ -17,39 +17,161 @@ const AdminRoutes = lazy(() => import('./routes/AdminRoutes').then(m => ({ defau
 const FacultyRoutes = lazy(() => import('./routes/FacultyRoutes').then(m => ({ default: m.FacultyRoutes })));
 const MaintenanceRoutes = lazy(() => import('./routes/MaintenanceRoutes').then(m => ({ default: m.MaintenanceRoutes })));
 const CampusAdminRoutes = lazy(() => import('./routes/CampusAdminRoutes').then(m => ({ default: m.CampusAdminRoutes })));
+import { Spinner } from './components/ui/Spinner';
+
 const RouteFallback = () => (
-  <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontSize: '14px' }}>
-    Loading workspace…
+  <div style={{ padding: '60px 40px', textAlign: 'center', color: '#64748b', fontSize: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
+    <Spinner size={22} color="#001f9c" />
+    <span>Loading workspace…</span>
   </div>
 );
 
+const ALLOWED_TABS_BY_ROLE = {
+  admin: [
+    'executive-dashboard', 'job-requests', 'official-documents',
+    'preventive-calendar', 'archived-requests', 'audit-trail', 'user-management',
+    'communication-box', 'analytics-reports', 'replacement-requests', 'print-labels', 'settings'
+  ],
+  campusAdmin: [
+    'campus-admin-dashboard', 'campus-approvals', 'executive-dashboard',
+    'official-documents', 'approval-history', 'communication-box', 'analytics-reports', 'settings'
+  ],
+  maintenance: [
+    'tech-tasks', 'tech-emergency', 'tech-history', 'tech-calendar',
+    'tech-messages', 'tech-documents', 'replacement-requests', 'settings'
+  ],
+  faculty: [
+    'faculty-dashboard', 'faculty-tickets', 'faculty-history', 'faculty-messages',
+    'replacement-requests', 'settings', 'faculty-urgent', 'faculty-submit',
+    'supervisor-queue', 'supervisor-approvals', 'supervisor-dashboard'
+  ]
+};
+
+function getRoleDefaultTab(auth) {
+  if (auth.isMaintenance) return 'tech-tasks';
+  if (auth.isFacultyOrStaff) return auth.isSupervisor ? 'supervisor-queue' : 'faculty-dashboard';
+  if (auth.isCampusAdmin) return 'campus-admin-dashboard';
+  if (auth.isAdmin) return 'executive-dashboard';
+  return 'executive-dashboard';
+}
+
+function validateTabForAuth(tab, auth) {
+  if (!tab || typeof tab !== 'string') return null;
+  const cleanTab = tab.replace(/^#\/?/, '').trim();
+  if (!cleanTab) return null;
+
+  if (auth.isMaintenance) {
+    return ALLOWED_TABS_BY_ROLE.maintenance.includes(cleanTab) ? cleanTab : null;
+  }
+  if (auth.isFacultyOrStaff) {
+    const supervisorTabs = ['supervisor-queue', 'supervisor-approvals', 'supervisor-dashboard'];
+    if (supervisorTabs.includes(cleanTab) && !auth.isSupervisor) return null;
+    return ALLOWED_TABS_BY_ROLE.faculty.includes(cleanTab) ? cleanTab : null;
+  }
+  if (auth.isCampusAdmin) {
+    return ALLOWED_TABS_BY_ROLE.campusAdmin.includes(cleanTab) ? cleanTab : null;
+  }
+  if (auth.isAdmin) {
+    return ALLOWED_TABS_BY_ROLE.admin.includes(cleanTab) ? cleanTab : null;
+  }
+  return null;
+}
+
 function AppContent() {
-  const { currentUser, isAdmin, isCampusAdmin, isMaintenance, isFacultyOrStaff } = useAuth();
-  const [activeTab, setActiveTab] = useState(() => (
-    isMaintenance ? 'tech-tasks' : isFacultyOrStaff ? 'faculty-dashboard' : isCampusAdmin ? 'campus-admin-dashboard' : 'executive-dashboard'
-  ));
-  const [jobRequestStatus, setJobRequestStatus] = useState('all');
-  // Sidebar collapse control — the toggle lives in the sidebar header
-  // and is shared by every role layout.
+  const auth = useAuth();
+  const { currentUser, isAdmin, isCampusAdmin, isSupervisor, isMaintenance, isFacultyOrStaff } = auth;
+
+  // Persist activeTab across refreshes & deep links while strictly validating role access
+  const [activeTab, setActiveTabState] = useState(() => {
+    const hash = typeof window !== 'undefined' ? window.location.hash : '';
+    const fromSession = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('fixit_active_tab') : null;
+    const fromLocal = (currentUser?.id && typeof localStorage !== 'undefined') ? localStorage.getItem(`fixit_active_tab_${currentUser.id}`) : null;
+
+    const validatedHash = validateTabForAuth(hash, auth);
+    if (validatedHash) return validatedHash;
+
+    const validatedSession = validateTabForAuth(fromSession, auth);
+    if (validatedSession) return validatedSession;
+
+    const validatedLocal = validateTabForAuth(fromLocal, auth);
+    if (validatedLocal) return validatedLocal;
+
+    return getRoleDefaultTab(auth);
+  });
+
+  const [jobRequestStatus, setJobRequestStatusState] = useState(() => {
+    return (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fixit_job_request_status')) || 'all';
+  });
+
+  const setJobRequestStatus = (status) => {
+    setJobRequestStatusState(status);
+    try {
+      sessionStorage.setItem('fixit_job_request_status', status);
+    } catch {}
+  };
+
+  const setActiveTab = (tabOrFn) => {
+    setActiveTabState(prev => {
+      const nextTab = typeof tabOrFn === 'function' ? tabOrFn(prev) : tabOrFn;
+      const valid = validateTabForAuth(nextTab, auth) || getRoleDefaultTab(auth);
+      try {
+        sessionStorage.setItem('fixit_active_tab', valid);
+        if (currentUser?.id) {
+          localStorage.setItem(`fixit_active_tab_${currentUser.id}`, valid);
+        }
+        if (window.location.hash !== `#${valid}`) {
+          window.history.replaceState(null, '', `#${valid}`);
+        }
+      } catch {}
+      return valid;
+    });
+  };
+
+  // Sidebar collapse control
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Automatically reset to the proper role tab when logging in or switching accounts
+  // Sync activeTab with role authorization on account switch or session refresh
   useEffect(() => {
-    if (isMaintenance) {
-      setActiveTab(prev => (prev && (prev.startsWith('tech-') || prev === 'replacement-requests' || prev === 'settings') ? prev : 'tech-tasks'));
-    } else if (isFacultyOrStaff) {
-      setActiveTab(prev => (prev && (prev.startsWith('faculty-') || prev === 'replacement-requests' || prev === 'settings') ? prev : 'faculty-dashboard'));
-    } else if (isCampusAdmin) {
-      setActiveTab(prev => (prev && ['campus-admin-dashboard', 'approval-history', 'official-documents', 'analytics-reports', 'communication-box', 'settings'].includes(prev) ? prev : 'campus-admin-dashboard'));
-    } else if (isAdmin) {
-      setActiveTab(prev => (prev && !prev.startsWith('tech-') && !prev.startsWith('faculty-') ? prev : 'executive-dashboard'));
+    if (!currentUser) return;
+    const hash = typeof window !== 'undefined' ? window.location.hash : '';
+    const validatedFromHash = validateTabForAuth(hash, auth);
+    const validatedCurrent = validateTabForAuth(activeTab, auth);
+
+    const targetTab = validatedFromHash || validatedCurrent || getRoleDefaultTab(auth);
+    if (targetTab !== activeTab) {
+      setActiveTabState(targetTab);
     }
-  }, [currentUser?.id, currentUser?.role, isAdmin, isCampusAdmin, isMaintenance, isFacultyOrStaff]);
+
+    try {
+      sessionStorage.setItem('fixit_active_tab', targetTab);
+      if (currentUser.id) {
+        localStorage.setItem(`fixit_active_tab_${currentUser.id}`, targetTab);
+      }
+      if (window.location.hash !== `#${targetTab}`) {
+        window.history.replaceState(null, '', `#${targetTab}`);
+      }
+    } catch {}
+  }, [currentUser?.id, currentUser?.role, auth.isAdmin, auth.isCampusAdmin, auth.isMaintenance, auth.isFacultyOrStaff, auth.isSupervisor]);
+
+  // Handle browser Back / Forward navigation buttons and URL hash edits
+  useEffect(() => {
+    const handleHashChange = () => {
+      const valid = validateTabForAuth(window.location.hash, auth);
+      if (valid && valid !== activeTab) {
+        setActiveTabState(valid);
+        try {
+          sessionStorage.setItem('fixit_active_tab', valid);
+        } catch {}
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [activeTab, auth]);
 
   // If user is not logged in, show the dedicated FixIT Institutional Login Page
   if (!currentUser) {
     return (
-      <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at 10% 20%, #061352 0%, #030a2a 40%, #020617 100%)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ minHeight: '100dvh', background: '#EEF2F8', display: 'flex', flexDirection: 'column' }}>
         <BackendStatus />
         <OfflineBanner />
         <LoginPage />
@@ -58,29 +180,7 @@ function AppContent() {
     );
   }
 
-  // 1. Role-based routing for Campus Administrator
-  if (isCampusAdmin) {
-    return (
-      <div className="app-container">
-        <SkipLink />
-        <BackendStatus />
-        <OfflineBanner />
-        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
-        <div className="main-layout">
-          <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
-          <main className="content-area" id="main-content" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
-            <Suspense fallback={<RouteFallback />}>
-              <CampusAdminRoutes activeTab={activeTab} onTabChange={setActiveTab} />
-            </Suspense>
-          </main>
-        </div>
-        <SystemFooter />
-        <LoginModal />
-      </div>
-    );
-  }
-
-  // 2. Role-based routing for Faculty and Staff
+  // 1. Role-based routing for Faculty/Staff (includes designated supervisors)
   if (isFacultyOrStaff) {
     return (
       <div className="app-container">
@@ -90,7 +190,7 @@ function AppContent() {
         <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
-          <main className="content-area" id="main-content" style={{ maxWidth: '1240px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
+          <main className="content-area" id="main-content" style={{ paddingTop: '24px' }}>
             <Suspense fallback={<RouteFallback />}>
               <FacultyRoutes activeTab={activeTab} onTabChange={setActiveTab} />
             </Suspense>
@@ -102,6 +202,29 @@ function AppContent() {
     );
   }
 
+  // 2. Role-based routing for Campus Administrator
+  if (isCampusAdmin) {
+    return (
+      <div className="app-container">
+        <SkipLink />
+        <BackendStatus />
+        <OfflineBanner />
+        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
+        <div className="main-layout">
+          <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
+          <main className="content-area" id="main-content" style={{ paddingTop: '24px' }}>
+            <Suspense fallback={<RouteFallback />}>
+              <CampusAdminRoutes activeTab={activeTab} onTabChange={setActiveTab} />
+            </Suspense>
+          </main>
+        </div>
+        <SystemFooter />
+        <LoginModal />
+      </div>
+    );
+  }
+
+
   // 3. Role-based routing for Maintenance Personnel
   if (isMaintenance) {
     return (
@@ -112,7 +235,7 @@ function AppContent() {
         <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
         <div className="main-layout">
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
-                    <main className="content-area" id="main-content" style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '20px 16px' }}>
+          <main className="content-area" id="main-content" style={{ paddingTop: '24px' }}>
             <Suspense fallback={<RouteFallback />}>
               <MaintenanceRoutes activeTab={activeTab} onTabChange={setActiveTab} />
             </Suspense>

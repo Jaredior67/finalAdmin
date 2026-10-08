@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -13,9 +14,11 @@ fs.mkdirSync(uploadDir, { recursive: true });
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
-    // Phase 2: never reuse the client filename — rebuild from a random base
-    // plus the validated allow-list extension only.
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    // Never reuse the client filename. The base is a CSPRNG value rather than
+    // Date.now() + Math.random(): the old generator mixed a guessable timestamp
+    // with a non-cryptographic PRNG, and the resulting names were the only
+    // thing standing between an unauthenticated caller and a signed document.
+    const unique = crypto.randomBytes(16).toString('hex');
     cb(null, `${unique}${req._validatedExt || ''}`);
   },
 });
@@ -47,6 +50,24 @@ const upload = multer({
 const router = Router();
 router.use(verifyToken);
 
+/* Shared ownership check for a job request, used by every route below that is
+   keyed on a jobRequestId. Admins (and campus admins) may touch any ticket;
+   everyone else only a ticket they submitted or one assigned to them — without
+   this, any authenticated account could read, download from, or attach a file
+   to any other person's ticket by guessing its id.
+
+   Returns 'ok', 'forbidden' or 'not_found' so each caller can translate that
+   into its own status code and message without re-running the query. */
+async function jobRequestAccess(user, jobRequestId) {
+  if (['admin', 'campus_admin'].includes(user.role)) return 'ok';
+  const [jr] = await pool.query(
+    'SELECT requester_id, assigned_to FROM job_requests WHERE id = ?',
+    [jobRequestId]
+  );
+  if (jr.length === 0) return 'not_found';
+  return jr[0].requester_id === user.id || jr[0].assigned_to === user.id ? 'ok' : 'forbidden';
+}
+
 // POST /api/documents - upload a file, optionally tied to a job request
 router.post('/', upload.single('file'), async (req, res) => {
   try {
@@ -54,6 +75,20 @@ router.post('/', upload.single('file'), async (req, res) => {
       return res.status(400).json({ message: 'No file uploaded (field name must be "file").' });
     }
     const { jobRequestId } = req.body;
+
+    // Attaching to a ticket is a write on someone else's record, so it needs
+    // the same ownership rule as reading that ticket's documents. An upload
+    // with no jobRequestId is an unattached file owned by the uploader and is
+    // left alone.
+    if (jobRequestId) {
+      const access = await jobRequestAccess(req.user, jobRequestId);
+      if (access === 'not_found') {
+        return res.status(404).json({ message: 'Job request not found.' });
+      }
+      if (access === 'forbidden') {
+        return res.status(403).json({ message: 'You do not have permission to attach files to this job request.' });
+      }
+    }
 
     const [result] = await pool.query(
       `INSERT INTO documents (job_request_id, uploaded_by, file_name, file_path, file_type, file_size)
@@ -71,16 +106,11 @@ router.post('/', upload.single('file'), async (req, res) => {
 // GET /api/documents/job-request/:jobRequestId
 router.get('/job-request/:jobRequestId', async (req, res) => {
   try {
-    // Ownership guard: admins see all; others must own the ticket.
-    if (!['admin', 'campus_admin'].includes(req.user.role)) {
-      const [jr] = await pool.query(
-        'SELECT requester_id, assigned_to FROM job_requests WHERE id = ?',
-        [req.params.jobRequestId]
-      );
-      if (jr.length === 0) return res.status(404).json({ message: 'Job request not found.' });
-      const allowed = jr[0].requester_id === req.user.id || jr[0].assigned_to === req.user.id;
-      if (!allowed) return res.status(403).json({ message: 'You do not have permission to view these documents.' });
-    }
+    // Ownership guard: admins see all; others must be the requester or the
+    // technician assigned to that ticket (shared helper above).
+    const access = await jobRequestAccess(req.user, req.params.jobRequestId);
+    if (access === 'not_found') return res.status(404).json({ message: 'Job request not found.' });
+    if (access === 'forbidden') return res.status(403).json({ message: 'You do not have permission to view these documents.' });
     const [rows] = await pool.query(
       'SELECT * FROM documents WHERE job_request_id = ? ORDER BY created_at DESC',
       [req.params.jobRequestId]
@@ -101,16 +131,13 @@ router.get('/:id/download', async (req, res) => {
       return res.status(404).json({ message: 'Document not found.' });
     }
     // Ownership: admins see all; otherwise the uploader, the requester,
-    // or the assigned technician of the linked ticket.
-    if (!['admin', 'campus_admin'].includes(req.user.role)) {
-      let allowed = doc.uploaded_by === req.user.id;
-      if (!allowed && doc.job_request_id) {
-        const [jr] = await pool.query('SELECT requester_id, assigned_to FROM job_requests WHERE id = ?', [doc.job_request_id]);
-        allowed = jr.length > 0 && (jr[0].requester_id === req.user.id || jr[0].assigned_to === req.user.id);
-      }
-      if (!allowed) {
-        return res.status(403).json({ message: 'You do not have permission to download this document.' });
-      }
+    // or the assigned technician of the linked ticket (shared helper above).
+    let allowed = doc.uploaded_by === req.user.id;
+    if (!allowed && doc.job_request_id) {
+      allowed = (await jobRequestAccess(req.user, doc.job_request_id)) === 'ok';
+    }
+    if (!allowed) {
+      return res.status(403).json({ message: 'You do not have permission to download this document.' });
     }
     res.download(path.join(uploadDir, doc.file_path), doc.file_name);
   } catch (err) {

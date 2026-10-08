@@ -27,7 +27,6 @@ export const OfficialDocuments = () => {
       <div className="page-header">
         <div>
           <h1 className="page-title">Official Documents & Job Requests</h1>
-          <p className="page-subtitle">Edit every field in the overlay, then generate & print the aligned QF-PDAS-DC-01 sheet</p>
         </div>
       </div>
 
@@ -39,7 +38,7 @@ export const OfficialDocuments = () => {
             </div>
             <div>
               <div style={{ fontWeight: '700', fontSize: '15px' }}>Job Request</div>
-              <div style={{ fontSize: '12px', color: '#64748b' }}>Form QF-PDAS-DC-01 • Tracking issued only on Final Approval</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Form QF-PDAS-DC-01 • Tracking issued when the work order is assigned, after final approval</div>
             </div>
           </div>
           <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px' }}>
@@ -104,7 +103,7 @@ export const OfficialDocuments = () => {
         maxWidth="800px"
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-            <span style={{ fontSize: '12px', color: '#64748b' }}>{selectedDocReq?.controlNo || 'PENDING — issued on Final Approval'}</span>
+            <span style={{ fontSize: '12px', color: '#64748b' }}>{selectedDocReq?.controlNo || 'PENDING, issued when the work order is assigned'}</span>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setIsPreviewOpen(false); setIsEditOpen(true); }}>
                 <Pencil size={14} /> Edit Fields

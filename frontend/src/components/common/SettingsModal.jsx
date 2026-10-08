@@ -105,7 +105,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Account Settings" maxWidth="600px">
+    <Modal isOpen={isOpen} onClose={onClose} onBack={onClose} title="Account Settings" maxWidth="600px">
       {/* Mini Tabs */}
       <div style={{ display: 'flex', gap: '6px', borderBottom: '1.5px solid #e2e8f0', marginBottom: '18px', paddingBottom: '2px' }}>
         <button
@@ -152,7 +152,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
         {modalTab === 'profile' && (
           <div>
             {/* Avatar block */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '18px', padding: '14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '18px', padding: '14px', background: 'var(--bg-sunken)', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <div className="user-avatar-circle" style={{ backgroundColor: avatarColor, width: '56px', height: '56px', fontSize: '22px', overflow: 'hidden' }}>
                   {photo ? <img src={photo} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (currentUser?.initial || currentUser?.name?.charAt(0) || 'U')}
@@ -179,33 +179,33 @@ export const SettingsModal = ({ isOpen, onClose }) => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
               <div className="form-group">
                 <label className="form-label">Full name *</label>
-                <input className="form-input" value={name} onChange={event => setName(event.target.value)} required />
+                <input className="form-input" value={name ?? ''} onChange={event => setName(event.target.value)} required />
               </div>
               <div className="form-group">
                 <label className="form-label">Title / Designation</label>
-                <input className="form-input" value={title} onChange={event => setTitle(event.target.value)} placeholder="e.g. Associate Professor" />
+                <input className="form-input" value={title ?? ''} onChange={event => setTitle(event.target.value)} placeholder="e.g. Associate Professor" />
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
               <div className="form-group">
                 <label className="form-label">Department / Office</label>
-                <input className="form-input" value={department} onChange={event => setDepartment(event.target.value)} />
+                <input className="form-input" value={department ?? ''} onChange={event => setDepartment(event.target.value)} />
               </div>
               <div className="form-group">
                 <label className="form-label">Campus Office / Room</label>
-                <input className="form-input" value={officeRoom} onChange={event => setOfficeRoom(event.target.value)} placeholder="e.g. CEA Room 204" />
+                <input className="form-input" value={officeRoom ?? ''} onChange={event => setOfficeRoom(event.target.value)} placeholder="e.g. CEA Room 204" />
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
               <div className="form-group">
                 <label className="form-label">Contact number</label>
-                <input className="form-input" value={phone} onChange={event => setPhone(event.target.value)} placeholder="+63 917 123 4567" />
+                <input className="form-input" value={phone ?? ''} onChange={event => setPhone(event.target.value)} placeholder="+63 917 123 4567" />
               </div>
               <div className="form-group">
                 <label className="form-label">Institutional ID</label>
-                <input className="form-input" value={currentUser?.idNumber || 'Not assigned'} disabled style={{ background: '#f1f5f9', color: '#64748b' }} />
+                <input className="form-input" value={currentUser?.idNumber || 'Not assigned'} disabled style={{ background: 'var(--bg-muted)', color: '#64748b' }} />
               </div>
             </div>
           </div>

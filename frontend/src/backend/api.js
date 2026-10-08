@@ -1,15 +1,21 @@
 const resolveApiBase = () => {
+  // 1. Explicit override via Vite env var (highest priority)
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL;
   }
   if (typeof window !== 'undefined') {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      if (window.location.port === '5000') {
-        return '/api';
-      }
-      return 'http://localhost:5000/api';
+    const { hostname, port, protocol } = window.location;
+    // Served directly by the backend on port 5000 — use relative path
+    if (port === '5000') {
+      return '/api';
     }
-    return `${window.location.origin}/api`;
+    // Served through Apache (port 80/443) in production — the backend runs
+    // on the same host on port 5000. Using hostname (not "localhost") means
+    // a phone on the LAN hitting http://192.168.x.x/ will call
+    // http://192.168.x.x:5000/api instead of the unreachable
+    // http://localhost:5000/api.
+    // For Vite dev server (port 5173) the same logic applies.
+    return `${protocol}//${hostname}:5000/api`;
   }
   return 'http://localhost:5000/api';
 };
@@ -136,9 +142,14 @@ async function request(path, options = {}) {
       headers,
     });
   } catch {
-    throw new Error(
+    const err = new Error(
       'Cannot reach the backend server. Make sure it is running via XAMPP and start-dev.bat.'
     );
+    // No response at all — a network failure rather than a rejection, so the
+    // status is 0 and callers can tell "retry later" from "this is wrong".
+    err.status = 0;
+    err.isNetworkError = true;
+    throw err;
   }
 
   let payload = null;
@@ -150,7 +161,13 @@ async function request(path, options = {}) {
 
   if (!response.ok) {
     const message = payload?.message || payload?.error || 'Request failed.';
-    throw new Error(message);
+    const err = new Error(message);
+    // Carrying the status lets callers react differently: a 4xx means the
+    // request itself is wrong and retrying it will fail the same way, while a
+    // 5xx or a 0 is worth another attempt later.
+    err.status = response.status;
+    err.payload = payload;
+    throw err;
   }
 
   return payload;
@@ -194,12 +211,30 @@ export const apiRegister = async (regData = {}) => {
     birthday: regData.birthday || null,
     age: regData.age || null,
     idPhotoUrl: regData.idPhotoUrl ?? regData.idPreviewUrl ?? null,
+    // RA 10173 consent timestamp. The server rejects registration without it.
+    consentAt: regData.consentAt ?? null,
   };
 
   return request('/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+};
+
+/**
+ * Public status lookup for an applicant who has no account yet.
+ *
+ * Resolves to `{ status: 'pending' | 'approved' | 'rejected' | 'not_found',
+ * reason, submittedAt, reviewedAt }`. An applicant cannot sign in before the
+ * administrator approves them, so this is the only handle they have on their
+ * own application — in particular, the rejection reason that the administrator
+ * typed would otherwise never reach them.
+ */
+export const apiGetRegistrationStatus = async (email) => {
+  const query = encodeURIComponent(String(email || '').trim());
+  if (!query) return { status: 'not_found' };
+  const payload = await request(`/auth/registration-status?email=${query}`);
+  return payload && typeof payload === 'object' ? payload : { status: 'not_found' };
 };
 
 export const apiGetUsers = async () => {
@@ -229,6 +264,42 @@ export const apiRejectRegistration = async (regId, reason = 'Application details
     method: 'PUT',
     body: JSON.stringify({ reason }),
   });
+
+/* ---------------------------------------------------------------------------
+   Audit trail. The Approval History page used to read a localStorage array that
+   nothing ever wrote to, so it rendered an empty table no matter how many
+   approvals had been recorded. Every decision is written to `audit_log` on the
+   server inside the same transaction as the change itself — this reads it back.
+   --------------------------------------------------------------------------- */
+export const apiGetAuditLog = async (limit = 200) => {
+  const payload = await request(`/audit-log?limit=${Number(limit) || 200}`);
+  return Array.isArray(payload) ? payload : [];
+};
+
+/* ---------------------------------------------------------------------------
+   Campus location registry. These used to exist only in React state and
+   localStorage: the backend table was never written, so `campus_locations` sat
+   empty and every `job_requests.location_id` came back NULL.
+   --------------------------------------------------------------------------- */
+export const apiGetCampusLocations = async () => {
+  const payload = await request('/lookups/campus-locations');
+  return Array.isArray(payload) ? payload : [];
+};
+
+export const apiAddCampusLocation = ({ building, floor, room, description, qrCodeRef }) =>
+  request('/lookups/campus-locations', {
+    method: 'POST',
+    body: JSON.stringify({ building, floor, room, description, qrCode: qrCodeRef }),
+  });
+
+export const apiUpdateCampusLocation = (id, { building, floor, room, description, qrCodeRef }) =>
+  request(`/lookups/campus-locations/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ building, floor, room, description, qrCode: qrCodeRef }),
+  });
+
+export const apiDeleteCampusLocation = (id) =>
+  request(`/lookups/campus-locations/${id}`, { method: 'DELETE' });
 
 export const apiCreateUser = async (userData = {}) => {
   const payload = {
@@ -269,6 +340,14 @@ export const apiUpdateUser = async (userId, updatedFields = {}) => {
     role: normalizeRole(updatedFields.role ?? updatedFields.userType ?? updatedFields.user_type ?? 'faculty'),
   };
 
+  // Supervisor designation ("Designate as Immediate Supervisor / Program Head"
+  // checkbox). Sent only when the caller passed it — a plain profile edit must
+  // not send null and rely on the server's COALESCE to keep the stored flag.
+  const isSupervisor = updatedFields.isSupervisor ?? updatedFields.is_supervisor;
+  if (isSupervisor !== undefined && isSupervisor !== null) {
+    payload.isSupervisor = isSupervisor;
+  }
+
   return request(`/users/${userId}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
@@ -287,6 +366,27 @@ export const apiSetUserStatus = async (userId, status) => {
 
 export const apiRemoveUser = async (userId) => request(`/users/${userId}`, { method: 'DELETE' });
 
+/* Supervisor designation & assignment (paper: an admin designates the Supervisor
+   function on a Faculty/Staff account, then assigns which Faculty/Staff accounts
+   fall under each Supervisor — reassignable at any time). All three routes are
+   admin-only on the server. */
+export const apiGetSupervisors = async () => {
+  const payload = await request('/users/supervisors');
+  return Array.isArray(payload) ? payload.map(normalizeUser) : [];
+};
+
+// { supervisors, employees, unassigned } — employees carry supervisor_id, which
+// GET /users does not return, so this is how the edit form shows the current
+// assignment of the account being edited.
+export const apiGetSupervisorAssignments = async () => request('/users/supervisor-assignments');
+
+// supervisorId: an account id to assign, or null to clear it ("Unassigned").
+export const apiAssignSupervisor = async (userId, supervisorId) =>
+  request(`/users/${userId}/assign-supervisor`, {
+    method: 'PUT',
+    body: JSON.stringify({ supervisorId }),
+  });
+
 // Preventive Maintenance Schedules API
 export const apiGetPreventiveSchedules = async () => request('/preventive-schedules');
 export const apiCreatePreventiveSchedule = async (scheduleData) =>
@@ -294,6 +394,8 @@ export const apiCreatePreventiveSchedule = async (scheduleData) =>
     method: 'POST',
     body: JSON.stringify(scheduleData),
   });
+export const apiDeletePreventiveSchedule = async (id) =>
+  request(`/preventive-schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
 // Job Requests API (live MySQL data for Reports & Analytics)
 export const apiGetJobRequests = async (params = {}) => {
@@ -302,10 +404,23 @@ export const apiGetJobRequests = async (params = {}) => {
   if (params.offset) qs.set('offset', params.offset);
   if (params.archived) qs.set('archived', params.archived);
   const query = qs.toString() ? `?${qs}` : '';
-  return request(`/job-requests${query}`);
+  const data = await request(`/job-requests${query}`);
+  // The endpoint answers { rows, total, limit, offset }. Older builds answered a
+  // bare array; normalise so callers only ever have to handle one shape.
+  if (Array.isArray(data)) {
+    return { rows: data, total: data.length, limit: params.limit || 100, offset: params.offset || 0 };
+  }
+  return data;
 };
 
-// Notifications API (live MySQL — replaces localStorage)
+export const apiGetJobRequestStats = async ({ archived = false } = {}) => {
+  const qs = archived ? '?archived=true' : '';
+  const data = await request(`/job-requests/stats${qs}`);
+  if (Array.isArray(data)) return { byStatus: {}, total: data.length };
+  return data;
+};
+
+/* Notifications API (live MySQL — replaces localStorage) */
 export const apiGetNotifications = async ({ limit = 50, offset = 0, unread = false } = {}) => {
   const qs = new URLSearchParams({ limit, offset });
   if (unread) qs.set('unread', 'true');
@@ -333,9 +448,11 @@ export const apiApproverAction = async (id, actionData) => request(`/job-request
 export const apiAssignTechnician = async (id, assignData) => request(`/job-requests/${id}/assign-technician`, { method: 'POST', body: JSON.stringify(assignData) });
 export const apiFlagReplacement = async (id, flagData) => request(`/job-requests/${id}/replacement-flag`, { method: 'POST', body: JSON.stringify(flagData) });
 export const apiArchiveJobRequest = async (id) => request(`/job-requests/${id}/archive`, { method: 'PUT' });
+export const apiUnarchiveJobRequest = async (id) => request(`/job-requests/${id}/unarchive`, { method: 'PUT' });
+export const apiUpdateReplacementFlag = async (id, payload) => request(`/job-requests/${id}/replacement-flag`, { method: 'PUT', body: JSON.stringify(payload) });
+export const apiGetJobRequestDocPdf = async (id) => request(`/job-requests-doc/${id}/pdf`);
 
-// Audit trail API (PDAS Admin, read-only accountability log)
-export const apiGetAuditLog = async (limit = 200) => request(`/audit-log?limit=${limit}`);
+// The audit-trail reader lives next to the other account-facing calls above.
 
 export const checkBackendHealth = async () => {
   try {

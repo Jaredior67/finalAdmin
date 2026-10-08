@@ -1,7 +1,6 @@
 import React from 'react';
 import { ExecutiveDashboard } from '../views/admin/ExecutiveDashboard';
 import { JobRequests } from '../views/admin/JobRequests';
-import { ApprovalHistory } from '../views/admin/ApprovalHistory';
 import { OfficialDocuments } from '../views/OfficialDocuments';
 import { PreventiveCalendar } from '../views/PreventiveCalendar';
 import { ArchivedRequests } from '../views/admin/ArchivedRequests';
@@ -17,8 +16,6 @@ export const AdminRoutes = ({ activeTab, onTabChange, jobRequestStatus, setJobRe
   switch (activeTab) {
     case 'job-requests':
       return <JobRequests initialStatusTab={jobRequestStatus} />;
-    case 'approval-history':
-      return <ApprovalHistory />;
     case 'official-documents':
       return <OfficialDocuments />;
     case 'preventive-calendar':

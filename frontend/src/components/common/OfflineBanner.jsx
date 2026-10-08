@@ -1,68 +1,66 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { WifiOff } from 'lucide-react';
-
-const DRAFT_PREFIX = 'fixit_draft_';
-
-const countQueuedDrafts = () => {
-  try {
-    let count = 0;
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(DRAFT_PREFIX)) {
-        try {
-          const parsed = JSON.parse(localStorage.getItem(key));
-          const hasContent = parsed && parsed.data && Object.values(parsed.data).some(v =>
-            v !== null && v !== undefined && v !== '' && (!Array.isArray(v) || v.length > 0)
-          );
-          if (hasContent) count += 1;
-        } catch {
-          count += 1;
-        }
-      }
-    }
-    return count;
-  } catch {
-    return 0;
-  }
-};
-
 import { useToast } from '../ui/Toast';
+import { flushOutbox, outboxSize } from '../../utils/outbox';
 
 /**
- * OfflineBanner — fixed bottom banner shown when the browser loses network
- * connectivity. Reassures the user that form drafts are kept locally and
- * that submissions will sync once connectivity returns.
+ * OfflineBanner — fixed bottom banner shown when the browser has no
+ * connection.
+ *
+ * The copy used to promise that "submissions will sync once connectivity
+ * returns" while nothing queued anything, so a request filed offline was
+ * refused by the network and lost. utils/outbox.js is the queue that promise
+ * referred to: entries are held on the device with an idempotency key and sent
+ * when the connection returns, so a retry cannot file the same request twice.
+ * A request the server actively rejects is not queued, because sending it again
+ * would only be refused again.
  */
 export function OfflineBanner() {
   const { toast } = useToast();
   const [isOnline, setIsOnline] = useState(
     () => (typeof navigator !== 'undefined' ? navigator.onLine : true)
   );
-  const [queuedCount, setQueuedCount] = useState(0);
+  const [pending, setPending] = useState(() => outboxSize());
   const wasOffline = useRef(false);
 
-  const refreshQueue = useCallback(() => setQueuedCount(countQueuedDrafts()), []);
+  const refresh = useCallback(() => setPending(outboxSize()), []);
 
   useEffect(() => {
-    const goOnline = () => {
-      // Toast only on a genuine offline -> online transition (not first mount).
-      if (wasOffline.current) toast('Back online — drafts are intact and new submissions will file normally.', 'info');
-      wasOffline.current = false;
+    const goOnline = async () => {
       setIsOnline(true);
+      if (!wasOffline.current) return;
+      wasOffline.current = false;
+
+      const waiting = outboxSize();
+      if (waiting === 0) {
+        toast('Back online.', 'info');
+        return;
+      }
+      // Drain the outbox the moment the connection is usable again.
+      const { sent, duplicates, failed } = await flushOutbox();
+      setPending(outboxSize());
+      const parts = [];
+      if (sent) parts.push(`${sent} sent`);
+      if (duplicates) parts.push(`${duplicates} already filed`);
+      if (failed) parts.push(`${failed} still waiting`);
+      toast(
+        parts.length ? `Back online. ${parts.join(', ')}.` : 'Back online.',
+        failed ? 'error' : 'info'
+      );
     };
-    const goOffline = () => { wasOffline.current = true; setIsOnline(false); refreshQueue(); };
+    const goOffline = () => { wasOffline.current = true; setIsOnline(false); refresh(); };
     window.addEventListener('online', goOnline);
     window.addEventListener('offline', goOffline);
-    window.addEventListener('storage', refreshQueue);
-    refreshQueue();
+    window.addEventListener('storage', refresh);
+    refresh();
     return () => {
       window.removeEventListener('online', goOnline);
       window.removeEventListener('offline', goOffline);
-      window.removeEventListener('storage', refreshQueue);
+      window.removeEventListener('storage', refresh);
     };
-  }, [refreshQueue, toast]);
+  }, [refresh, toast]);
 
-  if (isOnline) return null;
+  if (isOnline && pending === 0) return null;
 
   return (
     <div
@@ -102,15 +100,42 @@ export function OfflineBanner() {
         <WifiOff size={18} />
       </span>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: '14px', fontWeight: '700', color: '#92400e' }}>
-          You are offline
+        <div style={{ fontSize: '14px', fontWeight: '700', color: isOnline ? '#92400e' : '#92400e' }}>
+          {isOnline
+            ? `${pending} request${pending === 1 ? '' : 's'} waiting to send`
+            : 'No connection'}
         </div>
         <div style={{ fontSize: '13px', fontWeight: '400', color: '#78716c', lineHeight: 1.5 }}>
-          {queuedCount > 0
-            ? `${queuedCount} draft${queuedCount === 1 ? '' : 's'} saved on this device. Submissions will sync once connectivity returns.`
-            : 'New submissions are saved on this device and will sync once connectivity returns.'}
+          {isOnline
+            ? 'They are still on this device. Use Retry send to try again.'
+            : pending > 0
+              ? `Requests you file now are saved on this device (${pending} waiting) and sent when the connection is back.`
+              : 'Requests you file now are saved on this device and sent when the connection is back.'}
+          {' '}For an emergency, contact the campus administrator directly.
         </div>
       </div>
+
+      {isOnline && (
+        <button
+          type="button"
+          onClick={async () => {
+            const { sent, duplicates, failed } = await flushOutbox();
+            setPending(outboxSize());
+            if (!sent && !duplicates && !failed) toast('Nothing left to send.', 'info');
+            else {
+              const parts = [];
+              if (sent) parts.push(`${sent} sent`);
+              if (duplicates) parts.push(`${duplicates} already filed`);
+              if (failed) parts.push(`${failed} failed`);
+              toast(parts.join(', '), failed ? 'error' : 'info');
+            }
+          }}
+          className="btn btn-secondary btn-sm"
+          style={{ flexShrink: 0 }}
+        >
+          Retry send
+        </button>
+      )}
     </div>
   );
 }

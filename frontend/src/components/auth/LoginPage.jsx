@@ -7,40 +7,55 @@ import {
   AlertCircle, 
   UserPlus, 
   CheckCircle2, 
-  ArrowRight,
-  Shield,
-  Landmark,
-  Wrench,
-  GraduationCap,
   KeyRound
 } from 'lucide-react';
 import { useAuth, TEST_PERSONAS } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { RegisterModal } from './RegisterModal';
 import { Modal } from '../common/Modal';
-import pdasLogo from '../../assets/fixit-logo.png';
+import { Spinner } from '../ui/Spinner';
+import { useToast } from '../ui/Toast';
+// Use the official FixIT brand mark for the dedicated login experience so the
+// signage, portal, and authenticated app all read as a single product family.
+import fixitLogo from '../../assets/fixit-official-logo.png';
+
+const ROLES = [
+  { id: 'admin',         label: 'Administrator'  },
+  { id: 'campus_admin',  label: 'Approver'       },
+  { id: 'faculty_staff', label: 'Faculty/Staff'  },
+  { id: 'maintenance',   label: 'Maintenance'    },
+];
+
+// Field-level messages are UI state only; the server response still lands in
+// `error`. A shared empty object keeps clears free of new allocations.
+const EMPTY_FIELD_ERRORS = { email: '', password: '' };
+
+const ROLE_NAV_KEYS = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'];
 
 export const LoginPage = () => {
   const { loginWithCredentials, resetPassword } = useAuth();
   const { requestPasswordChange } = useData();
   
-  // Login flow active tab: 'admin' | 'faculty_staff' | 'maintenance'
   const [activeFlow, setActiveFlow] = useState('admin');
-
-  // Credentials & Form State (password is never prefilled or remembered)
-  const [email, setEmail] = useState(() => localStorage.getItem('fixit_pdas_remembered_login_v1') || '');
+  // Seed the sample institutional address so the field is not blank on first
+  // load. Selecting a role already fills it, so this is the same value with the
+  // initial click removed.
+  const [email, setEmail] = useState(
+    () => localStorage.getItem('fixit_pdas_remembered_login_v1')
+      || TEST_PERSONAS.find(item => item.key === 'admin')?.email
+      || ''
+  );
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(() => Boolean(localStorage.getItem('fixit_pdas_remembered_login_v1')));
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState(EMPTY_FIELD_ERRORS);
 
-  // Modals State
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
 
-  // Forgot password modal state
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotPassword, setForgotPassword] = useState('');
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
@@ -51,394 +66,264 @@ export const LoginPage = () => {
   const [isForgotSubmitting, setIsForgotSubmitting] = useState(false);
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
 
-  // Key event listeners for Caps Lock check
   const handlePasswordKeyDown = (e) => {
-    if (e.getModifierState) {
-      setIsCapsLockOn(e.getModifierState('CapsLock'));
-    }
+    if (e.getModifierState) setIsCapsLockOn(e.getModifierState('CapsLock'));
   };
 
   const handleForgotKeyDown = (e) => {
-    if (e.getModifierState) {
-      setIsForgotCapsLockOn(e.getModifierState('CapsLock'));
-    }
+    if (e.getModifierState) setIsForgotCapsLockOn(e.getModifierState('CapsLock'));
   };
 
-  // Switch Login Flow (Admin, Approver, Faculty & Staff, Maintenance).
-  // Fills the demo email for the portal; the password is always typed by hand.
+  /* Roving-tabindex radiogroup keyboard model: exactly one radio is tabbable
+     and the arrow keys both move focus and commit the selection, so the group
+     behaves identically for keyboard, mouse and screen-reader users. Home/End
+     jump to the ends. Focus is re-pointed after state settles so the newly
+     checked radio takes the tab stop. */
+  const handleRoleKeyDown = (e) => {
+    if (!ROLE_NAV_KEYS.includes(e.key)) return;
+    const radios = Array.from(e.currentTarget.querySelectorAll('[role="radio"]'));
+    if (!radios.length) return;
+    e.preventDefault();
+    const current = radios.findIndex((el) => el.getAttribute('aria-checked') === 'true');
+    let next = current;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (current + 1) % radios.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (current - 1 + radios.length) % radios.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = radios.length - 1;
+    if (next === current) return;
+    handleSelectFlow(ROLES[next].id);
+    requestAnimationFrame(() => radios[next]?.focus());
+  };
+
   const handleSelectFlow = (flowType) => {
     setActiveFlow(flowType);
     setError('');
+    setFieldErrors(EMPTY_FIELD_ERRORS);
     setPassword('');
-
-    if (flowType === 'admin') {
-      const p = TEST_PERSONAS.find(item => item.key === 'admin');
-      setEmail(p?.email || '');
-    } else if (flowType === 'campus_admin') {
-      const p = TEST_PERSONAS.find(item => item.key === 'campus_admin');
-      setEmail(p?.email || '');
-    } else if (flowType === 'faculty_staff') {
-      const p = TEST_PERSONAS.find(item => item.key === 'faculty');
-      setEmail(p?.email || '');
-    } else if (flowType === 'maintenance') {
-      const p = TEST_PERSONAS.find(item => item.key === 'maintenance');
-      setEmail(p?.email || '');
-    }
+    const keyMap = {
+      admin: 'admin',
+      campus_admin: 'campus_admin',
+      faculty_staff: 'faculty',
+      maintenance: 'maintenance',
+    };
+    const p = TEST_PERSONAS.find(item => item.key === keyMap[flowType]);
+    setEmail(p?.email || '');
   };
+
+  /* Joins only the ids that are actually rendered, so aria-describedby never
+     points at a node the current state has removed. */
+  const joinIds = (...ids) => ids.filter(Boolean).join(' ') || undefined;
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // The button also carries disabled={isLoading}, but that only takes effect
+    // after a re-render; this closes the same-tick double submit outright.
+    if (isLoading) return;
     const cleanEmail = email.trim();
-    if (!cleanEmail) {
-      setError('Please enter your institutional email address.');
+    const nextFieldErrors = { email: '', password: '' };
+    if (!cleanEmail) nextFieldErrors.email = 'Please enter your institutional email address.';
+    if (!password)   nextFieldErrors.password = 'Please enter your account password.';
+    // Client-side misses are shown against the offending field; only a failed
+    // round trip reaches the live banner below the fields.
+    if (nextFieldErrors.email || nextFieldErrors.password) {
+      setFieldErrors(nextFieldErrors);
       return;
     }
-    if (!password) {
-      setError('Please enter your account password.');
-      return;
-    }
-
+    setFieldErrors(EMPTY_FIELD_ERRORS);
     setIsLoading(true);
     setError('');
-
-    setTimeout(async () => {
-      const res = await loginWithCredentials(cleanEmail, password, activeFlow);
-      setIsLoading(false);
-      if (!res.success) {
-        const msg = res.error || '';
-        if (
-          msg.toLowerCase().includes('cannot reach') ||
-          msg.toLowerCase().includes('failed to fetch') ||
-          msg.toLowerCase().includes('networkerror') ||
-          msg.toLowerCase().includes('not reachable')
-        ) {
-          setError(
-            '🔌 Backend server is not running. Double-click start-dev.bat in the project folder to start it, then try again.'
-          );
+    (async () => {
+      try {
+        const res = await loginWithCredentials(cleanEmail, password, activeFlow);
+        if (!res.success) {
+          const msg = res.error || '';
+          if (
+            msg.toLowerCase().includes('cannot reach') ||
+            msg.toLowerCase().includes('failed to fetch') ||
+            msg.toLowerCase().includes('networkerror') ||
+            msg.toLowerCase().includes('not reachable')
+          ) {
+            setError('The server is not running. Double-click start-dev.bat in the project folder, then try again.');
+          } else {
+            setError(msg || 'Incorrect email or password. Please check your credentials.');
+          }
+        } else if (rememberMe) {
+          localStorage.setItem('fixit_pdas_remembered_login_v1', cleanEmail);
         } else {
-          setError(msg || 'Incorrect email or password. Please check your credentials.');
+          localStorage.removeItem('fixit_pdas_remembered_login_v1');
         }
-      } else if (rememberMe) {
-        localStorage.setItem('fixit_pdas_remembered_login_v1', cleanEmail);
-      } else {
-        localStorage.removeItem('fixit_pdas_remembered_login_v1');
+      } finally {
+        setIsLoading(false);
       }
-    }, 350);
+    })();
   };
 
   const handleForgotSubmit = async (e) => {
     e.preventDefault();
     setForgotError('');
-
-    if (!forgotEmail.trim()) {
-      setForgotError('Please enter your registered institutional email.');
-      return;
-    }
-    if (forgotPassword.length < 6) {
-      setForgotError('Password must contain at least 6 characters.');
-      return;
-    }
-    if (forgotPassword !== forgotConfirmPassword) {
-      setForgotError('Passwords do not match. Please verify both fields.');
-      return;
-    }
-
+    if (!forgotEmail.trim()) { setForgotError('Please enter your registered institutional email.'); return; }
+    if (forgotPassword.length < 6) { setForgotError('Password must contain at least 6 characters.'); return; }
+    if (forgotPassword !== forgotConfirmPassword) { setForgotError('Passwords do not match. Please verify both fields.'); return; }
     setIsForgotSubmitting(true);
     const result = await resetPassword(forgotEmail.trim(), forgotPassword);
     setIsForgotSubmitting(false);
-
-    if (!result.success) {
-      setForgotError(result.error || 'Failed to reset password. Please try again.');
-      return;
-    }
+    if (!result.success) { setForgotError(result.error || 'Failed to reset password. Please try again.'); return; }
     requestPasswordChange(forgotEmail.trim());
     setForgotSubmitted(true);
   };
 
-  // Determine accent color for the submit button based on role
-  const getSubmitBtnStyle = () => {
-    if (activeFlow === 'campus_admin') {
-      return { background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)' };
-    }
-    if (activeFlow === 'faculty_staff') {
-      return { background: 'linear-gradient(135deg, #d97706 0%, #b45309 100%)' };
-    }
-    if (activeFlow === 'maintenance') {
-      return { background: 'linear-gradient(135deg, #374151 0%, #1f2937 100%)' };
-    }
-    return { background: 'linear-gradient(135deg, #001f9c 0%, #001373 100%)' };
-  };
-
   return (
-    <div className="login-page-root" style={{ minHeight: '100vh', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="login-desktop-shell" style={{ maxHeight: 'calc(100vh - 32px)', minHeight: '520px' }}>
-        
-        {/* ── Left Desktop Brand Hero Panel (Clean, Static, Professional) ── */}
-        <div 
-          className="login-desktop-hero"
-          style={{ padding: '40px 36px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center', textAlign: 'center' }}
-        >
-          <div style={{ margin: 'auto 0', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-            <div className="login-logo-glow-wrapper" style={{ marginBottom: '8px', display: 'flex', justifyContent: 'center' }}>
-              <img 
-                src={pdasLogo} 
-                alt="FixIT Logo" 
-                className="login-desktop-hero-logo"
-                style={{ height: '115px', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 10px 24px rgba(0,0,0,0.4))' }}
-                onError={(e) => { e.target.src = '/fixit-logo.png'; }}
-              />
-            </div>
-            <div style={{ fontSize: '16px', fontWeight: '800', color: '#ffffff', letterSpacing: '0.04em', textTransform: 'uppercase', lineHeight: 1.35, maxWidth: '340px' }}>
-              ILOILO SCIENCE AND TECHNOLOGY UNIVERSITY
-            </div>
-            <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#f59e0b', letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: '4px' }}>
-              DUMANGAS CAMPUS
-            </div>
-            <div style={{ fontSize: '12.5px', fontWeight: '400', color: 'rgba(255,255,255,0.85)', marginTop: '6px' }}>
-              Physical Development &amp; Auxiliary Services (PDAS)
-            </div>
-          </div>
+    <div className="lp-root">
 
-          {/* Subdued Footer info */}
-          <div style={{ fontSize: '11.5px', color: 'rgba(255, 255, 255, 0.55)', textAlign: 'center', paddingTop: '16px' }}>
-            Campus Facility Management Portal • ISAT U Dumangas
-          </div>
+      {/* ── Left brand panel ────────────────────────────────────────────
+          The mark and system name stay centred above the footer. */}
+      <aside className="lp-brand">
+        <div className="lp-brand-mid">
+          <img src={fixitLogo} alt="FixIT logo" className="lp-brand-mark" />
+
+          <p className="lp-brand-portal">Facility Issue eXpress and Integrated Tracking System</p>
         </div>
 
-        {/* ── Right Desktop Authentication Form Panel ── */}
-        <div className="login-desktop-form-panel" style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          
-          {/* Mobile Header (Hidden on Desktop via CSS) */}
-          <div className="login-mobile-only-header">
-            <img src={pdasLogo} alt="FixIT Logo" style={{ height: '40px', margin: '0 auto 6px auto' }} />
-            <div style={{ fontSize: '12px', fontWeight: '800', color: '#001f9c' }}>ILOILO SCIENCE AND TECHNOLOGY UNIVERSITY</div>
-            <div style={{ fontSize: '11px', fontWeight: '800', color: '#d97706' }}>DUMANGAS CAMPUS</div>
-            <div style={{ fontSize: '10px', color: '#64748b' }}>PDAS Office</div>
+        <footer className="lp-brand-footer">Planning, Development, and Auxiliary Services</footer>
+      </aside>
+
+      {/* ── Right form panel ── */}
+      <main className="lp-form-panel">
+        <div className="lp-form-wrap">
+
+          {/* Stand-in for the navy panel once it is hidden below 900px, so the
+              mark still sits on the same axis as the form column. */}
+          <div className="lp-compact-brand">
+            <img src={fixitLogo} alt="FixIT logo" className="lp-compact-mark" />
           </div>
 
-          {/* Form Header */}
-          <div className="login-form-header" style={{ marginBottom: '16px' }}>
-            <h1 className="login-form-title" style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', margin: '0 0 4px 0' }}>Sign In</h1>
-            <p className="login-form-subtitle" style={{ fontSize: '13px', color: '#475569', margin: 0 }}>
-              Choose your role and enter your credentials.
-            </p>
+          {/* Heading */}
+          <div className="lp-form-head">
+            <p className="lp-eyebrow">ISAT U Dumangas Campus</p>
+            <h1 className="lp-form-title">Sign in</h1>
+            <p className="lp-form-subtitle">Choose your role and enter your credentials.</p>
           </div>
 
-          {/* ── Role Switcher Segmented Tabs ── */}
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{ fontSize: '11px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
-              SIGN IN AS
-            </div>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: '4px',
-              background: '#f1f5f9',
-              padding: '4px',
-              borderRadius: '10px'
-            }}>
-              {/* PDAS Admin */}
-              <button
-                type="button"
-                onClick={() => handleSelectFlow('admin')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '4px',
-                  padding: '8px 2px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: activeFlow === 'admin' ? '#001f9c' : 'transparent',
-                  color: activeFlow === 'admin' ? '#ffffff' : '#334155',
-                  fontWeight: activeFlow === 'admin' ? '700' : '600',
-                  fontSize: '11px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <Shield size={12} />
-                PDAS Head
-              </button>
-
-              {/* Approver */}
-              <button
-                type="button"
-                onClick={() => handleSelectFlow('campus_admin')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '4px',
-                  padding: '8px 2px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: activeFlow === 'campus_admin' ? '#1e3a8a' : 'transparent',
-                  color: activeFlow === 'campus_admin' ? '#ffffff' : '#334155',
-                  fontWeight: activeFlow === 'campus_admin' ? '700' : '600',
-                  fontSize: '11px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <Landmark size={12} />
-                Approver
-              </button>
-
-              {/* Faculty & Staff */}
-              <button
-                type="button"
-                onClick={() => handleSelectFlow('faculty_staff')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '4px',
-                  padding: '8px 2px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: activeFlow === 'faculty_staff' ? '#d97706' : 'transparent',
-                  color: activeFlow === 'faculty_staff' ? '#ffffff' : '#334155',
-                  fontWeight: activeFlow === 'faculty_staff' ? '700' : '600',
-                  fontSize: '11px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <GraduationCap size={12} />
-                Faculty / Staff
-              </button>
-
-              {/* Maintenance */}
-              <button
-                type="button"
-                onClick={() => handleSelectFlow('maintenance')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '4px',
-                  padding: '8px 2px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: activeFlow === 'maintenance' ? '#374151' : 'transparent',
-                  color: activeFlow === 'maintenance' ? '#ffffff' : '#334155',
-                  fontWeight: activeFlow === 'maintenance' ? '700' : '600',
-                  fontSize: '11px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s'
-                }}
-              >
-                <Wrench size={12} />
-                Maintenance
-              </button>
-            </div>
-
-            {/* One-Line Role Context Info */}
-            <div style={{
-              marginTop: '6px',
-              padding: '6px 10px',
-              background: activeFlow === 'admin' ? '#eff4ff' : activeFlow === 'campus_admin' ? '#eff6ff' : activeFlow === 'faculty_staff' ? '#fffbeb' : '#f8fafc',
-              border: `1px solid ${activeFlow === 'admin' ? '#bfdbfe' : activeFlow === 'campus_admin' ? '#93c5fd' : activeFlow === 'faculty_staff' ? '#fde68a' : '#e2e8f0'}`,
-              borderRadius: '8px',
-              fontSize: '11.5px',
-              color: '#475569',
-              fontWeight: '500',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              {activeFlow === 'admin' && <><Shield size={12} color="#001f9c" /><span><strong style={{ color: '#001f9c' }}>PDAS Head / Director</strong> — Manage requests & operations</span></>}
-              {activeFlow === 'campus_admin' && <><Landmark size={12} color="#1e3a8a" /><span><strong style={{ color: '#1e3a8a' }}>Approver</strong> — Final approval authority</span></>}
-              {activeFlow === 'faculty_staff' && <><GraduationCap size={12} color="#b45309" /><span><strong style={{ color: '#b45309' }}>Faculty &amp; Staff</strong> — Submit and track facility requests</span></>}
-              {activeFlow === 'maintenance' && <><Wrench size={12} color="#374151" /><span><strong style={{ color: '#374151' }}>Maintenance</strong> — PDAS Technical Personnel &amp; Field Staff</span></>}
+          {/* Role selector.
+              A radiogroup is the correct pattern for mutually exclusive
+              choices: one tab stop for the whole group, arrow keys to move and
+              select, Home/End to jump. Roving tabindex lives on aria-checked so
+              only the checked radio is reachable with Tab. Selection still
+              routes through handleSelectFlow, so persona seeding and the
+              password clear behave exactly as before. */}
+          <div className="lp-role-section">
+            <span className="lp-role-label" id="lp-role-label">Sign in as</span>
+            <div
+              className="lp-role-tabs"
+              role="radiogroup"
+              aria-labelledby="lp-role-label"
+              onKeyDown={handleRoleKeyDown}
+            >
+              {ROLES.map((role) => (
+                <button
+                  key={role.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={activeFlow === role.id}
+                  tabIndex={activeFlow === role.id ? 0 : -1}
+                  className={`lp-role-tab${activeFlow === role.id ? ' lp-role-tab--active' : ''}`}
+                  onClick={() => handleSelectFlow(role.id)}
+                >
+                  {role.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* ── Error Message ── */}
-          {error && (
-            <div className="auth-error-banner" style={{ margin: '0 0 12px 0', padding: '8px 12px', borderRadius: '8px', background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertCircle size={16} style={{ flexShrink: 0 }} />
-              <div>{error}</div>
-            </div>
-          )}
-
-          {/* ── Credentials Form ── */}
-          <form onSubmit={handleSubmit}>
-            <div className="form-group" style={{ marginBottom: '12px' }}>
-              <label className="form-label" htmlFor="login-email" style={{ fontSize: '12.5px', fontWeight: '600', color: '#1e293b', marginBottom: '4px', display: 'block' }}>
-                Institutional Email
-              </label>
-              <div className="input-with-icon-wrapper" style={{ position: 'relative' }}>
-                <Mail size={16} className="input-leading-icon" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+          {/* Credentials Form. The live region lives inside the form directly
+              above the submit button so the announcement sits where the user
+              is looking, and it persists so inserting a message is announced. */}
+          <form onSubmit={handleSubmit} noValidate>
+            <div className="lp-field">
+              <label className="lp-label" htmlFor="login-email">Institutional email</label>
+              <div className="lp-input-wrap">
+                <Mail size={15} className="lp-input-icon" aria-hidden="true" />
                 <input
                   id="login-email"
                   type="email"
                   autoComplete="username"
-                  className="login-input"
+                  className="lp-input"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (fieldErrors.email) setFieldErrors((f) => ({ ...f, email: '' }));
+                  }}
                   placeholder="name@isatu.edu.ph"
-                  style={{ paddingLeft: '38px', height: '40px', borderRadius: '8px', fontSize: '13.5px', border: '1px solid #cbd5e1', width: '100%' }}
+                  aria-invalid={fieldErrors.email ? true : undefined}
+                  aria-describedby={joinIds(fieldErrors.email && 'login-email-error', error && 'login-status')}
                   required
                 />
               </div>
+              {fieldErrors.email && (
+                <p className="lp-field-error" id="login-email-error">{fieldErrors.email}</p>
+              )}
             </div>
 
-            <div className="form-group" style={{ marginBottom: '10px' }}>
-              <label className="form-label" htmlFor="login-password" style={{ fontSize: '12.5px', fontWeight: '600', color: '#1e293b', marginBottom: '4px', display: 'block' }}>
-                Password
-              </label>
-              <div className="input-with-icon-wrapper" style={{ position: 'relative' }}>
-                <Lock size={16} className="input-leading-icon" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+            <div className="lp-field">
+              <label className="lp-label" htmlFor="login-password">Password</label>
+              <div className="lp-input-wrap">
+                <Lock size={15} className="lp-input-icon" aria-hidden="true" />
                 <input
                   id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
-                  className="login-input"
+                  className="lp-input lp-input--pw"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (fieldErrors.password) setFieldErrors((f) => ({ ...f, password: '' }));
+                  }}
                   onKeyDown={handlePasswordKeyDown}
                   onKeyUp={handlePasswordKeyDown}
                   placeholder="Enter password"
-                  style={{ paddingLeft: '38px', paddingRight: '40px', height: '40px', borderRadius: '8px', fontSize: '13.5px', border: '1px solid #cbd5e1', width: '100%' }}
+                  aria-invalid={fieldErrors.password ? true : undefined}
+                  aria-describedby={joinIds(
+                    fieldErrors.password && 'login-password-error',
+                    isCapsLockOn && 'lp-capslock',
+                    error && 'login-status',
+                  )}
                   required
                 />
                 <button
                   type="button"
-                  className="password-toggle-btn"
+                  className="lp-eye-btn"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+                  aria-pressed={showPassword}
                 >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showPassword ? <EyeOff size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
                 </button>
               </div>
-
-              {/* Caps Lock Warning Banner */}
+              {fieldErrors.password && (
+                <p className="lp-field-error" id="login-password-error">{fieldErrors.password}</p>
+              )}
               {isCapsLockOn && (
-                <div style={{ marginTop: '4px', fontSize: '11.5px', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  <AlertCircle size={12} />
-                  <span>Caps Lock is ON</span>
+                <div className="lp-capslock-warn" id="lp-capslock">
+                  <AlertCircle size={12} aria-hidden="true" />
+                  <span>Caps Lock is on</span>
                 </div>
               )}
             </div>
 
-            <div className="form-options-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-              <label className="custom-checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#475569', cursor: 'pointer' }}>
+            <div className="lp-options-row">
+              <label className="lp-checkbox-label" htmlFor="login-remember">
                 <input
+                  id="login-remember"
                   type="checkbox"
-                  className="custom-checkbox-input"
+                  className="lp-checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
                 />
                 <span>Remember me</span>
               </label>
-
               <button
                 type="button"
-                className="forgot-link-btn"
-                style={{ background: 'none', border: 'none', color: '#001f9c', fontSize: '12.5px', fontWeight: '600', cursor: 'pointer' }}
+                className="lp-forgot-btn"
                 onClick={() => {
                   setForgotEmail(email);
                   setForgotSubmitted(false);
@@ -454,59 +339,53 @@ export const LoginPage = () => {
               </button>
             </div>
 
-            <button
-              type="submit"
-              className="btn btn-primary login-submit-btn"
-              style={{ ...getSubmitBtnStyle(), width: '100%', height: '42px', borderRadius: '8px', fontSize: '14px', fontWeight: '700', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', border: 'none', cursor: 'pointer', transition: 'all 0.15s' }}
-              disabled={isLoading}
-            >
+            {/* Failed logins only — field-level messages sit under their own
+                input. The wrapper is always mounted so the polite live region
+                exists before a message arrives, which is what makes the
+                insertion announced instead of the region itself. */}
+            <div className="lp-error-slot" aria-live="polite">
+              {error && (
+                <div className="lp-error-banner" id="login-status">
+                  <AlertCircle size={15} className="lp-error-icon" />
+                  <span>{error}</span>
+                </div>
+              )}
+            </div>
+
+            <button type="submit" className="lp-submit-btn" disabled={isLoading}>
               {isLoading ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div className="badge-dot" style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#ffffff', animation: 'spin 0.8s infinite linear' }}></div>
-                  Signing in...
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <Spinner size={18} color="#ffffff" />
+                  <span>Signing in…</span>
                 </div>
               ) : (
-                <>
-                  <Lock size={15} />
-                  Sign In
-                  <ArrowRight size={15} />
-                </>
+                'Sign in'
               )}
             </button>
+            {/* A submit button inside a form triggers on Enter, but a pointer
+                click on a disabled button must not be swallowed silently —
+                during the round trip the label already reads "Signing in…". */}
           </form>
 
-          {/* ── Register Secondary Outline Action ── */}
-          <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #e2e8f0', textAlign: 'center' }}>
+          {/* Register — clearly secondary: outlined, below a labelled rule */}
+          <div className="lp-register-wrap">
+            <div className="lp-divider-label">
+              <span>New to the portal?</span>
+            </div>
             <button
               type="button"
+              className="lp-register-btn"
               onClick={() => setIsRegisterOpen(true)}
-              style={{
-                width: '100%',
-                height: '38px',
-                borderRadius: '8px',
-                background: 'transparent',
-                border: '1.5px solid #cbd5e1',
-                color: '#001f9c',
-                fontSize: '13px',
-                fontWeight: '600',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.15s'
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#001f9c'; e.currentTarget.style.background = '#eff4ff'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = 'transparent'; }}
             >
-              <UserPlus size={15} />
+              <UserPlus size={14} aria-hidden="true" />
               Create an account
             </button>
           </div>
-        </div>
-      </div>
 
-      {/* ── Enhanced Forgot Password Recovery Modal ── */}
+        </div>
+      </main>
+
+      {/* ── Forgot Password Modal ── */}
       <Modal
         isOpen={isForgotModalOpen}
         onClose={() => setIsForgotModalOpen(false)}
@@ -514,30 +393,17 @@ export const LoginPage = () => {
         maxWidth="460px"
       >
         {forgotSubmitted ? (
-          <div style={{ textAlign: 'center', padding: '16px 0' }}>
-            <div style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: '50%',
-              background: '#ecfdf5',
-              color: '#059669',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '16px'
-            }}>
-              <CheckCircle2 size={32} />
+          <div className="lp-reset-success">
+            <div className="lp-reset-success-icon">
+              <CheckCircle2 size={28} />
             </div>
-            <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', marginBottom: '8px' }}>
-              Password Reset Successful
-            </h3>
-            <p style={{ fontSize: '13.5px', color: '#475569', lineHeight: '1.55', marginBottom: '22px' }}>
-              Your password for <strong>{forgotEmail}</strong> has been updated. You can now sign in using your new credentials.
+            <h3 className="lp-reset-success-title">Password Reset Successful</h3>
+            <p className="lp-reset-success-msg">
+              The password for <strong>{forgotEmail}</strong> was changed. Sign in with the new one.
             </p>
             <button
               type="button"
-              className="btn btn-primary"
-              style={{ width: '100%', height: '40px', borderRadius: '8px', background: '#001f9c', color: '#ffffff', fontWeight: '700', fontSize: '13.5px', border: 'none', cursor: 'pointer' }}
+              className="lp-submit-btn"
               onClick={() => {
                 setIsForgotModalOpen(false);
                 setPassword(forgotPassword);
@@ -549,126 +415,106 @@ export const LoginPage = () => {
           </div>
         ) : (
           <form onSubmit={handleForgotSubmit}>
-            <p style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.5', marginBottom: '16px' }}>
+            <p className="lp-modal-hint">
               Enter your registered institutional email and create a new secure password.
             </p>
 
-            {/* Email Field */}
-            <div className="form-group" style={{ marginBottom: '14px' }}>
-              <label className="form-label" style={{ fontSize: '12.5px', fontWeight: '600', color: '#1e293b', marginBottom: '4px', display: 'block' }}>
-                Institutional Email
-              </label>
-              <div style={{ position: 'relative' }}>
-                <Mail size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+            <div className="lp-field">
+              <label className="lp-label" htmlFor="forgot-email">Institutional email</label>
+              <div className="lp-input-wrap">
+                <Mail size={15} className="lp-input-icon" />
                 <input
+                  id="forgot-email"
                   type="email"
-                  className="form-input"
+                  className="lp-input"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
                   placeholder="name@isatu.edu.ph"
-                  style={{ paddingLeft: '38px', height: '40px', borderRadius: '8px', fontSize: '13.5px', border: '1px solid #cbd5e1', width: '100%' }}
                   required
                 />
               </div>
             </div>
 
-            {/* New Password Field with Eye Toggle */}
-            <div className="form-group" style={{ marginBottom: '14px' }}>
-              <label className="form-label" style={{ fontSize: '12.5px', fontWeight: '600', color: '#1e293b', marginBottom: '4px', display: 'block' }}>
-                New Password
-              </label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+            <div className="lp-field">
+              <label className="lp-label" htmlFor="forgot-password">New Password</label>
+              <div className="lp-input-wrap">
+                <Lock size={15} className="lp-input-icon" />
                 <input
+                  id="forgot-password"
                   type={showForgotPass ? 'text' : 'password'}
-                  className="form-input"
+                  className="lp-input lp-input--pw"
                   value={forgotPassword}
                   onChange={(e) => setForgotPassword(e.target.value)}
                   onKeyDown={handleForgotKeyDown}
                   onKeyUp={handleForgotKeyDown}
                   placeholder="At least 6 characters"
-                  style={{ paddingLeft: '38px', paddingRight: '40px', height: '40px', borderRadius: '8px', fontSize: '13.5px', border: '1px solid #cbd5e1', width: '100%' }}
                   required
                   minLength={6}
                 />
                 <button
                   type="button"
+                  className="lp-eye-btn"
                   onClick={() => setShowForgotPass(!showForgotPass)}
                   aria-label={showForgotPass ? 'Hide password' : 'Show password'}
-                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                  aria-pressed={showForgotPass}
                 >
-                  {showForgotPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showForgotPass ? <EyeOff size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
                 </button>
               </div>
             </div>
 
-            {/* Confirm New Password Field with Eye Toggle */}
-            <div className="form-group" style={{ marginBottom: '14px' }}>
-              <label className="form-label" style={{ fontSize: '12.5px', fontWeight: '600', color: '#1e293b', marginBottom: '4px', display: 'block' }}>
-                Confirm New Password
-              </label>
-              <div style={{ position: 'relative' }}>
-                <KeyRound size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+            <div className="lp-field">
+              <label className="lp-label" htmlFor="forgot-confirm">Confirm New Password</label>
+              <div className="lp-input-wrap">
+                <KeyRound size={15} className="lp-input-icon" />
                 <input
+                  id="forgot-confirm"
                   type={showForgotConfirmPass ? 'text' : 'password'}
-                  className="form-input"
+                  className="lp-input lp-input--pw"
                   value={forgotConfirmPassword}
                   onChange={(e) => setForgotConfirmPassword(e.target.value)}
                   onKeyDown={handleForgotKeyDown}
                   onKeyUp={handleForgotKeyDown}
                   placeholder="Re-type new password"
-                  style={{ paddingLeft: '38px', paddingRight: '40px', height: '40px', borderRadius: '8px', fontSize: '13.5px', border: '1px solid #cbd5e1', width: '100%' }}
                   required
                   minLength={6}
                 />
                 <button
                   type="button"
+                  className="lp-eye-btn"
                   onClick={() => setShowForgotConfirmPass(!showForgotConfirmPass)}
                   aria-label={showForgotConfirmPass ? 'Hide password' : 'Show password'}
-                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                  aria-pressed={showForgotConfirmPass}
                 >
-                  {showForgotConfirmPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showForgotConfirmPass ? <EyeOff size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
                 </button>
               </div>
-
-              {/* Password Matching Feedback */}
               {forgotConfirmPassword && (
-                <div style={{ marginTop: '6px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  {forgotPassword === forgotConfirmPassword ? (
-                    <span style={{ color: '#059669', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
-                      <CheckCircle2 size={13} /> Passwords match
-                    </span>
-                  ) : (
-                    <span style={{ color: '#dc2626', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <AlertCircle size={13} /> Passwords do not match
-                    </span>
-                  )}
+                <div className={`lp-pw-match ${forgotPassword === forgotConfirmPassword ? 'lp-pw-match--ok' : 'lp-pw-match--err'}`}>
+                  {forgotPassword === forgotConfirmPassword
+                    ? <><CheckCircle2 size={12} /> Passwords match</>
+                    : <><AlertCircle size={12} /> Passwords do not match</>
+                  }
                 </div>
               )}
-
-              {/* Caps Lock Warning for Forgot Password */}
               {isForgotCapsLockOn && (
-                <div style={{ marginTop: '4px', fontSize: '11.5px', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  <AlertCircle size={12} />
-                  <span>Caps Lock is ON</span>
+                <div className="lp-capslock-warn">
+                  <AlertCircle size={12} /><span>Caps Lock is on</span>
                 </div>
               )}
             </div>
 
-            {/* Error Message */}
             {forgotError && (
-              <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '12.5px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <AlertCircle size={15} style={{ flexShrink: 0 }} />
+              <div className="lp-error-banner" role="alert">
+                <AlertCircle size={15} className="lp-error-icon" />
                 <span>{forgotError}</span>
               </div>
             )}
 
-            {/* Modal Actions */}
-            <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
+            <div className="lp-modal-actions">
               <button
                 type="button"
-                className="btn btn-secondary"
-                style={{ flex: 1, height: '40px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#475569', fontWeight: '600', cursor: 'pointer' }}
+                className="lp-modal-cancel-btn"
                 onClick={() => setIsForgotModalOpen(false)}
                 disabled={isForgotSubmitting}
               >
@@ -676,11 +522,10 @@ export const LoginPage = () => {
               </button>
               <button
                 type="submit"
-                className="btn btn-primary"
-                style={{ flex: 2, height: '40px', borderRadius: '8px', background: '#001f9c', color: '#ffffff', fontWeight: '700', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                className="lp-submit-btn lp-submit-btn--flex2"
                 disabled={isForgotSubmitting}
               >
-                {isForgotSubmitting ? 'Updating...' : 'Update Password'}
+                {isForgotSubmitting ? 'Updating…' : 'Update Password'}
               </button>
             </div>
           </form>

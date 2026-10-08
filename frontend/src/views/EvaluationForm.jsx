@@ -3,11 +3,16 @@ import { CheckCircle2, Send } from 'lucide-react';
 import { useOfflineAutoSave } from '../utils/useOfflineAutoSave';
 import { AutoSaveIndicator } from '../components/common/AutoSaveIndicator';
 
+/* The five characteristics the study evaluates (ch1.md:42, ch3.md:162):
+   functional suitability, usability, reliability, performance efficiency and
+   security. Security was missing until now, which left objective 9 unable to
+   report on one of its five stated criteria. */
 const criteria = [
   ['functionalSuitability', 'Functional Suitability', 'The repair resolved the reported facility issue.'],
   ['usability', 'Usability', 'The repaired facility or equipment is easy to use.'],
   ['reliability', 'Reliability', 'The repair has remained dependable after completion.'],
-  ['performanceEfficiency', 'Performance Efficiency', 'The repaired facility or equipment performs efficiently.']
+  ['performanceEfficiency', 'Performance Efficiency', 'The repaired facility or equipment performs efficiently.'],
+  ['security', 'Security', 'My account and personal data are protected in the system.']
 ];
 
 export const EvaluationForm = ({ request, requesterName, submitEvaluation, onSubmitted }) => {

@@ -95,7 +95,7 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: '#f8fafc'
+          background: 'var(--bg-sunken)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Bell size={18} color="#001f9c" />
