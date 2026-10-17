@@ -86,6 +86,13 @@ const normalizeUser = (user) => {
     roleTitle: user.roleTitle || normalizeRoleTitle(role),
     title: user.title || user.roleTitle || normalizeRoleTitle(role),
     status: normalizedStatus,
+    availabilityStatus: user.availability_status ?? user.availabilityStatus ?? 'available',
+    specialization: user.specialization ?? user.trade ?? 'General Maintenance',
+    // Supervisor designation — the DB column is is_supervisor (0/1).
+    // Normalize to a boolean so every consumer (table badge, edit checkbox)
+    // can just do Boolean(user.isSupervisor) without knowing the DB shape.
+    isSupervisor: Boolean(user.is_supervisor ?? user.isSupervisor),
+    is_supervisor: user.is_supervisor ?? (user.isSupervisor ? 1 : 0),
   };
 };
 
@@ -337,6 +344,8 @@ export const apiUpdateUser = async (userId, updatedFields = {}) => {
     address: updatedFields.address ?? null,
     birthday: updatedFields.birthday ?? null,
     age: updatedFields.age ?? null,
+    specialization: updatedFields.specialization ?? null,
+    availabilityStatus: updatedFields.availabilityStatus ?? updatedFields.availability_status ?? null,
     role: normalizeRole(updatedFields.role ?? updatedFields.userType ?? updatedFields.user_type ?? 'faculty'),
   };
 
@@ -385,6 +394,30 @@ export const apiAssignSupervisor = async (userId, supervisorId) =>
   request(`/users/${userId}/assign-supervisor`, {
     method: 'PUT',
     body: JSON.stringify({ supervisorId }),
+  });
+
+export const apiDesignateSupervisor = async (userId, isSupervisor) =>
+  request(`/users/${userId}/supervisor-designation`, {
+    method: 'PUT',
+    body: JSON.stringify({ isSupervisor: Boolean(isSupervisor) }),
+  });
+
+export const apiBulkAssignSupervisor = async ({ supervisorId, department, office }) =>
+  request('/users/bulk-assign-supervisor', {
+    method: 'PUT',
+    body: JSON.stringify({ supervisorId, department, office }),
+  });
+
+export const apiUpdateMyAvailability = async (availabilityStatus) =>
+  request('/auth/availability', {
+    method: 'PUT',
+    body: JSON.stringify({ availabilityStatus }),
+  });
+
+export const apiUpdateUserAvailability = async (userId, availabilityStatus) =>
+  request(`/users/${userId}/availability`, {
+    method: 'PUT',
+    body: JSON.stringify({ availabilityStatus }),
   });
 
 // Preventive Maintenance Schedules API
@@ -441,6 +474,7 @@ export const apiSubmitEvaluation = async (evalData) => request('/evaluations', {
 
 // 4-Party Approval Workflow API calls
 export const apiCreateJobRequest = async (requestData) => request('/job-requests', { method: 'POST', body: JSON.stringify(requestData) });
+export const apiReviseJobRequest = async (id, revisionData) => request(`/job-requests/${id}/revise`, { method: 'PUT', body: JSON.stringify(revisionData) });
 export const apiUpdateJobRequestStatus = async (id, statusData) => request(`/job-requests/${id}/status`, { method: 'PUT', body: JSON.stringify(statusData) });
 export const apiSupervisorAction = async (id, actionData) => request(`/job-requests/${id}/supervisor-action`, { method: 'POST', body: JSON.stringify(actionData) });
 export const apiAdminAction = async (id, actionData) => request(`/job-requests/${id}/admin-action`, { method: 'POST', body: JSON.stringify(actionData) });

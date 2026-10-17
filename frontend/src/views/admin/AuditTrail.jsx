@@ -53,6 +53,7 @@ const ACTION_CONFIG = {
   'request.submitted': { label: 'Request Submitted', category: 'Requisition', color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe' },
   'request.supervisor.approved': { label: 'Supervisor Endorsement', category: 'Approval Workflow', color: '#047857', bg: '#ecfdf5', border: '#a7f3d0' },
   'request.supervisor.returned': { label: 'Supervisor Revision Request', category: 'Approval Workflow', color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+  'request.requester.revised': { label: 'Requester Resubmitted Revision', category: 'Requisition', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
   'request.admin.approved': { label: 'Admin Clearance & Approval', category: 'Approval Workflow', color: '#047857', bg: '#ecfdf5', border: '#a7f3d0' },
   'request.admin.returned': { label: 'Admin Revision Request', category: 'Approval Workflow', color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
   'request.approver.approved': { label: 'Director Final Approval', category: 'Approval Workflow', color: '#065f46', bg: '#d1fae5', border: '#6ee7b7' },
@@ -432,40 +433,22 @@ export const AuditTrail = () => {
           {/* Filter Bar & Search Header */}
           <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-              {/* Category Filter Pills */}
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className={`btn btn-sm ${activeTab === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setActiveTab('all')}
-                  style={{ fontSize: '12.5px', padding: '6px 12px' }}
+              {/* Category Filter Dropdown */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '12.5px', fontWeight: '700', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Filter size={15} color="#001f9c" /> Filter Category:
+                </span>
+                <select
+                  className="form-select form-select-sm"
+                  value={activeTab}
+                  onChange={(e) => setActiveTab(e.target.value)}
+                  style={{ minWidth: '220px', fontWeight: '700', borderRadius: '8px', padding: '6px 12px', fontSize: '13px', background: '#ffffff', border: '1px solid #cbd5e1' }}
                 >
-                  All Events ({entries.length})
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-sm ${activeTab === 'approval' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setActiveTab('approval')}
-                  style={{ fontSize: '12.5px', padding: '6px 12px' }}
-                >
-                  Approvals & Requisitions
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-sm ${activeTab === 'user' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setActiveTab('user')}
-                  style={{ fontSize: '12.5px', padding: '6px 12px' }}
-                >
-                  User & Access
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-sm ${activeTab === 'maintenance' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setActiveTab('maintenance')}
-                  style={{ fontSize: '12.5px', padding: '6px 12px' }}
-                >
-                  Work Order & Maintenance
-                </button>
+                  <option value="all">All Events ({entries.length})</option>
+                  <option value="approval">Approvals & Requisitions</option>
+                  <option value="user">User & Access Management</option>
+                  <option value="maintenance">Work Order & Maintenance</option>
+                </select>
               </div>
 
               {/* Search Box */}

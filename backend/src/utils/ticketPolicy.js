@@ -121,7 +121,12 @@ export function canViewTicket(user, row) {
       || Boolean(row.immediate_supervisor && user.name && String(row.immediate_supervisor).toLowerCase().includes(String(user.name).toLowerCase()))
       || Boolean(row.department && user.department && row.department === user.department);
   }
-  if (isTech(user.role)) return row.assigned_to === user.id;
+  if (isTech(user.role)) {
+    return (
+      (row.assigned_to != null && (Number(row.assigned_to) === Number(user.id) || String(row.assigned_to) === String(user.id))) ||
+      Boolean(row.assigned_to && user.name && String(row.assigned_to).toLowerCase().includes(String(user.name).toLowerCase()))
+    );
+  }
   return row.requester_id === user.id;
 }
 
@@ -215,12 +220,14 @@ export function authorizeStatusChange(user, row, targetStatus) {
   const current = row.status;
 
   if (!isPrivileged(user.role)) {
-    const techCompletion = isTech(user.role)
-      && current === 'Ongoing'
-      && targetStatus === 'Completed'
-      && row.assigned_to === user.id;
+    const isAssignedTech = isTech(user.role) && (
+      (row.assigned_to != null && (Number(row.assigned_to) === Number(user.id) || String(row.assigned_to) === String(user.id))) ||
+      Boolean(row.assigned_to && user.name && String(row.assigned_to).toLowerCase().includes(String(user.name).toLowerCase()))
+    );
+    const techAllowedStatus = ['Ongoing', 'In Progress', 'Completed'].includes(targetStatus) && ['Approved', 'Ongoing', 'In Progress', 'On Hold'].includes(current);
+    const techCompletion = isAssignedTech && techAllowedStatus;
     if (!techCompletion) {
-      return { ok: false, status: 403, message: 'Only PDAS Admin can change ticket status (assigned technicians may only mark their own ticket Completed).' };
+      return { ok: false, status: 403, message: 'Only assigned maintenance personnel or PDAS Admin can update this ticket.' };
     }
   }
 

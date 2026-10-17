@@ -169,8 +169,10 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
         </div>
       ) : null}
 
-      {/* 5 Stat Cards — colors are semantic only: amber=attention, green=complete, red=critical, brand=navigational */}
-      <div className="admin-stats-grid" style={{ display: 'grid', gap: '10px' }}>
+      {/* 2 Stat Cards — Total and Replacement/Disposal. The per-status breakdown
+          (Pending, Ongoing, Completed) lives in the Pipeline by Status donut below,
+          so repeating those here would be redundant. */}
+      <div className="admin-stats-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
         {/* Total Requests — deliberately not a status colour: a count of every
             state, so it must not borrow one state's hue. */}
         <div
@@ -190,66 +192,6 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
         >
           <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Total Requests</div>
           <div style={{ fontSize: '28px', fontWeight: '700', color: '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{totalRequisitions}</div>
-        </div>
-
-        {/* Pending Approval — amber: requires attention */}
-        <div
-          onClick={() => onNavigate && onNavigate('job-requests', 'pending')}
-          style={{
-            background: '#ffffff',
-            borderRadius: '10px',
-            padding: '14px 16px',
-            border: '1px solid #e2e8f0',
-            borderLeft: '3px solid #f59e0b',
-            boxShadow: 'var(--shadow-subtle)',
-            cursor: 'pointer',
-            transition: 'box-shadow 0.15s'
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
-        >
-          <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Pending Approval</div>
-          <div style={{ fontSize: '28px', fontWeight: '700', color: pendingApprovals > 0 ? '#92400e' : '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{pendingApprovals}</div>
-        </div>
-
-        {/* Ongoing Work Orders — status-progress indigo: active/in-progress */}
-        <div
-          onClick={() => onNavigate && onNavigate('job-requests', 'in-progress')}
-          style={{
-            background: '#ffffff',
-            borderRadius: '10px',
-            padding: '14px 16px',
-            border: '1px solid #e2e8f0',
-            borderLeft: '3px solid #6366f1',
-            boxShadow: 'var(--shadow-subtle)',
-            cursor: 'pointer',
-            transition: 'box-shadow 0.15s'
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
-        >
-          <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Ongoing Work Orders</div>
-          <div style={{ fontSize: '28px', fontWeight: '700', color: '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{ongoingWorkOrders}</div>
-        </div>
-
-        {/* Completed Repairs — green: success/done status */}
-        <div
-          onClick={() => onNavigate && onNavigate('job-requests', 'completed')}
-          style={{
-            background: '#ffffff',
-            borderRadius: '10px',
-            padding: '14px 16px',
-            border: '1px solid #e2e8f0',
-            borderLeft: '3px solid #10b981',
-            boxShadow: 'var(--shadow-subtle)',
-            cursor: 'pointer',
-            transition: 'box-shadow 0.15s'
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
-        >
-          <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Completed Repairs</div>
-          <div style={{ fontSize: '28px', fontWeight: '700', color: completedRepairs > 0 ? '#047857' : '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{completedRepairs}</div>
         </div>
 
         {/* Replacement & Disposal — StatusBadge maps this to status-rejected */}
@@ -273,10 +215,16 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* Statistics — an operator's view: where the whole pipeline sits, how
-          much is arriving, and which trades the work falls to. */}
+      {/* Statistics — clicking a donut segment or bar navigates to the matching filter. */}
       <ChartsRow isEmpty={chartScope.length === 0}>
-        <DonutCard title="Pipeline by Status" icon="status" list={chartScope} pick={(r) => r.status} palette="status" unit="REQUESTS" />
+        <DonutCard
+          title="Pipeline by Status" icon="status" list={chartScope}
+          pick={(r) => r.status} palette="status" unit="REQUESTS"
+          onSegmentClick={(label) => {
+            const map = { Pending: 'pending', 'Pending Supervisor Approval': 'pending', 'Under Review': 'all', Ongoing: 'in-progress', 'In Progress': 'in-progress', Completed: 'completed', Approved: 'all', Rejected: 'all' };
+            onNavigate && onNavigate('job-requests', map[label] || 'all');
+          }}
+        />
         <ColumnCard
           title="Monthly Volume"
           icon="time"
@@ -287,7 +235,12 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
           palette="status"
           totalLabel="requests filed in this window"
         />
-        <BarCard title="Workload by Category" icon="category" list={chartScope} pick={(r) => r.category} colorPick={(r) => r.status} colorPalette="status" totalLabel="requests filed" />
+        <BarCard
+          title="Workload by Category" icon="category" list={chartScope}
+          pick={(r) => r.category} colorPick={(r) => r.status} colorPalette="status"
+          totalLabel="requests filed"
+          onBarClick={() => { onNavigate && onNavigate('job-requests', 'all'); }}
+        />
       </ChartsRow>
 
       {/* "Needs Your Attention" Strip (Shortcut strip when pending exists) */}

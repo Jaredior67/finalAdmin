@@ -1173,6 +1173,159 @@ router.post('/:id/replacement-flag', requireRole('maintenance', 'technician', 'a
   }
 });
 
+// PUT /api/job-requests/:id/revise - Requester edits and resubmits a Returned ticket
+router.put('/:id/revise', async (req, res) => {
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      'SELECT * FROM job_requests WHERE id = ? OR ticket_no = ? FOR UPDATE',
+      [req.params.id, req.params.id]
+    );
+    const jr = rows[0];
+    if (!jr) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Job request not found.' });
+    }
+
+    // Only the original requester (or an admin) may revise the ticket
+    if (!isPrivileged(req.user.role) && Number(jr.requester_id) !== Number(req.user.id)) {
+      await conn.rollback();
+      return res.status(403).json({ message: 'Only the original requester may revise this job request.' });
+    }
+
+    if (jr.status !== 'Returned') {
+      await conn.rollback();
+      return res.status(400).json({ message: `Only requests with status "Returned" can be revised (current status: ${jr.status}).` });
+    }
+
+    const {
+      title,
+      description,
+      category,
+      location,
+      urgency,
+      urgencyLevel,
+      scopeOfWorks,
+      photoUrl,
+      photoName,
+      revisionNotes
+    } = req.body;
+
+    if (!description || typeof description !== 'string' || !description.trim()) {
+      await conn.rollback();
+      return res.status(400).json({ message: 'Description is required and cannot be empty.' });
+    }
+
+    const descLimitError = wordLimitError(description, DESCRIPTION_WORD_LIMIT, 'description');
+    if (descLimitError) {
+      await conn.rollback();
+      return res.status(400).json(descLimitError);
+    }
+
+    const finalCategory = category ? matchCategory(category) : jr.category;
+    if (category && !finalCategory) {
+      await conn.rollback();
+      return res.status(400).json({ message: `category must be one of: ${REQUEST_CATEGORIES.join(', ')}.` });
+    }
+
+    const validUrgencies = ['Low Risk', 'Medium Risk', 'High Risk'];
+    const chosenUrgency = urgency || urgencyLevel || jr.urgency_level;
+    const finalUrgency = validUrgencies.includes(chosenUrgency) ? chosenUrgency : jr.urgency_level;
+
+    const finalTitle = title !== undefined ? String(title).trim().slice(0, 150) : jr.title;
+    const finalLocation = location !== undefined ? String(location).trim() : jr.location;
+    const finalScope = scopeOfWorks !== undefined ? (typeof scopeOfWorks === 'string' ? scopeOfWorks : JSON.stringify(scopeOfWorks)) : jr.scope_of_works;
+
+    const resetSupervisor = Boolean(jr.supervisor_id && jr.rejection_stage === 'supervisor');
+
+    await conn.query(
+      `UPDATE job_requests SET
+         title = ?,
+         description = ?,
+         category = ?,
+         location = ?,
+         urgency_level = ?,
+         scope_of_works = ?,
+         photo_url = COALESCE(?, photo_url),
+         photo_name = COALESCE(?, photo_name),
+         status = 'Pending',
+         rejection_stage = NULL,
+         rejection_remarks = NULL,
+         supervisor_approved = IF(?, 0, supervisor_approved),
+         updated_at = NOW()
+       WHERE id = ?`,
+      [
+        finalTitle || finalCategory || 'Facility Service Request',
+        description.trim(),
+        finalCategory,
+        finalLocation,
+        finalUrgency,
+        finalScope,
+        photoUrl || null,
+        photoName || null,
+        resetSupervisor ? 1 : 0,
+        jr.id
+      ]
+    );
+
+    const auditDetail = revisionNotes
+      ? `Revised by requester: ${String(revisionNotes).trim()}`
+      : 'Revised and resubmitted by requester';
+
+    await conn.query(
+      'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, ?, ?, ?)',
+      [jr.id, 'Returned', 'Pending', req.user.id, auditDetail]
+    );
+
+    await auditLog(conn, {
+      actorId: req.user.id,
+      action: 'request.requester.revised',
+      entity: 'job_request',
+      entityId: jr.id,
+      details: auditDetail
+    });
+
+    if (resetSupervisor && jr.supervisor_id) {
+      await notify(
+        conn,
+        jr.supervisor_id,
+        'Revised Request Submitted',
+        `${jr.ticket_no} was revised by ${req.user.name || 'requester'} and is ready for re-review.`,
+        `/supervisor-dashboard`
+      );
+    }
+    await notifyAdmins(
+      conn,
+      'Revised Request Submitted',
+      `${jr.ticket_no} was revised by ${req.user.name || 'requester'} and returned to Pending.`,
+      `/job-requests/${jr.id}`
+    );
+    await notify(
+      conn,
+      jr.requester_id,
+      'Request Resubmitted',
+      `Your revisions for ${jr.ticket_no} have been submitted for review.`,
+      `/job-requests/${jr.id}`
+    );
+
+    await conn.commit();
+    res.json({
+      message: 'Job request revised and resubmitted successfully.',
+      status: 'Pending',
+      ticketNo: jr.ticket_no
+    });
+  } catch (err) {
+    if (conn) await conn.rollback();
+    console.error('PUT /:id/revise error:', err);
+    res.status(500).json({ message: 'Failed to revise job request.' });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
 // PUT /api/job-requests/:id/status - Status transitions with Tri-Party Notifications
 router.put('/:id/status', async (req, res) => {
   let conn;
@@ -1187,7 +1340,7 @@ router.put('/:id/status', async (req, res) => {
 
     await conn.beginTransaction();
 
-    const [rows] = await conn.query('SELECT * FROM job_requests WHERE id = ? FOR UPDATE', [req.params.id]);
+    const [rows] = await conn.query('SELECT * FROM job_requests WHERE id = ? OR ticket_no = ? OR official_tracking_no = ? FOR UPDATE', [req.params.id, req.params.id, req.params.id]);
     const jobRequest = rows[0];
     if (!jobRequest) {
       await conn.rollback();
@@ -1213,20 +1366,6 @@ router.put('/:id/status', async (req, res) => {
     const effectiveAssignee = assignedTo !== undefined ? (assignedTo || null) : jobRequest.assigned_to;
     const approverId = ['Approved', 'Ongoing', 'Completed'].includes(targetStatus) ? (jobRequest.approved_by || req.user.id) : jobRequest.approved_by;
 
-    /* ch1.md:104 — "Once a ticket is marked Completed … the ticket is archived
-       without being deleted, while rejected requests are archived in the same
-       way"; restated at ch1.md:114, ch1.md:152 and ch2.md:32. Nothing in the
-       repository ever wrote `is_archived` except the two manual endpoints, so a
-       closed ticket sat in the active queue forever and the archive the papers
-       describe never formed.
-
-       The flag goes in with the terminal status, in the same statement and the
-       same transaction, so a row can never be terminal-and-unarchived. Only a
-       terminal write touches the columns: a ticket an admin archived by hand
-       keeps that choice when its status is later amended.
-
-       Nothing already on file is archived retroactively — that would change
-       what every queue shows today without anyone asking for it. */
     const isTerminal = targetStatus === 'Completed' || targetStatus === 'Rejected';
 
     await conn.query(
@@ -1238,18 +1377,18 @@ router.put('/:id/status', async (req, res) => {
          completed_at = ?
          ${isTerminal ? ', is_archived = TRUE, archived_at = NOW()' : ''}
        WHERE id = ?`,
-      [targetStatus, effectiveAssignee, approverId, scheduledDate || null, completedAt, req.params.id]
+      [targetStatus, effectiveAssignee, approverId, scheduledDate || null, completedAt, jobRequest.id]
     );
 
     await conn.query(
       'INSERT INTO job_request_status_history (job_request_id, from_status, to_status, changed_by, remarks) VALUES (?, ?, ?, ?, ?)',
-      [req.params.id, currentStatus, targetStatus, req.user.id, remarks || `Status changed to ${targetStatus}`]
+      [jobRequest.id, currentStatus, targetStatus, req.user.id, remarks || `Status changed to ${targetStatus}`]
     );
     await auditLog(conn, {
       actorId: req.user.id,
       action: `request.status.${targetStatus}`,
       entity: 'job_request',
-      entityId: req.params.id,
+      entityId: jobRequest.id,
       details: `${currentStatus} -> ${targetStatus}${remarks ? `: ${remarks}` : ''}`,
     });
     if (isTerminal) {

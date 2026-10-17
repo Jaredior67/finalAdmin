@@ -179,7 +179,7 @@ export const LoginPage = () => {
           The mark and system name stay centred above the footer. */}
       <aside className="lp-brand">
         <div className="lp-brand-mid">
-          <img src={fixitLogo} alt="FixIT logo" className="lp-brand-mark" />
+          <img src={fixitLogo} alt="FixIT logo" className="lp-brand-mark" width={250} height={250} />
 
           <p className="lp-brand-portal">Facility Issue eXpress and Integrated Tracking System</p>
         </div>
@@ -194,7 +194,7 @@ export const LoginPage = () => {
           {/* Stand-in for the navy panel once it is hidden below 900px, so the
               mark still sits on the same axis as the form column. */}
           <div className="lp-compact-brand">
-            <img src={fixitLogo} alt="FixIT logo" className="lp-compact-mark" />
+            <img src={fixitLogo} alt="FixIT logo" className="lp-compact-mark" width={160} height={160} />
           </div>
 
           {/* Heading */}
@@ -204,13 +204,7 @@ export const LoginPage = () => {
             <p className="lp-form-subtitle">Choose your role and enter your credentials.</p>
           </div>
 
-          {/* Role selector.
-              A radiogroup is the correct pattern for mutually exclusive
-              choices: one tab stop for the whole group, arrow keys to move and
-              select, Home/End to jump. Roving tabindex lives on aria-checked so
-              only the checked radio is reachable with Tab. Selection still
-              routes through handleSelectFlow, so persona seeding and the
-              password clear behave exactly as before. */}
+          {/* Role selector. */}
           <div className="lp-role-section">
             <span className="lp-role-label" id="lp-role-label">Sign in as</span>
             <div
@@ -232,6 +226,10 @@ export const LoginPage = () => {
                   {role.label}
                 </button>
               ))}
+              <div 
+                className="lp-role-indicator" 
+                style={{ transform: `translateX(${Math.max(0, ROLES.findIndex(r => r.id === activeFlow)) * 100}%)` }} 
+              />
             </div>
           </div>
 

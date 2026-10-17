@@ -180,8 +180,9 @@ export async function autoSetup() {
       await ensureColumn(rootConn, dbName, 'users', 'is_supervisor', 'TINYINT(1) NOT NULL DEFAULT 0');
       // supervisor_id: nullable FK to users(id), used to record which designated
       // supervisor is responsible for a given Faculty/Staff member. The FK is
-      // added as a deferred step after the column exists.
       await ensureColumn(rootConn, dbName, 'users', 'supervisor_id', 'INT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'users', 'availability_status', "VARCHAR(30) NOT NULL DEFAULT 'available'");
+      await ensureColumn(rootConn, dbName, 'users', 'specialization', "VARCHAR(150) DEFAULT 'General Maintenance'");
 
       // 2. registration_requests columns
       await ensureColumn(rootConn, dbName, 'registration_requests', 'middle_name', 'VARCHAR(100) DEFAULT NULL AFTER first_name');
@@ -269,15 +270,21 @@ export async function autoSetup() {
       // the user pressing submit twice — creates a second ticket, and a
       // facilities office does not quietly receive duplicates.
       await ensureColumn(rootConn, dbName, 'job_requests', 'idempotency_key', 'VARCHAR(64) DEFAULT NULL');
-      try {
-        await rootConn.query(
-          'ALTER TABLE `job_requests` ADD UNIQUE KEY `uq_jr_idempotency_key` (`idempotency_key`)'
-        );
-      } catch (e) {
-        if (!ALREADY_PRESENT.test(e.message)) {
-          console.warn('[migration] Notice on idempotency_key unique index:', e.message);
+      const addIndexSafe = async (idxName, sql) => {
+        try {
+          await rootConn.query(sql);
+        } catch (e) {
+          if (!ALREADY_PRESENT.test(e.message)) {
+            console.warn(`[migration] Notice on ${idxName}:`, e.message);
+          }
         }
-      }
+      };
+
+      await addIndexSafe('uq_jr_idempotency_key', 'ALTER TABLE `job_requests` ADD UNIQUE INDEX `uq_jr_idempotency_key` (`idempotency_key`)');
+      await addIndexSafe('idx_jr_archived_status', 'ALTER TABLE `job_requests` ADD INDEX `idx_jr_archived_status` (`is_archived`, `status`)');
+      await addIndexSafe('idx_jr_requester', 'ALTER TABLE `job_requests` ADD INDEX `idx_jr_requester` (`requester_id`)');
+      await addIndexSafe('idx_jr_assigned', 'ALTER TABLE `job_requests` ADD INDEX `idx_jr_assigned` (`assigned_to`)');
+      await addIndexSafe('idx_jr_supervisor', 'ALTER TABLE `job_requests` ADD INDEX `idx_jr_supervisor` (`supervisor_id`)');
 
       // Login hardening columns (Phase 2)
       await ensureColumn(rootConn, dbName, 'users', 'failed_login_attempts', "INT NOT NULL DEFAULT 0");

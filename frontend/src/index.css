@@ -155,9 +155,21 @@
   --navbar-height: 64px;
   --sidebar-accent: #001f9c;
 
-  /* Fonts — Inter primary, Verdana as institutional fallback */
-  --font-family: 'Inter', Verdana, Geneva, 'DejaVu Sans', Tahoma, sans-serif;
-  --font-heading: 'Inter', Verdana, Geneva, 'DejaVu Sans', Tahoma, sans-serif;
+  /* BRAND TOKENS */
+  --blue: #0B1FA8;
+  --navy: #0A1550;
+  --orange: #F7931E;
+  --orange-text: #B85C00;
+  --muted: #586789;
+  --line: #D9DFEE;
+  --paper: #EEF2FB;
+  --bg: #F3F5FB;
+
+  /* Fonts — Bricolage Grotesque for headings, Public Sans for body & UI */
+  --font-head: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Public Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-family: var(--font-body);
+  --font-heading: var(--font-head);
 
   /* Type scale (single source of truth — Phase 1).
      Body 16px/1.5 weight 400; labels 500; table headers 12px uppercase 600;
@@ -2641,27 +2653,19 @@ button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 12px 32px;
-  /* This variant only ever shows on the sign-in route — every authenticated
-     route re-themes it through `.app-container .system-footer` further down —
-     so it copies the sign-in page's own caption, .lp-brand-footer in the
-     identity column: the #334155 slate on that column's #EEF2F8 panel, sitting
-     on the same #cbd5e1 rule. #334155 is this app's body-text slate (41 uses,
-     always on light surfaces) and reads 9.2:1 here. It cannot go on the
-     --lp-primary blue this bar used to paint — #334155 on #001f9c is 1.2:1 —
-     so the bar takes the panel tone rather than the button fill. */
-  --footer-bg: #EEF2F8;
-  --footer-text: #334155;
-  --footer-divider: #cbd5e1;
+  gap: 32px;
+  padding: 14px 32px;
+  --footer-bg: var(--paper);
+  --footer-text: var(--muted);
+  --footer-divider: var(--line);
   background: var(--footer-bg);
   border-top: 1px solid var(--footer-divider);
   color: var(--footer-text);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: 11.5px;
+  font-weight: 500;
   flex-wrap: wrap;
   text-align: center;
+  font-family: var(--font-body);
 }
 
 .system-footer span {
@@ -2670,9 +2674,7 @@ button:focus-visible {
 }
 
 .system-footer span + span::before {
-  content: '·';
-  margin: 0 10px;
-  opacity: 0.35;
+  content: none;
 }
 
 /* For authenticated pages, the footer is light-themed */
@@ -2795,14 +2797,14 @@ button:focus-visible {
 }
 
 .settings-nav-btn:hover {
-  color: #001f9c;
-  background: #f8fafc;
+  color: var(--primary, #001f9c);
+  background: var(--bg-hover);
 }
 
 .settings-nav-btn.active {
-  color: #001f9c;
-  background: #ffffff;
-  border-bottom-color: #001f9c;
+  color: var(--primary, #001f9c);
+  background: var(--bg-card);
+  border-bottom-color: var(--primary, #001f9c);
 }
 
 .settings-card {
@@ -4153,159 +4155,100 @@ select.queue-toolbar__control {
 }
 
 /* ==========================================================================
-   Login Page  —  lp-*
+   Login Page — lp-* (Reference Prototype Design)
    ========================================================================== */
 
-/* Root shell: the two panels paint their own backgrounds, so this carries the
-   page tone only.
-
-   flex: 1 0 auto, not min-height: 100vh. The login route wraps this in a
-   flex column that also holds the system footer; claiming a full viewport
-   here pushed that footer entirely below the fold and forced a scrollbar on
-   every screen size. Growing to fill leaves the footer at the bottom of the
-   first screen, while flex-basis: auto still lets the shell grow past it
-   when the form does not fit (and the panel scrolls internally).
-
-   The --lp-* tokens are scoped here rather than at :root so the sign-in
-   screen can use its own primary, canvas and accent without restyling the
-   rest of the application. The modals render inline beneath this node, so
-   they inherit them. */
 .lp-root {
-  --navy-900: #0B1B5C;
-  --navy-800: #10267A;
-  --navy-700: #1A3A9C;
-  --bg-page: #EEF2F8;
-  --surface: #FFFFFF;
-  --border: #DDE3EE;
-  --text-primary: #0F1B3D;
-  --text-secondary: #5B6785;
-  --text-muted: #8A94AD;
-  --danger: #D93025;
-  --success: #1E8E3E;
-  --bg-hover: #EEF2FA;
-  --text-on-navy-muted: #9AA6C7;
-  --brand-white-93: rgba(255, 255, 255, 0.93);
-  --brand-outline: rgba(255, 255, 255, 0.12);
-  --brand-inset: rgba(255, 255, 255, 0.04);
-  --brand-logo-shadow: rgba(0, 0, 0, 0.18);
-  --spinner-track: rgba(255, 255, 255, 0.35);
-  --danger-bg: #FEF2F2;
-  --danger-border: #FECACA;
-  --success-bg: #ECFDF5;
-  --warning-text: #92400E;
-  --warning-bg: #FFFBEB;
-  --warning-border: #FDE68A;
-  --lp-primary: #001f9c;
-  --lp-primary-hover: #0a1775;
-  --lp-primary-dark: #050d4a;
-  --lp-canvas: var(--bg-page);
-  --lp-ink: var(--text-primary);
-  --lp-slate: var(--text-secondary);
-  --lp-ring: rgba(26, 58, 156, 0.25);
-  --lp-rule: var(--border);
-
+  --lp-primary: var(--blue);
+  --lp-primary-hover: #091A8C;
+  --lp-canvas: var(--paper);
+  --lp-ink: var(--navy);
+  --lp-slate: var(--muted);
+  --lp-line: var(--line);
+  
   display: flex;
   flex: 1 0 auto;
   min-width: 0;
-  font-family: var(--font-family);
+  font-family: var(--font-body);
   line-height: 1.5;
-  color: var(--text-primary);
-  background: var(--lp-canvas);
+  color: var(--navy);
+  background: #ffffff;
 }
 
-/* The global rings near the top of this sheet hardcode the application's
-   blue focus colour, which is not this route's. Restate it once here —
-   .lp-root beats the element-level selectors — so every control rings in the
-   route's navy rather than a colour it never uses. Inputs are the one place
-   the spec asks for gold: the halo below carries that, while the border keeps
-   the indicator above 3:1 on its own. Width and offset stay with each
-   control's own rule; only the colour is taken over. */
 .lp-root button:focus-visible,
 .lp-root a:focus-visible,
 .lp-root input:focus-visible,
 .lp-root select:focus-visible,
 .lp-root textarea:focus-visible {
-  outline-color: var(--navy-700);
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
 }
 
-/* ── Left brand panel ───────────────────────────────────────────────────
-  Soft slate field matching the center building facade tone of the logo. */
+/* ── Left brand panel ── */
 .lp-brand {
   position: relative;
-  flex: 0 0 42%;
+  flex: 0 0 50%;
   min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 32px;
-  overflow: hidden;
-  background: #EEF2F8;
-  border-right: 1px solid #cbd5e1;
-  box-shadow: 4px 0 24px rgba(0, 31, 156, 0.04);
+  align-items: center;
+  padding: 48px 32px;
+  background-color: var(--paper);
+  background-image: 
+    linear-gradient(to right, rgba(11, 31, 168, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(11, 31, 168, 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+  border-right: 1px solid var(--line);
 }
 
-/* The identity column. It starts on the same 40px inset as the header across
-  the division and keeps the logo and system name on one centered axis. */
 .lp-brand-mid {
   position: relative;
   z-index: 1;
   margin: auto;
   text-align: center;
-  width: min(100%, 360px);
+  width: min(100%, 380px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
 }
 
 .lp-brand-mark {
   display: block;
-  width: min(100%, 280px);
+  width: 250px;
+  max-width: 100%;
   height: auto;
-  margin: 0 auto;
-  /* fixit-official-logo.png is a 500x500 canvas in which the mark only spans
-     rows 62-378: 12.4% clear above, 24.2% clear below the wordmark. That lower
-     band is invisible but still counts in layout, so the system name was
-     landing ~68px under "FixIT" instead of just beneath it — which is why the
-     gap looked wrong even though .lp-brand-mid only asks for 8px. Cancelling
-     it out makes 8px the gap you actually see.
-
-     Pinned to this asset at this width: 0.242 x 280 = 67.8. Recompute both if
-     the PNG or min(100%, 280px) ever changes. */
-  margin-bottom: -68px;
-  filter: drop-shadow(0 4px 12px rgba(0, 31, 156, 0.1));
+  margin: 0 auto -56px;
+  filter: none;
+  box-shadow: none;
 }
 
 .lp-brand-portal {
+  font-family: var(--font-body);
   font-size: 15px;
-  line-height: 1.35;
+  line-height: 1.4;
   font-weight: 700;
-  letter-spacing: -0.015em;
-  color: #001f9c;
-  margin-top: 0;
-  margin-bottom: 0;
-  text-wrap: balance;
+  color: var(--blue);
+  margin: 0;
+  text-align: center;
 }
 
 .lp-brand-footer {
   position: absolute;
   right: 32px;
-  bottom: 32px;
+  bottom: 24px;
   left: 32px;
   z-index: 1;
-  margin-top: 0;
-  padding-top: 24px;
-  border-top: 1px solid #cbd5e1;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  padding-top: 16px;
+  border-top: 1px solid #C5CFEA;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
   text-align: center;
-  text-transform: uppercase;
-  color: #334155;
+  color: var(--navy);
 }
 
-/* ── Right form panel ───────────────────────────────────────────────────
-  A centered scrollable column keeps the header and fields aligned. */
+/* ── Right form panel ── */
 .lp-form-panel {
   flex: 1;
   min-width: 0;
@@ -4313,165 +4256,117 @@ select.queue-toolbar__control {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 0;
+  padding: 40px 32px;
   background: #FFFFFF;
   overflow-y: auto;
 }
 
-/* The form column. max-width + margin-inline:auto is what keeps the content
-   measure fixed and centred inside the panel; the padding is identical left
-   and right so the measure is the same on both sides. Vertical centring stays
-   with justify-content on the panel — auto margins would claim it instead. */
 .lp-form-wrap {
   width: 100%;
   max-width: 440px;
   margin-inline: auto;
-  padding: 48px 32px;
 }
 
 .lp-form-head {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .lp-eyebrow {
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: 13px;
   font-weight: 600;
-  color: var(--accent-gold);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  margin-bottom: 8px;
+  color: var(--orange-text);
+  margin-bottom: 4px;
 }
 
 .lp-form-title {
-  font-size: 40px;
-  font-weight: 700;
-  color: var(--lp-ink);
-  letter-spacing: 0;
-  margin-bottom: 8px;
-  line-height: 1.12;
+  font-family: var(--font-head);
+  font-size: 38px;
+  font-weight: 800;
+  color: var(--navy);
+  margin-bottom: 6px;
+  line-height: 1.15;
 }
 
 .lp-form-subtitle {
-  font-size: 15px;
-  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--muted);
   font-weight: 400;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
-/* ── Role selector ────────────────────────────────────────────────────── */
+/* ── Role selector ── */
 .lp-role-section {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .lp-role-label {
   display: block;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--lp-slate);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
   margin-bottom: 8px;
 }
 
-/* One equal column per role button (grid-auto-flow: column), so the row always
-   fills the container no matter how many roles exist — a fixed repeat(5, …)
-   left an empty trailing cell and squeezed the longest label when the role
-   list shrank to four. Every cell gets the same padding and the grid supplies
-   an equal 8px gutter, so no two labels can sit closer than any other pair —
-   the crowding came from 2px gutters plus 3px cell padding, which let
-   "Faculty/Staff" run up against "Maintenance".
-
-   Horizontal cell padding is deliberately 0: the grid gutter is what separates
-   the labels, and the 16px it would cost is the difference between the longest
-   label ("Administrator", 78px at 10px) fitting its column or breaking
-   mid-word. Vertical padding stays at 8px so the selected pill still has
-   breathing room above and below the text. */
 .lp-role-tabs {
+  position: relative;
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  padding: 8px;
-  border-radius: 10px;
+  grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
 }
 
 .lp-role-tab {
-  flex: 1;
-  min-width: 0;
-  min-height: 48px;
-  padding: 8px 0;
+  position: relative;
+  padding: 10px 2px;
   border: none;
-  border-radius: 8px;
   background: transparent;
-  color: var(--text-secondary);
-  font-size: 10px;
-  line-height: 1.2;
+  color: var(--muted);
+  font-size: 13px;
   font-weight: 500;
-  font-family: inherit;
+  font-family: var(--font-body);
   cursor: pointer;
-  transition: background 150ms, color 150ms;
-  /* Sized so every label sets on one line; this stays as a last-resort guard
-     so a fallback font can only ever wrap a label, never spill it sideways. */
-  white-space: normal;
-  overflow-wrap: break-word;
   text-align: center;
-  letter-spacing: 0;
+  white-space: nowrap;
+  transition: color 200ms ease-out;
 }
 
-/* :focus-visible rather than :focus, so a mouse click does not leave an
-   outline behind but a Tab press always does. */
 .lp-role-tab:hover:not(.lp-role-tab--active) {
-  background: var(--bg-hover);
-  color: var(--lp-ink);
-  box-shadow: var(--shadow-subtle);
+  color: var(--navy);
 }
 
-.lp-role-tab:active:not(.lp-role-tab--active) {
-  background: var(--lp-canvas);
-  color: var(--lp-ink);
-}
-
-.lp-role-tab:focus-visible {
-  outline: 2px solid var(--navy-700);
-  outline-offset: 1px;
-  color: var(--lp-ink);
-}
-
-/* Selected: filled primary, so it reads as a state rather than a weight. */
 .lp-role-tab--active {
-  background: var(--lp-primary);
-  color: var(--surface);
+  color: var(--blue);
   font-weight: 700;
-  box-shadow: var(--shadow-subtle);
 }
 
-.lp-role-tab--active:hover {
-  background: var(--lp-primary-hover);
-  color: var(--surface);
+.lp-role-indicator {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 25%;
+  height: 3px;
+  background-color: var(--blue);
+  border-radius: 3px 3px 0 0;
+  transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.lp-role-tab--active:active {
-  background: var(--lp-primary-dark);
-}
-
-/* ── Form fields ──────────────────────────────────────────────────────── */
+/* ── Form fields ── */
 .lp-field {
   margin-bottom: 20px;
 }
 
-.lp-form-wrap > form > .lp-field:nth-of-type(2) {
-  margin-bottom: 16px;
-}
-
 .lp-label {
   display: block;
+  font-family: var(--font-body);
   font-size: 13px;
   font-weight: 600;
-  color: var(--lp-ink);
-  margin-bottom: 8px;
-  letter-spacing: 0.01em;
+  color: var(--navy);
+  margin-bottom: 6px;
 }
 
 .lp-input-wrap {
@@ -4482,61 +4377,43 @@ select.queue-toolbar__control {
 
 .lp-input-icon {
   position: absolute;
-  left: 16px;
-  color: var(--text-muted);
+  left: 14px;
+  color: var(--muted);
   pointer-events: none;
   flex-shrink: 0;
 }
 
 .lp-input {
   width: 100%;
-  height: 52px;
-  /* 48px clears the 16px-inset 15px-wide leading icon with room to spare;
-     16px on the trailing edge for fields with no toggle button. */
-  padding: 0 16px 0 48px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--lp-ink);
-  font-size: 15px;
-  font-family: inherit;
-  transition: border-color 150ms, box-shadow 150ms, background-color 150ms;
+  height: 46px;
+  padding: 0 16px 0 42px;
+  border: 1px solid #B9C3DD;
+  border-radius: 6px;
+  background: #FFFFFF;
+  color: var(--navy);
+  font-size: 14px;
+  font-family: var(--font-body);
+  transition: border-color 150ms ease-out, outline 150ms ease-out;
   outline: none;
 }
 
 .lp-input::placeholder {
-  color: var(--text-muted);
+  color: #94A3B8;
 }
 
 .lp-input:hover:not(:disabled) {
-  border-color: var(--text-muted);
+  border-color: var(--muted);
 }
 
-/* Focus ring on every input. Two jobs, two colours: the navy border change is
-   what meets WCAG 1.4.11's 3:1 (gold on white is only 2.1:1, so it could not
-   carry that on its own), and the gold halo outside it is the brand accent. */
 .lp-input:focus {
-  border-color: var(--navy-900);
-  box-shadow: 0 0 0 3px var(--accent-gold);
-}
-
-.lp-input:-webkit-autofill,
-.lp-input:-webkit-autofill:hover,
-.lp-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: var(--text-primary);
-  -webkit-box-shadow: 0 0 0 1000px var(--surface) inset;
-  transition: background-color 9999s ease-out 0s;
-}
-
-.lp-input:disabled {
-  background: var(--bg-page);
-  cursor: not-allowed;
+  border-color: var(--blue);
+  outline: 2px solid var(--blue);
+  outline-offset: 0;
+  box-shadow: none;
 }
 
 .lp-input--pw {
-  /* The toggle sits 6px from the edge and is 32px wide, so text has to stop
-     at 38px; 48 is the next step up on the scale and clears it by 10px. */
-  padding-right: 48px;
+  padding-right: 44px;
 }
 
 .lp-eye-btn {
@@ -4546,53 +4423,58 @@ select.queue-toolbar__control {
   height: 32px;
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  transition: color 0.15s, background 0.15s;
+  border-radius: 4px;
+  transition: color 150ms;
 }
 
-.lp-eye-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
-
-.lp-eye-btn:focus-visible {
-  outline: 2px solid var(--navy-700);
-  outline-offset: -2px;
-}
+.lp-eye-btn:hover { color: var(--navy); }
 
 .lp-capslock-warn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  font-size: 11px;
-  color: var(--warning-text);
-  background: var(--warning-bg);
-  border: 1px solid var(--warning-border);
-  padding: 0 8px;
-  line-height: 1.8;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #B91C1C;
+  background: #FEF2F2;
+  border: 1px solid #FCA5A5;
+  padding: 4px 8px;
   border-radius: 4px;
   font-weight: 500;
 }
 
-/* Per-field messages sit directly under their input, in the error colour, so
-   the problem is pointed at rather than summarised. */
 .lp-field-error {
-  margin-top: 8px;
+  margin-top: 6px;
   font-size: 12.5px;
   font-weight: 500;
-  line-height: 1.4;
-  color: var(--danger);
+  color: #DC2626;
 }
 
-/* Always mounted so the aria-live region exists before a message arrives. */
 .lp-error-slot:not(:empty) {
   margin-bottom: 16px;
 }
 
-/* ── Options row: remember + forgot ──────────────────────────────────── */
+.lp-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #FEF2F2;
+  border: 1px solid #FCA5A5;
+  border-radius: 6px;
+  color: #B91C1C;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.lp-error-icon { flex-shrink: 0; margin-top: 1px; }
+
+/* ── Options row ── */
 .lp-options-row {
   display: flex;
   align-items: center;
@@ -4604,108 +4486,64 @@ select.queue-toolbar__control {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
-  color: var(--lp-slate);
+  font-size: 13px;
+  color: var(--muted);
   cursor: pointer;
   user-select: none;
+  font-family: var(--font-body);
 }
 
 .lp-checkbox {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--navy-700);
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue);
   cursor: pointer;
-}
-
-.lp-checkbox:focus-visible {
-  outline: 2px solid var(--navy-700);
-  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .lp-forgot-btn {
   background: none;
   border: none;
-  color: var(--navy-700);
-  font-size: 12.5px;
+  color: var(--blue);
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   padding: 0;
-  font-family: inherit;
-  transition: color 0.15s;
+  font-family: var(--font-body);
+  transition: color 150ms;
 }
 
-.lp-forgot-btn:hover { color: var(--lp-primary-hover); text-decoration: underline; }
-.lp-forgot-btn:active { color: var(--lp-primary-dark); }
+.lp-forgot-btn:hover { color: #091A8C; text-decoration: underline; }
 
-/* ── Submit button ──────────────────────────────────────────────────────
-   Solid brand blue with a single neutral shadow. It carried a three-stop
-   gradient and a blue glow before, which is the "app" look the page is
-   meant to avoid — a university portal button is a filled rectangle. */
+/* ── Submit & Register buttons ── */
 .lp-submit-btn {
   width: 100%;
-  height: 54px;
-  border: 1px solid #001f9c;
-  border-radius: 10px;
-  background: var(--lp-primary);
-  color: var(--surface);
+  height: 48px;
+  border: none;
+  border-radius: 6px;
+  background: var(--blue);
+  color: #FFFFFF;
   font-size: 15px;
   font-weight: 600;
-  font-family: inherit;
-  letter-spacing: 0.01em;
+  font-family: var(--font-body);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  box-shadow: var(--shadow-subtle);
-  transition: background 150ms, border-color 150ms, box-shadow 150ms;
+  box-shadow: none;
+  transition: background-color 150ms ease-out;
 }
 
 .lp-submit-btn:hover:not(:disabled) {
-  background: var(--lp-primary-hover);
-  border-color: var(--lp-primary-hover);
-  box-shadow: var(--shadow-card);
-}
-
-.lp-submit-btn:active:not(:disabled) {
-  background: var(--lp-primary-dark);
-  border-color: var(--lp-primary-dark);
-  box-shadow: none;
-}
-
-.lp-submit-btn:focus-visible {
-  outline: 2px solid var(--navy-700);
-  outline-offset: 2px;
+  background: #091A8C;
 }
 
 .lp-submit-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.65;
   cursor: not-allowed;
 }
 
-.lp-submit-btn--flex2 {
-  flex: 2;
-  width: auto;
-}
-
-/* ── Spinner ──────────────────────────────────────────────────────────── */
-.lp-spinner {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid var(--spinner-track);
-  border-top-color: var(--surface);
-  animation: spin 0.75s linear infinite;
-  flex-shrink: 0;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ── Register section ─────────────────────────────────────────────────
-   Outlined and last, with a labelled rule above it so it reads as a
-   fallback rather than a competing call to action. */
 .lp-register-wrap {
   margin-top: 24px;
 }
@@ -4714,9 +4552,7 @@ select.queue-toolbar__control {
   display: flex;
   align-items: center;
   gap: 16px;
-  /* 24 above and 24 below, so the rule is optically centred in the gap it
-     separates. */
-  margin: 0 0 24px;
+  margin: 0 0 20px;
 }
 
 .lp-divider-label::before,
@@ -4724,220 +4560,71 @@ select.queue-toolbar__control {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--border);
+  background: var(--line);
 }
 
 .lp-divider-label span {
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--lp-slate);
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  font-family: var(--font-body);
 }
 
 .lp-register-btn {
   width: 100%;
-  height: 48px;
-  border: 1px solid var(--navy-900);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--navy-900);
-  font-size: 13px;
+  height: 46px;
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--blue);
+  font-size: 14px;
   font-weight: 600;
-  font-family: inherit;
+  font-family: var(--font-body);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: border-color 150ms, background 150ms, color 150ms;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
 }
 
 .lp-register-btn:hover {
-  border-color: var(--navy-900);
-  background: var(--bg-hover);
-  color: var(--navy-800);
+  background: #EEF2FB;
+  color: #091A8C;
 }
 
-.lp-register-btn:focus-visible {
-  outline: 2px solid var(--navy-700);
-  outline-offset: 2px;
-}
+/* ── Responsive (< 820px) ── */
+.lp-compact-brand { display: none; }
 
-.lp-register-btn:active {
-  border-color: var(--lp-primary-dark);
-  background: var(--bg-hover);
-  color: var(--lp-primary-dark);
-}
-
-/* ── Error banner ─────────────────────────────────────────────────────── */
-.lp-error-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--danger-bg);
-  border: 1px solid var(--danger-border);
-  border-radius: 10px;
-  color: var(--danger);
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-
-.lp-error-icon { flex-shrink: 0; margin-top: 1px; }
-
-/* ── Password match indicator ─────────────────────────────────────────── */
-.lp-pw-match {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-.lp-pw-match--ok  { color: var(--success); }
-.lp-pw-match--err { color: var(--danger); }
-
-/* ── Forgot password modal internals ─────────────────────────────────── */
-.lp-modal-hint {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin-bottom: 16px;
-}
-
-.lp-modal-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.lp-modal-cancel-btn {
-  flex: 1;
-  height: 48px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--text-primary);
-  font-size: 13.5px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color 150ms, background 150ms;
-}
-
-.lp-modal-cancel-btn:hover:not(:disabled) {
-  border-color: var(--text-muted);
-  background: var(--bg-hover);
-}
-
-.lp-modal-cancel-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-/* ── Reset success ────────────────────────────────────────────────────── */
-.lp-reset-success {
-  text-align: center;
-  padding: 16px 0 8px;
-}
-
-.lp-reset-success-icon {
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  background: var(--success-bg);
-  color: var(--success);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 16px;
-}
-
-.lp-reset-success-title {
-  font-size: 17px;
-  font-weight: 800;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-
-.lp-reset-success-msg {
-  font-size: 13.5px;
-  color: var(--text-secondary);
-  line-height: 1.55;
-  margin-bottom: 24px;
-}
-
-/* ── Stand-in for the navy panel ───────────────────────────────────────
-   Hidden by default: it only exists for the widths below, where .lp-brand is
-   dropped. Same mark, same horizontal axis as the form column. */
-.lp-compact-brand {
-  display: none;
-  justify-content: center;
-  margin-bottom: 24px;
-}
-
-.lp-compact-mark {
-  display: block;
-  /* Kept on the same step as .lp-brand-mark (240 -> 280) so the mark reads the
-     same size whichever breakpoint is showing it. */
-  height: 74px;
-  width: auto;
-}
-
-/* ── Below 900px: drop the panel, keep the mark ──────────────────────────
-   At 900px the 42% panel still claims ~378px and leaves the form column no
-   slack; below that it is simply too much brand for a phone. The navy panel
-   goes away entirely and the compact mark appears above the form, so only the
-   background is lost — identity, eyebrow and tagline all stay on screen. */
-@media (max-width: 899px) {
+@media (max-width: 820px) {
   .lp-root {
     flex-direction: column;
-    background: var(--lp-canvas);
   }
 
-  .lp-brand { display: none; }
+  .lp-brand {
+    flex: none;
+    width: 100%;
+    min-height: 240px;
+    padding: 32px 24px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
 
-  .lp-compact-brand { display: flex; }
+  .lp-brand-footer {
+    position: static;
+    margin-top: 20px;
+    padding-top: 12px;
+  }
 
   .lp-form-panel {
-    flex: 1;
-    min-height: 0;
-    padding: 0;
-    justify-content: center;
+    width: 100%;
+    padding: 32px 20px;
   }
 
-  .lp-form-wrap { padding: 32px 24px; }
-}
-
-/* ── Under 640px: across stops working, so two even rows ──────────────────
-   Back to normal row flow on a plain 2-column grid, so four roles land 2 + 2
-   (two even rows) and each label gets roughly triple the measure it had in
-   the desktop row. The old 6-column 3 + 2 split was hard-wired to a
-   five-role list: with four roles it stranded the last button alone on a
-   half-width row. */
-@media (max-width: 639px) {
-  .lp-role-tabs {
-    grid-auto-flow: row;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .lp-role-tab {
+    font-size: 12px;
+    padding: 8px 1px;
   }
-}
-
-/* ── Phones ───────────────────────────────────────────────────────────── */
-@media (max-width: 560px) {
-  .lp-form-title { font-size: 32px; }
-
-  .lp-role-tab { font-size: 12.5px; }
-
-  /* 16px keeps the two-row grid usable at 360px without a horizontal scroll. */
-  .lp-form-wrap { padding: 32px 16px; }
-}
-
-/* Touch targets and padding on phones */
-@media (max-width: 480px) {
-  .lp-submit-btn,
-  .lp-register-btn { height: 48px; }
-  .lp-input { height: 48px; }
-  .lp-eye-btn { width: 40px; height: 40px; right: 4px; }
 }
 
 @keyframes fadeIn {
@@ -4964,6 +4651,44 @@ select.queue-toolbar__control {
   animation: fadeIn 0.25s ease-in-out forwards;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
-
-
+/* Notification Drawer interactive styling */
+.notification-drawer-item {
+  padding: 14px 18px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  gap: 12px;
+  transition: background 0.15s ease, transform 0.1s ease;
+  cursor: pointer;
+  position: relative;
+  text-align: left;
+  width: 100%;
+  user-select: none;
+}
+.notification-drawer-item.is-unread {
+  background: #eff6ff;
+}
+.notification-drawer-item.is-read {
+  background: #ffffff;
+}
+.notification-drawer-item:hover {
+  background: #f1f5f9;
+}
+.notification-drawer-item.is-unread:hover {
+  background: #dbeafe;
+}
+.notification-drawer-item:active {
+  transform: scale(0.99);
+}
+.notification-drawer-item:focus-visible {
+  outline: 2px solid #001f9c;
+  outline-offset: -2px;
+}

@@ -239,7 +239,7 @@ const EmptyNote = ({ copy = 'No data for this breakdown yet.' }) => (
 /* The ring. The centre total is decorative — the legend beside it carries the
    same numbers as text, so the SVG is hidden from assistive tech rather than
    described twice. */
-const Donut = ({ segments, total, unit }) => {
+const Donut = ({ segments, total, unit, onClick }) => {
   const size = 134;
   const thickness = 20;
   const r = (size - thickness) / 2;
@@ -267,7 +267,14 @@ const Donut = ({ segments, total, unit }) => {
         strokeWidth={thickness}
         strokeDasharray={`${dash} ${circ - dash}`}
         strokeDashoffset={-start}
-      />
+        style={{
+          cursor: onClick ? 'pointer' : 'default',
+          transition: 'opacity 0.15s, stroke-width 0.15s'
+        }}
+        onClick={onClick ? () => onClick(seg.label) : undefined}
+      >
+        <title>{`${seg.label}: ${seg.value} (${seg.pct}%)`}</title>
+      </circle>
     );
   });
 
@@ -299,10 +306,20 @@ const Donut = ({ segments, total, unit }) => {
   );
 };
 
-const Legend = ({ segments }) => (
+const Legend = ({ segments, onClick }) => (
   <div style={{ flex: '1 1 150px', minWidth: 0 }}>
     {segments.map((seg) => (
-      <div key={seg.label} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4.5px 0', fontSize: '13px' }}>
+      <div
+        key={seg.label}
+        onClick={onClick ? () => onClick(seg.label) : undefined}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '8px', padding: '4.5px 0', fontSize: '13px',
+          cursor: onClick ? 'pointer' : 'default', borderRadius: '6px',
+          transition: 'background 0.12s'
+        }}
+        onMouseEnter={onClick ? (e) => { e.currentTarget.style.background = '#f1f5f9'; } : undefined}
+        onMouseLeave={onClick ? (e) => { e.currentTarget.style.background = 'transparent'; } : undefined}
+      >
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: seg.color, flexShrink: 0 }} />
         <span
           style={{ flex: 1, minWidth: 0, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -317,10 +334,16 @@ const Legend = ({ segments }) => (
   </div>
 );
 
-const Bars = ({ items }) => (
+const Bars = ({ items, onClick }) => (
   <div>
     {items.map((item) => (
-      <div key={item.label} style={{ marginBottom: 13 }}>
+      <div
+        key={item.label}
+        style={{ marginBottom: 13, cursor: onClick ? 'pointer' : 'default', borderRadius: '6px', transition: 'background 0.12s', padding: '2px 4px', margin: '0 -4px' }}
+        onClick={onClick ? () => onClick(item.label) : undefined}
+        onMouseEnter={onClick ? (e) => { e.currentTarget.style.background = '#f1f5f9'; } : undefined}
+        onMouseLeave={onClick ? (e) => { e.currentTarget.style.background = 'transparent'; } : undefined}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', marginBottom: 5 }}>
           <span style={{ color: '#475569', fontWeight: '600', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.label}>
             {item.label}
@@ -335,11 +358,6 @@ const Bars = ({ items }) => (
               height: '100%',
               width: `${item.pct}%`,
               borderRadius: 9999,
-              /* One solid per bar: the --status-* colour of whatever dominates
-                 that bucket, handed over by dominantTint. No ramp — six pixels
-                 of track never held two colours, it only ever said "gradient",
-                 and the label above the bar already says which category this
-                 is. */
               background: item.color || EMPTY_TRACK
             }}
           />
@@ -397,7 +415,8 @@ export const DonutCard = ({
   pick,
   palette = 'auto',
   unit = 'TOTAL',
-  emptyCopy
+  emptyCopy,
+  onSegmentClick
 }) => {
   const rows = (list || []).filter(Boolean);
   const total = rows.length;
@@ -409,8 +428,8 @@ export const DonutCard = ({
   return (
     <ChartCard title={title} icon={icon}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-        <Donut segments={segments} total={total} unit={unit} />
-        <Legend segments={segments} />
+        <Donut segments={segments} total={total} unit={unit} onClick={onSegmentClick} />
+        <Legend segments={segments} onClick={onSegmentClick} />
       </div>
     </ChartCard>
   );
@@ -433,7 +452,8 @@ export const BarCard = ({
   colorPick = (r) => r.status,
   colorPalette = 'status',
   totalLabel = 'in total',
-  emptyCopy
+  emptyCopy,
+  onBarClick
 }) => {
   const rows = (list || []).filter(Boolean);
   const total = rows.length;
@@ -444,7 +464,7 @@ export const BarCard = ({
     .map((item) => ({ ...item, color: fillFor(item.label) }));
   return (
     <ChartCard title={title} icon={icon} total={total}>
-      <Bars items={items} />
+      <Bars items={items} onClick={onBarClick} />
       <span style={{ fontSize: '11px', color: '#768499', marginTop: '2px' }}>{totalLabel}</span>
     </ChartCard>
   );

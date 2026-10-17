@@ -83,22 +83,31 @@ export const LEGACY_TAB_VIEW = {
 export const toStatusSlug = (status) =>
   String(status || '').toLowerCase().replace(/\s+/g, '-');
 
-export const URGENCY_RANK = { Urgent: 0, High: 1, Medium: 2, Low: 3 };
+export const URGENCY_RANK = { 'High Risk': 0, Urgent: 0, High: 0, 'Medium Risk': 1, Medium: 1, 'Low Risk': 2, Low: 2 };
 
 export const compareBySort = (sort, a, b) => {
+  const isUrgentA = /high|urgent|emergency/i.test(String(a.urgency || '')) || a.requestType === 'Urgent Request' || a.category === 'Urgent Hazard';
+  const isUrgentB = /high|urgent|emergency/i.test(String(b.urgency || '')) || b.requestType === 'Urgent Request' || b.category === 'Urgent Hazard';
+
   switch (sort) {
     case 'newest':
+      if (isUrgentA && !isUrgentB) return -1;
+      if (!isUrgentA && isUrgentB) return 1;
       return String(b.date || '').localeCompare(String(a.date || ''));
     case 'oldest':
+      if (isUrgentA && !isUrgentB) return -1;
+      if (!isUrgentA && isUrgentB) return 1;
       return String(a.date || '').localeCompare(String(b.date || ''));
     case 'location':
+      if (isUrgentA && !isUrgentB) return -1;
+      if (!isUrgentA && isUrgentB) return 1;
       return String(a.location || '').localeCompare(String(b.location || ''));
     case 'priority':
     default: {
-      const rank = URGENCY_RANK[a.urgency] ?? 9;
-      const other = URGENCY_RANK[b.urgency] ?? 9;
+      const rank = isUrgentA ? 0 : (URGENCY_RANK[a.urgency] ?? 9);
+      const other = isUrgentB ? 0 : (URGENCY_RANK[b.urgency] ?? 9);
       if (rank !== other) return rank - other;
-      return String(a.date || '').localeCompare(String(b.date || ''));
+      return String(b.date || '').localeCompare(String(a.date || ''));
     }
   }
 };

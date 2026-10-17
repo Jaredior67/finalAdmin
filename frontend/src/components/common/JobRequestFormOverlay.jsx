@@ -375,17 +375,9 @@ export const JobRequestFormOverlay = ({
               <FormField label="Immediate Supervisor" htmlFor="jr-supervisor" style={{ marginBottom: 0 }}>
                 <TextInput id="jr-supervisor" value={form.immediateSupervisor} onChange={e => set({ immediateSupervisor: e.target.value })} placeholder="Supervisor name" />
               </FormField>
-              <FormField label="Contact Number" htmlFor="jr-contact" style={{ marginBottom: 0 }}>
-                <TextInput id="jr-contact" value={form.contactNumber} onChange={e => set({ contactNumber: e.target.value })} placeholder="+63 ..." />
-              </FormField>
               <FormField label="Main Category" htmlFor="jr-category" style={{ marginBottom: 0 }}>
                 <SelectInput id="jr-category" value={form.category} onChange={e => set({ category: e.target.value })}>
                   {['Drawing/Design', 'Physical Structures', 'Electrical', 'Mechanical', 'Water/Sanitary', 'Air Conditioning'].map(c => <option key={c} value={c}>{c}</option>)}
-                </SelectInput>
-              </FormField>
-              <FormField label="Urgency Level" htmlFor="jr-urgency" style={{ marginBottom: 0 }}>
-                <SelectInput id="jr-urgency" value={form.urgency || 'Medium Risk'} onChange={e => set({ urgency: e.target.value })}>
-                  {['Low Risk', 'Medium Risk', 'High Risk'].map(u => <option key={u} value={u}>{u}</option>)}
                 </SelectInput>
               </FormField>
             </div>

@@ -4,7 +4,7 @@ import { Modal } from './Modal';
 import { FormField, SelectInput } from '../ui/FormField';
 import { LimitedTextArea, REMARKS_WORD_LIMIT } from './LimitedTextArea';
 import { validateWordLimit } from '../../utils/wordLimit';
-import { JobRequestLocationStep } from './JobRequestLocationStep';
+import { JobRequestLocationStep, joinLocation } from './JobRequestLocationStep';
 
 /* ==========================================================================
    Urgent Issue — fast path
@@ -66,8 +66,10 @@ export const UrgentIssueReport = ({
 
   const validate = () => {
     const next = {};
-    if (!location.building || !location.room) {
-      next.location = 'Pick the building and room, or type the location instead.';
+    const hasDropdownLoc = Boolean(location.building && (location.room || location.floor));
+    const hasTypedLoc = Boolean(location.location && location.location.trim());
+    if (!hasDropdownLoc && !hasTypedLoc) {
+      next.location = 'Pick the building and room, or type the location.';
     }
     if (!issueType) next.issueType = 'Select the type of hazard.';
     const overLimit = validateWordLimit(notes, REMARKS_WORD_LIMIT, 'The description');

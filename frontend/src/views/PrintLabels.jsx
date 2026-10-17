@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Printer, QrCode, Search, Building2, MapPin, Tag,
   Plus, Edit2, Trash2, Layers, LayoutGrid, Table as TableIcon,
-  CheckSquare, Square, Copy, Check
+  CheckSquare, Square, Copy, Check, ChevronDown
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { Modal } from '../components/common/Modal';
@@ -19,6 +19,24 @@ export const PrintLabels = () => {
   const [selectedBldg, setSelectedBldg] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [labelFormat, setLabelFormat] = useState('cards'); // 'cards' | 'sheet' | 'table'
+
+  // Building Filter Dropdown State
+  const [bldgDropdownOpen, setBldgDropdownOpen] = useState(false);
+  const bldgDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (bldgDropdownRef.current && !bldgDropdownRef.current.contains(event.target)) {
+        setBldgDropdownOpen(false);
+      }
+    };
+    if (bldgDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [bldgDropdownOpen]);
 
   // Selection for batch printing
   const [selectedTags, setSelectedTags] = useState(new Set());
@@ -146,9 +164,14 @@ export const PrintLabels = () => {
     });
   }, [allLocations, selectedBldg, searchTerm]);
 
-  // Dynamic Tabs
+  // Dynamic Building Tabs / Options
   const bldgTabs = useMemo(() => {
-    const tabs = [{ id: 'all', label: 'All Campus Buildings', count: allLocations.length }];
+    const tabs = [{
+      id: 'all',
+      label: 'All Campus Buildings',
+      count: allLocations.length,
+      desc: 'Master directory of all registered facilities, laboratories, and rooms across campus'
+    }];
     uniqueBuildings.forEach(b => {
       const count = allLocations.filter(l => 
         l.bldgShort?.toLowerCase() === b.short.toLowerCase() || 
@@ -156,8 +179,9 @@ export const PrintLabels = () => {
       ).length;
       tabs.push({
         id: b.short || b.name,
-        label: b.name.length > 25 ? `${b.name.slice(0, 22)}...` : b.name,
-        count
+        label: b.name,
+        count,
+        desc: `${count} registered room${count === 1 ? '' : 's'} & facility tags in this structure`
       });
     });
     return tabs;
@@ -321,37 +345,183 @@ export const PrintLabels = () => {
         </div>
       </div>
 
-      {/* Building Filter Tabs */}
-      <div style={{
-        display: 'flex',
-        gap: '6px',
-        borderBottom: '1px solid #e2e8f0',
-        marginBottom: '20px',
-        paddingBottom: '2px',
-        overflowX: 'auto'
-      }}>
-        {bldgTabs.map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            className={`tab-btn ${selectedBldg === tab.id ? 'active' : ''}`}
-            onClick={() => setSelectedBldg(tab.id)}
-            style={{
-              padding: '8px 14px',
-              fontSize: '13px',
-              fontWeight: '700',
-              border: 'none',
-              background: 'none',
-              color: selectedBldg === tab.id ? '#001f9c' : '#64748b',
-              borderBottom: selectedBldg === tab.id ? '2.5px solid #001f9c' : '2.5px solid transparent',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {tab.label} ({tab.count})
-          </button>
-        ))}
-      </div>
+      {/* Building Filter Dropdown Selector */}
+      {(() => {
+        const currentTab = bldgTabs.find(t => t.id === selectedBldg) || bldgTabs[0];
+
+        return (
+          <div ref={bldgDropdownRef} style={{ position: 'relative', marginBottom: '20px' }}>
+            <div
+              onClick={() => setBldgDropdownOpen(prev => !prev)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'var(--bg-card, #ffffff)',
+                border: `1px solid ${bldgDropdownOpen ? 'var(--primary, #001f9c)' : 'var(--border-color, #c4cbdb)'}`,
+                borderRadius: '12px',
+                padding: '12px 18px',
+                boxShadow: bldgDropdownOpen ? '0 0 0 3px rgba(0, 31, 156, 0.1)' : '0 1px 3px rgba(0,0,0,0.04)',
+                cursor: 'pointer',
+                userSelect: 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0 }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: 'var(--primary-light, #eff6ff)',
+                  color: 'var(--primary, #001f9c)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <Building2 size={20} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-light, #64748b)', letterSpacing: '0.05em' }}>
+                      Campus Building Filter
+                    </span>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: '800',
+                      textTransform: 'uppercase',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      background: '#eff6ff',
+                      color: '#001f9c',
+                      border: '1px solid #bfdbfe'
+                    }}>
+                      {currentTab.count} {currentTab.count === 1 ? 'Location' : 'Locations'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary, #0f172a)', letterSpacing: '-0.01em', marginTop: '1px' }}>
+                    {currentTab.label}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted, #525d76)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {currentTab.desc}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '12px' }}>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary, #001f9c)' }}>
+                  Select Building
+                </span>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  background: bldgDropdownOpen ? 'var(--primary, #001f9c)' : 'var(--bg-sunken, #f1f5f9)',
+                  color: bldgDropdownOpen ? '#ffffff' : 'var(--text-primary, #1e293b)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease'
+                }}>
+                  <ChevronDown
+                    size={18}
+                    style={{
+                      transform: bldgDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s ease'
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Floating Dropdown Menu */}
+            {bldgDropdownOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                left: 0,
+                right: 0,
+                background: 'var(--bg-card, #ffffff)',
+                border: '1px solid var(--border-color, #c4cbdb)',
+                borderRadius: '12px',
+                boxShadow: '0 14px 30px rgba(0, 0, 0, 0.12), 0 6px 12px rgba(0, 0, 0, 0.06)',
+                zIndex: 100,
+                padding: '8px',
+                maxHeight: '380px',
+                overflowY: 'auto'
+              }}>
+                {bldgTabs.map(tab => {
+                  const isActive = selectedBldg === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedBldg(tab.id);
+                        setBldgDropdownOpen(false);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        width: '100%',
+                        padding: '10px 12px',
+                        border: 'none',
+                        borderRadius: '8px',
+                        background: isActive ? 'var(--primary-light, #eff6ff)' : 'transparent',
+                        color: isActive ? 'var(--primary, #001f9c)' : 'var(--text-primary, #1e293b)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'background 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) e.currentTarget.style.background = 'var(--bg-hover, #f8fafc)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                        <div style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '6px',
+                          background: isActive ? 'var(--primary, #001f9c)' : 'var(--bg-sunken, #f1f5f9)',
+                          color: isActive ? '#ffffff' : 'var(--text-muted, #64748b)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          <Building2 size={16} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '13.5px', fontWeight: isActive ? '800' : '600' }}>
+                              {tab.label}
+                            </span>
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted, #64748b)', fontWeight: '600' }}>
+                              ({tab.count})
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '11.5px', color: 'var(--text-muted, #64748b)', marginTop: '1px' }}>
+                            {tab.desc}
+                          </div>
+                        </div>
+                      </div>
+                      {isActive && (
+                        <div style={{ color: 'var(--primary, #001f9c)', marginLeft: '8px' }}>
+                          <Check size={16} />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Search & Layout Controls Bar */}
       <div className="filter-bar" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>

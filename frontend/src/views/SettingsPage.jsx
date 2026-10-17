@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   User, 
   Lock, 
@@ -24,14 +24,25 @@ import {
   FileText,
   Wrench,
   Calendar,
-  AlertTriangle
+  AlertTriangle,
+  Layout,
+  RefreshCw,
+  ChevronDown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
+import { useData, toLocalISODate } from '../context/DataContext';
+import { JobRequestPrintSheet } from '../components/common/JobRequestPrintSheet';
 
 export const SettingsPage = () => {
   const { currentUser, updateCurrentUser, isMaintenance, isFacultyOrStaff, isAdmin } = useAuth();
-  const { trackingConfig, updateTrackingConfig, peekNextTrackingNumber } = useData();
+  const {
+    trackingConfig,
+    updateTrackingConfig,
+    peekNextTrackingNumber,
+    formTemplateConfig,
+    updateFormTemplateConfig,
+    resetFormTemplateConfig
+  } = useData();
 
   // Active Tab State
   const [activeTab, setActiveTabState] = useState(() => {
@@ -41,6 +52,24 @@ export const SettingsPage = () => {
     setActiveTabState(tab);
     try { sessionStorage.setItem('fixit_settings_tab', tab); } catch {}
   };
+
+  // Section Dropdown Switcher State
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+    };
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [dropdownOpen]);
 
   // Form State
   const [photo, setPhoto] = useState(currentUser?.avatarUrl || '');
@@ -87,6 +116,18 @@ export const SettingsPage = () => {
   const [trackingMsg, setTrackingMsg] = useState('');
   useEffect(() => {
     if (activeTab === 'tracking' && trackingConfig && !trackingDraft) setTrackingDraft({ ...trackingConfig });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Form Template Customizer (admin)
+  const [templateDraft, setTemplateDraft] = useState(null);
+  const [templateMsg, setTemplateMsg] = useState('');
+  const [templateMessageType, setTemplateMessageType] = useState('success');
+  const [showLivePreview, setShowLivePreview] = useState(true);
+  useEffect(() => {
+    if (activeTab === 'form-template' && formTemplateConfig && !templateDraft) {
+      setTemplateDraft({ ...formTemplateConfig });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -370,31 +411,232 @@ export const SettingsPage = () => {
         </div>
       )}
 
-      {/* Settings Navigation Tabs */}
-      <div className="settings-nav-tabs">
-        {[
-          { id: 'profile', label: 'Profile & Identity', icon: User },
-          { id: 'security', label: 'Security & Password', icon: Lock },
-          { id: 'notifications', label: 'Notifications & Alerts', icon: Bell },
-          { id: 'permissions', label: 'Role & Permissions', icon: Shield },
-          { id: 'preferences', label: 'System & Display', icon: Sliders },
-          ...(isAdmin ? [{ id: 'tracking', label: 'Tracking Numbers', icon: FileText }] : []),
-        ].map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              className={`settings-nav-btn ${isActive ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
+      {/* Settings Navigation Dropdown Selector */}
+      {(() => {
+        const settingsTabs = [
+          {
+            group: 'Account & Preferences',
+            items: [
+              { id: 'profile', label: 'Profile & Identity', icon: User, desc: 'Personal details, department, avatar, and contact information' },
+              { id: 'security', label: 'Security & Password', icon: Lock, desc: 'Account credentials, password change, and security settings' },
+              { id: 'notifications', label: 'Notifications & Alerts', icon: Bell, desc: 'Urgent alerts, email notifications, and audible sound effects' },
+              { id: 'permissions', label: 'Role & Permissions', icon: Shield, desc: 'Institutional role clearance and access gates' },
+              { id: 'preferences', label: 'System & Display', icon: Sliders, desc: 'Interface density, themes, and autosave preferences' },
+            ]
+          },
+          ...(isAdmin ? [{
+            group: 'Administration & Document Formatting',
+            items: [
+              { id: 'form-template', label: 'Form Template (QF-PDAS-DC-01)', icon: Layout, desc: 'Configure official header, body layout, logo, and footer signatories', badge: 'Admin' },
+              { id: 'tracking', label: 'Tracking Numbers', icon: FileText, desc: 'Manage sequence numbering rules for approved requests', badge: 'Admin' },
+            ]
+          }] : [])
+        ];
+
+        const allTabs = settingsTabs.flatMap(g => g.items);
+        const currentTab = allTabs.find(t => t.id === activeTab) || allTabs[0];
+        const CurrentIcon = currentTab?.icon || User;
+
+        return (
+          <div ref={dropdownRef} style={{ position: 'relative', marginBottom: '24px' }}>
+            <div
+              onClick={() => setDropdownOpen(prev => !prev)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'var(--bg-card, #ffffff)',
+                border: `1px solid ${dropdownOpen ? 'var(--primary, #001f9c)' : 'var(--border-color, #c4cbdb)'}`,
+                borderRadius: '12px',
+                padding: '12px 18px',
+                boxShadow: dropdownOpen ? '0 0 0 3px rgba(0, 31, 156, 0.1)' : '0 1px 3px rgba(0,0,0,0.04)',
+                cursor: 'pointer',
+                userSelect: 'none',
+                transition: 'all 0.15s ease'
+              }}
             >
-              <Icon size={16} />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0 }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: 'var(--primary-light, #eff6ff)',
+                  color: 'var(--primary, #001f9c)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <CurrentIcon size={20} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-light, #64748b)', letterSpacing: '0.05em' }}>
+                      Settings Section
+                    </span>
+                    {currentTab?.badge && (
+                      <span style={{
+                        fontSize: '10px',
+                        fontWeight: '800',
+                        textTransform: 'uppercase',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        background: '#eff6ff',
+                        color: '#001f9c',
+                        border: '1px solid #bfdbfe'
+                      }}>
+                        {currentTab.badge}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary, #0f172a)', letterSpacing: '-0.01em', marginTop: '1px' }}>
+                    {currentTab?.label}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted, #525d76)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {currentTab?.desc}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '12px' }}>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary, #001f9c)' }}>
+                  Change Section
+                </span>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  background: dropdownOpen ? 'var(--primary, #001f9c)' : 'var(--bg-sunken, #f1f5f9)',
+                  color: dropdownOpen ? '#ffffff' : 'var(--text-primary, #1e293b)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease'
+                }}>
+                  <ChevronDown
+                    size={18}
+                    style={{
+                      transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s ease'
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Dropdown Menu List */}
+            {dropdownOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                left: 0,
+                right: 0,
+                background: 'var(--bg-card, #ffffff)',
+                border: '1px solid var(--border-color, #c4cbdb)',
+                borderRadius: '12px',
+                boxShadow: '0 14px 30px rgba(0, 0, 0, 0.12), 0 6px 12px rgba(0, 0, 0, 0.06)',
+                zIndex: 100,
+                padding: '8px',
+                maxHeight: '440px',
+                overflowY: 'auto'
+              }}>
+                {settingsTabs.map((group, gIdx) => (
+                  <div key={group.group} style={{ marginTop: gIdx > 0 ? '8px' : 0, paddingTop: gIdx > 0 ? '8px' : 0, borderTop: gIdx > 0 ? '1px solid #e2e8f0' : 'none' }}>
+                    <div style={{
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      textTransform: 'uppercase',
+                      color: 'var(--text-light, #64748b)',
+                      letterSpacing: '0.05em',
+                      padding: '6px 12px 4px'
+                    }}>
+                      {group.group}
+                    </div>
+                    {group.items.map(tab => {
+                      const Icon = tab.icon;
+                      const isActive = activeTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveTab(tab.id);
+                            setDropdownOpen(false);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            width: '100%',
+                            padding: '10px 12px',
+                            border: 'none',
+                            borderRadius: '8px',
+                            background: isActive ? 'var(--primary-light, #eff6ff)' : 'transparent',
+                            color: isActive ? 'var(--primary, #001f9c)' : 'var(--text-primary, #1e293b)',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'background 0.15s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive) e.currentTarget.style.background = 'var(--bg-hover, #f8fafc)';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive) e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                            <div style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '6px',
+                              background: isActive ? 'var(--primary, #001f9c)' : 'var(--bg-sunken, #f1f5f9)',
+                              color: isActive ? '#ffffff' : 'var(--text-muted, #64748b)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0
+                            }}>
+                              <Icon size={16} />
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '13.5px', fontWeight: isActive ? '800' : '600' }}>
+                                  {tab.label}
+                                </span>
+                                {tab.badge && (
+                                  <span style={{
+                                    fontSize: '10px',
+                                    fontWeight: '700',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: '#eff6ff',
+                                    color: '#001f9c',
+                                    border: '1px solid #bfdbfe'
+                                  }}>
+                                    {tab.badge}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '11.5px', color: 'var(--text-muted, #64748b)', marginTop: '1px' }}>
+                                {tab.desc}
+                              </div>
+                            </div>
+                          </div>
+                          {isActive && (
+                            <div style={{ color: 'var(--primary, #001f9c)', marginLeft: '8px' }}>
+                              <Check size={16} />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* TAB 1: PROFILE & IDENTITY */}
       {activeTab === 'profile' && (
@@ -1101,6 +1343,321 @@ export const SettingsPage = () => {
             <button type="button" className="btn btn-primary" onClick={handleSaveDisplay}>
               <Save size={16} /> Save Display Settings
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: FORM TEMPLATE & LAYOUT EDITOR (ADMIN ONLY) */}
+      {activeTab === 'form-template' && isAdmin && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="settings-card">
+            <div className="settings-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <div className="settings-card-title">
+                  <Layout size={18} color="#001f9c" /> Form Template &amp; Layout Customization (QF-PDAS-DC-01)
+                </div>
+                <div className="settings-card-subtitle">
+                  Configure the official university header, body metadata labels, layout typography, defect photo visibility, and footer signatories. Changes reflect on all printed slips and document previews.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowLivePreview(!showLivePreview)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                >
+                  <Eye size={14} /> {showLivePreview ? 'Hide Live Preview' : 'Show Live Preview'}
+                </button>
+              </div>
+            </div>
+
+            {(() => {
+              const d = templateDraft || formTemplateConfig || {};
+              const setD = (patch) => setTemplateDraft(prev => ({ ...(prev || formTemplateConfig), ...patch }));
+
+              const sampleTicket = {
+                id: 'JR-2026-0001',
+                controlNo: 'JR-2026-0001',
+                title: 'Aircon Maintenance & Electrical Repair',
+                category: 'Electrical',
+                date: toLocalISODate(new Date()),
+                requestedBy: currentUser?.name || 'Prof. Maria Santos',
+                department: currentUser?.department || 'College of Engineering & Architecture',
+                location: 'CEA Building - Room 204',
+                immediateSupervisor: 'Dr. Carmelo V. Ramos',
+                contactNumber: '0912-345-6789',
+                requesterApproved: true,
+                requesterApprovedAt: new Date().toISOString(),
+                supervisorApproved: true,
+                supervisorApprovedAt: new Date().toISOString(),
+                adminApproved: true,
+                adminApprovedAt: new Date().toISOString(),
+                campusAdminApproved: true,
+                campusAdminApprovedAt: new Date().toISOString(),
+                scopeOfWorks: {
+                  electrical: {
+                    checked: true,
+                    options: ['Repair', 'Installation/Replacement'],
+                    description: 'Inspect circuit breaker and clean air conditioning filter coils.',
+                    dateComplied: toLocalISODate(new Date())
+                  }
+                },
+                actionTaken: {
+                  endorsedGSMHead: { checked: true, receivedBy: 'Engr. Maintenance Crew', date: toLocalISODate(new Date()) },
+                  pdasHeadName: 'Engr. Alex Rivera'
+                },
+                finalAction: {
+                  status: 'Approved',
+                  remarks: 'Approved for urgent repair and inspection.',
+                  approverName: 'Dr. Carmelo V. Ramos'
+                }
+              };
+
+              return (
+                <div>
+                  {/* Section 1: Official Header Configuration */}
+                  <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '18px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#001f9c', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px' }}>
+                      1. Official Header &amp; Institutional Identity
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+                      <div className="form-group">
+                        <label className="form-label">Republic / State Header</label>
+                        <input className="form-input" value={d.republicLine || ''} onChange={e => setD({ republicLine: e.target.value })} placeholder="Republic of the Philippines" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Institution / University Name *</label>
+                        <input className="form-input" value={d.institutionName || ''} onChange={e => setD({ institutionName: e.target.value })} placeholder="ILOILO SCIENCE AND TECHNOLOGY UNIVERSITY" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Campus Name *</label>
+                        <input className="form-input" value={d.campusName || ''} onChange={e => setD({ campusName: e.target.value })} placeholder="DUMANGAS CAMPUS" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Campus Address</label>
+                        <input className="form-input" value={d.campusAddress || ''} onChange={e => setD({ campusAddress: e.target.value })} placeholder="P.D. Monfort South, Dumangas, Iloilo" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Document Title *</label>
+                        <input className="form-input" value={d.documentTitle || ''} onChange={e => setD({ documentTitle: e.target.value })} placeholder="JOB REQUEST FOR REPAIR, MAINTENANCE AND CONSTRUCTION" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Department / Unit</label>
+                        <input className="form-input" value={d.department || ''} onChange={e => setD({ department: e.target.value })} placeholder="Department: PDAS" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Document Code (ISO)</label>
+                        <input className="form-input" value={d.documentCode || ''} onChange={e => setD({ documentCode: e.target.value })} placeholder="QF-PDAS-DC-01" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Revision Number</label>
+                        <input className="form-input" value={d.revisionNo || ''} onChange={e => setD({ revisionNo: e.target.value })} placeholder="00" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Effective Date</label>
+                        <input className="form-input" value={d.effectiveDate || ''} onChange={e => setD({ effectiveDate: e.target.value })} placeholder="February 3, 2025" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Custom Logo (Upload or URL)</label>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={d.customLogoUrl || ''}
+                            onChange={e => setD({ customLogoUrl: e.target.value })}
+                            placeholder="Leave blank for official ISAT U logo"
+                            style={{ flex: 1 }}
+                          />
+                          <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
+                            Upload
+                            <input
+                              type="file"
+                              accept="image/*"
+                              style={{ display: 'none' }}
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (!f) return;
+                                const r = new FileReader();
+                                r.onload = () => setD({ customLogoUrl: r.result });
+                                r.readAsDataURL(f);
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 2: Body Typography & Field Labels */}
+                  <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '18px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#001f9c', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px' }}>
+                      2. Body Layout &amp; Field Labels
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '14px' }}>
+                      <div className="form-group">
+                        <label className="form-label">Document Font Family</label>
+                        <select
+                          className="form-select"
+                          value={d.fontFamily || 'serif'}
+                          onChange={e => setD({ fontFamily: e.target.value })}
+                        >
+                          <option value="serif">Times New Roman (Standard Government / ISO Serif)</option>
+                          <option value="sans">Inter / Arial (Modern Clean Sans-Serif)</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Tracking Number Label</label>
+                        <input className="form-input" value={d.trackingLabel || ''} onChange={e => setD({ trackingLabel: e.target.value })} placeholder="Tracking Number:" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Date of Request Label</label>
+                        <input className="form-input" value={d.dateLabel || ''} onChange={e => setD({ dateLabel: e.target.value })} placeholder="Date of Request:" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Client Name Label</label>
+                        <input className="form-input" value={d.clientNameLabel || ''} onChange={e => setD({ clientNameLabel: e.target.value })} placeholder="Name of Client:" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Client Office Label</label>
+                        <input className="form-input" value={d.clientOfficeLabel || ''} onChange={e => setD({ clientOfficeLabel: e.target.value })} placeholder="Office of Client:" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Immediate Supervisor Label</label>
+                        <input className="form-input" value={d.supervisorLabel || ''} onChange={e => setD({ supervisorLabel: e.target.value })} placeholder="Immediate Supervisor:" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Location Label</label>
+                        <input className="form-input" value={d.locationLabel || ''} onChange={e => setD({ locationLabel: e.target.value })} placeholder="Location:" />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '6px' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#1e293b' }}>
+                        <input
+                          type="checkbox"
+                          checked={d.showDefectPhoto !== false}
+                          onChange={e => setD({ showDefectPhoto: e.target.checked })}
+                        />
+                        Include attached defect photo on printed slip
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#1e293b' }}>
+                        <input
+                          type="checkbox"
+                          checked={d.showVerificationQr !== false}
+                          onChange={e => setD({ showVerificationQr: e.target.checked })}
+                        />
+                        Include hardcopy QR verification strip
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Section 3: Footer & Signatories */}
+                  <div style={{ marginBottom: '18px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#001f9c', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px' }}>
+                      3. Footer, Signatories &amp; Compliance Notices
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', marginBottom: '14px' }}>
+                      <div className="form-group">
+                        <label className="form-label">PDAS Office Head Designation Title</label>
+                        <input className="form-input" value={d.pdasHeadTitle || ''} onChange={e => setD({ pdasHeadTitle: e.target.value })} placeholder="Head, PDAS / Director, Planning Development..." />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Approver Designation Title</label>
+                        <input className="form-input" value={d.approverTitle || ''} onChange={e => setD({ approverTitle: e.target.value })} placeholder="Campus Administrator" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Copy Distribution Notice</label>
+                        <input className="form-input" value={d.copyDistribution || ''} onChange={e => setD({ copyDistribution: e.target.value })} placeholder="Copy distribution: 1 – PDAS, 1 – GSM, 1 – Client" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Hardcopy Verification Strip Notice</label>
+                        <input className="form-input" value={d.verificationText || ''} onChange={e => setD({ verificationText: e.target.value })} placeholder="Verify this form: scan to check tracking against..." />
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Legal &amp; ISO Compliance Disclaimer</label>
+                      <textarea
+                        className="form-input"
+                        rows={2}
+                        value={d.disclaimerNotice || ''}
+                        onChange={e => setD({ disclaimerNotice: e.target.value })}
+                        placeholder="The electronic approvals recorded on this form are internal..."
+                      />
+                    </div>
+                  </div>
+
+                  {templateMsg && (
+                    <div style={{
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      background: templateMessageType === 'success' ? '#ecfdf5' : '#fef2f2',
+                      border: `1px solid ${templateMessageType === 'success' ? '#a7f3d0' : '#fecaca'}`,
+                      color: templateMessageType === 'success' ? '#047857' : '#b91c1c',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      marginBottom: '14px'
+                    }}>
+                      {templateMsg}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        resetFormTemplateConfig();
+                        setTemplateDraft(null);
+                        setTemplateMsg('Form template reset to ISO/IEC defaults.');
+                        setTemplateMessageType('success');
+                      }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <RefreshCw size={15} /> Reset to Defaults
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        updateFormTemplateConfig(templateDraft || {});
+                        setTemplateMsg('Form template & layout configuration successfully saved.');
+                        setTemplateMessageType('success');
+                      }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Save size={15} /> Save Form Template
+                    </button>
+                  </div>
+
+                  {/* Section 4: Real-time Live Document Preview */}
+                  {showLivePreview && (
+                    <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '2px dashed #e2e8f0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Live Preview of Form (QF-PDAS-DC-01)
+                        </div>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>
+                          Updates in real-time as you type
+                        </span>
+                      </div>
+                      <div style={{
+                        background: 'var(--bg-sunken)',
+                        padding: '20px',
+                        borderRadius: '10px',
+                        border: '1px solid #cbd5e1',
+                        maxHeight: '650px',
+                        overflowY: 'auto'
+                      }}>
+                        <div style={{ maxWidth: '750px', margin: '0 auto', background: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                          <JobRequestPrintSheet req={sampleTicket} customConfig={d} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

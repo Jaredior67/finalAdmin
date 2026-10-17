@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Wrench, CheckSquare, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { apiUpdateMyAvailability } from '../../backend/api';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageTransition } from '../../components/common/PageTransition';
 import { ChartsRow, DonutCard, BarCard } from '../../components/common/DashboardCharts';
@@ -43,7 +44,24 @@ const EMPTY_FLAG_FORM = {
    row, and one shared card list renders whichever view is selected.
    ========================================================================== */
 export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, updateCurrentUser } = useAuth();
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const dutyStatus = currentUser?.availabilityStatus || 'available';
+
+  const handleDutyStatusChange = async (nextStatus) => {
+    setIsUpdatingStatus(true);
+    try {
+      await apiUpdateMyAvailability(nextStatus);
+      if (updateCurrentUser) {
+        updateCurrentUser({ availabilityStatus: nextStatus });
+      }
+    } catch (err) {
+      console.error('Failed to update duty status:', err);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
   const {
     requisitions,
     updateRequisitionStatus,
@@ -81,8 +99,8 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
       String(r.ticket_no || '') === refStr
     );
     if (found) {
-      setSelectedTask(found);
-      setActiveDialog('detail');
+      setActiveTask(found);
+      setDialog('detail');
     }
     setFocusedTicketRef(null);
   }, [focusedTicketRef, requisitions, setFocusedTicketRef]);
@@ -130,8 +148,6 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
 
   const [targetStatus, setTargetStatus] = useState('Ongoing');
   const [technicianNotes, setTechnicianNotes] = useState('');
-  const [materialsUsed, setMaterialsUsed] = useState('');
-  const [hoursSpent, setHoursSpent] = useState('');
   const [completionPhoto, setCompletionPhoto] = useState(null);
 
   const [flagType, setFlagType] = useState('Replacement');
@@ -221,22 +237,6 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
 
   const viewTaskCount = viewCounts[activeView.id] ?? 0;
 
-  /* ---- Deep link: a notification click opens that exact work order ---- */
-  useEffect(() => {
-    if (!focusedTicketRef) return;
-    const found = (requisitions || []).find(
-      (r) =>
-        r.controlNo === focusedTicketRef ||
-        r.id === focusedTicketRef ||
-        r.ticket_no === focusedTicketRef
-    );
-    if (found) {
-      setActiveTask(found);
-      setDialog('detail');
-    }
-    setFocusedTicketRef(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedTicketRef]);
 
   /* ---- Actions ---- */
   const handleQuickStartWork = (task) => {
@@ -249,8 +249,6 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
     setActiveTask(task);
     setTargetStatus(task.status === 'Pending' || task.status === 'Approved' ? 'Ongoing' : task.status);
     setTechnicianNotes(task.notes || '');
-    setMaterialsUsed(task.materialsUsed || '');
-    setHoursSpent(task.hoursSpent || '');
     setCompletionPhoto(task.completionPhotoUrl || null);
     setDialog('status');
   };
@@ -264,9 +262,7 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
       return;
     }
 
-    let finalNotes = technicianNotes || `Work performed on-site by ${technicianName}.`;
-    if (materialsUsed) finalNotes += ` [Materials: ${materialsUsed}]`;
-    if (hoursSpent) finalNotes += ` [Time: ${hoursSpent}]`;
+    const finalNotes = technicianNotes || `Work performed on-site by ${technicianName}.`;
 
     updateRequisitionStatus(activeTask.id, targetStatus, technicianName, finalNotes);
     if (completionPhoto) {
@@ -385,22 +381,30 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
         title="Maintenance Work Queue"
         description="ISAT U Dumangas Campus — Technical Operations & Work Dispatch"
         action={
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              background: '#ecfdf5',
-              border: '1px solid #a7f3d0',
-              color: '#047857',
-              borderRadius: '8px',
-              fontSize: '12.5px',
-              fontWeight: '700'
-            }}
-          >
-            ● On Duty
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Duty Status:</span>
+            <select
+              value={dutyStatus}
+              onChange={(e) => handleDutyStatusChange(e.target.value)}
+              disabled={isUpdatingStatus}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                fontSize: '12.5px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                border: dutyStatus === 'available' ? '1px solid #a7f3d0' : dutyStatus === 'busy' ? '1px solid #fde68a' : '1px solid #fecaca',
+                background: dutyStatus === 'available' ? '#ecfdf5' : dutyStatus === 'busy' ? '#fffbeb' : '#fef2f2',
+                color: dutyStatus === 'available' ? '#047857' : dutyStatus === 'busy' ? '#b45309' : '#b91c1c',
+                outline: 'none',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+              }}
+            >
+              <option value="available">🟢 Available for Dispatch</option>
+              <option value="busy">🟡 Busy · On Field Job</option>
+              <option value="off_duty">🔴 Off Duty · Break / Shift Ended</option>
+            </select>
+          </div>
         }
       />
 
@@ -448,16 +452,43 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
         </div>
       )}
 
-      {/* Statistics — a technician's view: what to attend first, where each
-          work order sits, and which trade the work belongs to. */}
+      {/* Statistics — Priority and Category breakdowns. (The Status donut was removed
+          as QueueViewCards above already shows active/in-progress/urgent/completed breakdown).
+          Clicking priority or category filters the queue directly. */}
       <ChartsRow
         isEmpty={myQueue.length === 0}
         emptyTitle="Work order statistics"
         emptyCopy="No work orders in your queue yet."
       >
-        <DonutCard title="Work Order Priority" icon="priority" list={myQueue} pick={(r) => r.urgency} palette="urgency" unit="WORK ORDERS" />
-        <DonutCard title="Work Order Status" icon="status" list={myQueue} pick={(r) => r.status} palette="status" unit="WORK ORDERS" />
-        <BarCard title="Work Orders by Category" icon="category" list={myQueue} pick={(r) => r.category} colorPick={(r) => r.status} colorPalette="status" totalLabel="work orders" />
+        <DonutCard
+          title="Work Order Priority"
+          icon="priority"
+          list={myQueue}
+          pick={(r) => r.urgency}
+          palette="urgency"
+          unit="WORK ORDERS"
+          onSegmentClick={(label) => {
+            const lower = String(label).toLowerCase();
+            if (lower.includes('urgent') || lower.includes('high') || lower.includes('emergency')) {
+              handleViewChange('urgent');
+            } else {
+              handleViewChange('in-progress');
+            }
+          }}
+        />
+        <BarCard
+          title="Work Orders by Category"
+          icon="category"
+          list={myQueue}
+          pick={(r) => r.category}
+          colorPick={(r) => r.status}
+          colorPalette="status"
+          totalLabel="work orders"
+          onBarClick={(cat) => {
+            setCategoryFilter(cat);
+            handleViewChange('all');
+          }}
+        />
       </ChartsRow>
 
       {/* The queue itself: one toolbar, one card list, every view */}
@@ -536,10 +567,6 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
         onTargetStatusChange={setTargetStatus}
         technicianNotes={technicianNotes}
         onTechnicianNotesChange={setTechnicianNotes}
-        materialsUsed={materialsUsed}
-        onMaterialsUsedChange={setMaterialsUsed}
-        hoursSpent={hoursSpent}
-        onHoursSpentChange={setHoursSpent}
         completionPhoto={completionPhoto}
         onCompletionPhotoChange={setCompletionPhoto}
         onSaveStatus={handleSaveTaskStatus}

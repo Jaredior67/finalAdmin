@@ -6,7 +6,8 @@ import {
   Clock,
   Printer,
   Check,
-  CheckCircle
+  CheckCircle,
+  Eye
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -137,7 +138,13 @@ export const CampusAdminDashboard = () => {
     }
 
     return matchesSearch && matchesCategory && matchesTab;
-  }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  }).sort((a, b) => {
+    const isUrgentA = /high|urgent|emergency/i.test(String(a.urgency || '')) || a.requestType === 'Urgent Request' || a.category === 'Urgent Hazard';
+    const isUrgentB = /high|urgent|emergency/i.test(String(b.urgency || '')) || b.requestType === 'Urgent Request' || b.category === 'Urgent Hazard';
+    if (isUrgentA && !isUrgentB) return -1;
+    if (!isUrgentA && isUrgentB) return 1;
+    return String(b.date || '').localeCompare(String(a.date || ''));
+  });
 
   // Deep link: a clicked notification stores its ticket ref here — open the
   // exact record in the decision modal, then clear so it never reopens.
@@ -280,9 +287,11 @@ export const CampusAdminDashboard = () => {
       )}
 
       {/* KPI Overview Cards - semantic border accents, interactive tab shortcuts */}
+      {/* Stat Tiles — 2 cards: Pending Approval and All Requests.
+          The decision breakdown (Approved, Rejected/Returned) lives in the Final Action Record donut below. */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
         gap: '12px'
       }}>
         <div
@@ -306,71 +315,25 @@ export const CampusAdminDashboard = () => {
           <div style={{ fontSize: '28px', fontWeight: '700', color: pendingFinalAction.length > 0 ? '#92400e' : '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
             {pendingFinalAction.length}
           </div>
-
+          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', fontWeight: '400' }}>
+            Awaiting executive signature · Click to filter
+          </div>
         </div>
 
         <div
-          onClick={() => setTabFilter('approved')}
-          style={{
-            background: '#ffffff',
-            borderRadius: '10px',
-            padding: '14px 16px',
-            border: '1px solid #e2e8f0',
-            borderLeft: '3px solid #001f9c',
-            boxShadow: tabFilter === 'approved' ? '0 0 0 2px #001f9c, var(--shadow-subtle)' : 'var(--shadow-subtle)',
-            cursor: 'pointer',
-            transition: 'box-shadow 0.15s, border-color 0.15s'
-          }}
-          onMouseEnter={(e) => { if (tabFilter !== 'approved') e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
-          onMouseLeave={(e) => { if (tabFilter !== 'approved') e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
-        >
-          <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
-            Approved
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: '700', color: approvedFinalAction.length > 0 ? '#001f9c' : '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {approvedFinalAction.length}
-          </div>
-
-        </div>
-
-        <div
-          onClick={() => setTabFilter('disapproved')}
-          style={{
-            background: '#ffffff',
-            borderRadius: '10px',
-            padding: '14px 16px',
-            border: '1px solid #e2e8f0',
-            borderLeft: '3px solid #f2a33a',
-            boxShadow: tabFilter === 'disapproved' ? '0 0 0 2px #f2a33a, var(--shadow-subtle)' : 'var(--shadow-subtle)',
-            cursor: 'pointer',
-            transition: 'box-shadow 0.15s, border-color 0.15s'
-          }}
-          onMouseEnter={(e) => { if (tabFilter !== 'disapproved') e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
-          onMouseLeave={(e) => { if (tabFilter !== 'disapproved') e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
-        >
-          <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
-            Rejected / Returned
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: '700', color: disapprovedFinalAction.length > 0 ? '#92400e' : '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {disapprovedFinalAction.length}
-          </div>
-
-        </div>
-
-        <div
-          onClick={() => setTabFilter('all')}
+          onClick={() => { setTabFilter('all'); setCategoryFilter('all'); }}
           style={{
             background: '#ffffff',
             borderRadius: '10px',
             padding: '14px 16px',
             border: '1px solid #e2e8f0',
             borderLeft: '3px solid #5b6a82',
-            boxShadow: tabFilter === 'all' ? '0 0 0 2px #5b6a82, var(--shadow-subtle)' : 'var(--shadow-subtle)',
+            boxShadow: tabFilter === 'all' && categoryFilter === 'all' ? '0 0 0 2px #5b6a82, var(--shadow-subtle)' : 'var(--shadow-subtle)',
             cursor: 'pointer',
             transition: 'box-shadow 0.15s, border-color 0.15s'
           }}
-          onMouseEnter={(e) => { if (tabFilter !== 'all') e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
-          onMouseLeave={(e) => { if (tabFilter !== 'all') e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
+          onMouseEnter={(e) => { if (tabFilter !== 'all' || categoryFilter !== 'all') e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
+          onMouseLeave={(e) => { if (tabFilter !== 'all' || categoryFilter !== 'all') e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
         >
           <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
             All Requests
@@ -378,12 +341,13 @@ export const CampusAdminDashboard = () => {
           <div style={{ fontSize: '28px', fontWeight: '700', color: '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
             {activeRequisitions.length}
           </div>
-
+          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', fontWeight: '400' }}>
+            Total institution requisitions · Click to view all
+          </div>
         </div>
       </div>
 
-      {/* Statistics — an approver's view: what has already been decided, and
-          what is sitting in the queue waiting for a signature. */}
+      {/* Statistics — interactive charts: clicking segments or bars filters the queue */}
       <ChartsRow
         isEmpty={activeRequisitions.length === 0}
         emptyTitle="Approval statistics"
@@ -396,6 +360,18 @@ export const CampusAdminDashboard = () => {
           pick={finalActionStage}
           palette={FINAL_ACTION_COLORS}
           unit="REQUESTS"
+          onSegmentClick={(label) => {
+            const lower = String(label).toLowerCase();
+            if (lower.includes('awaiting') || lower.includes('pending')) {
+              setTabFilter('pending');
+            } else if (lower.includes('approved')) {
+              setTabFilter('approved');
+            } else if (lower.includes('disapproved') || lower.includes('rejected') || lower.includes('returned')) {
+              setTabFilter('disapproved');
+            } else {
+              setTabFilter('all');
+            }
+          }}
         />
         <DonutCard
           title="Awaiting Signature by Urgency"
@@ -405,6 +381,7 @@ export const CampusAdminDashboard = () => {
           palette="urgency"
           unit="TO SIGN"
           emptyCopy="Nothing is waiting for your signature."
+          onSegmentClick={() => setTabFilter('pending')}
         />
         <BarCard
           title="Awaiting Signature by Category"
@@ -415,6 +392,10 @@ export const CampusAdminDashboard = () => {
           colorPalette={FINAL_ACTION_COLORS}
           totalLabel="awaiting final action"
           emptyCopy="Nothing is waiting for your signature."
+          onBarClick={(cat) => {
+            setCategoryFilter(cat);
+            setTabFilter('pending');
+          }}
         />
       </ChartsRow>
 
@@ -585,10 +566,9 @@ export const CampusAdminDashboard = () => {
                           className="btn btn-secondary btn-sm"
                           onClick={() => { setSelectedReq(req); setIsPrintOpen(true); }}
                           title="View official automated form QF-PDAS-DC-01"
-                          style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', marginRight: '6px' }}
+                          style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', marginRight: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                         >
-                          <Printer size={13} />
-                          Form
+                          <Eye size={13} /> View Form
                         </button>
                         <button
                           type="button"
@@ -627,9 +607,6 @@ export const CampusAdminDashboard = () => {
               {selectedReq?.controlNo ? <>Tracking: <strong>{selectedReq.controlNo}</strong></> : <>Next tracking number: <strong>{peekNextTrackingNumber?.() || '—'}</strong></>}
             </span>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setIsDecisionModalOpen(false); setIsEditOpen(true); }}>
-                Edit Request
-              </button>
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setIsDecisionModalOpen(false); setIsPrintOpen(true); }}>
                 <Printer size={14} /> Print Preview
               </button>
@@ -799,16 +776,7 @@ export const CampusAdminDashboard = () => {
         )}
       </Modal>
 
-      <JobRequestFormOverlay
-        isOpen={isEditOpen}
-        onClose={() => { setIsEditOpen(false); setIsDecisionModalOpen(true); }}
-        initialReq={selectedReq || {}}
-        allowActionTaken
-        allowFinalAction
-        title="Edit Request (QF-PDAS-DC-01)"
-        onSave={(edited) => { setSelectedReq(prev => ({ ...prev, ...edited })); setDecisionStatus(edited.finalAction?.status || decisionStatus); setDecisionRemarks(edited.finalAction?.remarks || decisionRemarks); setIsEditOpen(false); setIsDecisionModalOpen(true); }}
-        onSaveAndPrint={(edited) => { setSelectedReq(prev => ({ ...prev, ...edited })); setIsEditOpen(false); setIsPrintOpen(true); }}
-      />
+
 
       <Modal isOpen={isPrintOpen} onClose={() => setIsPrintOpen(false)} title="Print Preview — QF-PDAS-DC-01" maxWidth="800px"
         footer={

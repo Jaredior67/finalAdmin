@@ -41,10 +41,6 @@ export const WorkOrderDialogs = ({
   onTargetStatusChange,
   technicianNotes,
   onTechnicianNotesChange,
-  materialsUsed,
-  onMaterialsUsedChange,
-  hoursSpent,
-  onHoursSpentChange,
   completionPhoto,
   onCompletionPhotoChange,
   onSaveStatus,
@@ -142,35 +138,6 @@ export const WorkOrderDialogs = ({
             </div>
           </div>
 
-          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div className="form-group">
-              <label className="form-label" htmlFor="log-materials">
-                Materials &amp; Parts Used
-              </label>
-              <input
-                id="log-materials"
-                type="text"
-                className="form-input"
-                placeholder="e.g. 20A Breaker, Teflon Tape, R410A…"
-                value={materialsUsed}
-                onChange={(e) => onMaterialsUsedChange(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="log-hours">
-                Hours Spent On-Site
-              </label>
-              <input
-                id="log-hours"
-                type="text"
-                className="form-input"
-                placeholder="e.g. 1.5 hrs"
-                value={hoursSpent}
-                onChange={(e) => onHoursSpentChange(e.target.value)}
-              />
-            </div>
-          </div>
 
           <div className="form-group">
             <LimitedTextArea

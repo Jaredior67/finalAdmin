@@ -88,38 +88,45 @@ export const FacultyStaffDashboard = ({ onNavigate }) => {
   );
   const completedTickets = myTickets.filter(r => r.status === 'Completed');
   const urgentOpen = myTickets.filter(r =>
-    isOpen(r) && /high|urgent|emergency/i.test(String(r.urgency || ''))
+    isOpen(r) && (/high|urgent|emergency/i.test(String(r.urgency || '')) || r.requestType === 'Urgent Request' || r.category === 'Urgent Hazard')
   );
 
   const recentTickets = [...myTickets]
-    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+    .sort((a, b) => {
+      const isUrgentA = /high|urgent|emergency/i.test(String(a.urgency || '')) || a.requestType === 'Urgent Request' || a.category === 'Urgent Hazard';
+      const isUrgentB = /high|urgent|emergency/i.test(String(b.urgency || '')) || b.requestType === 'Urgent Request' || b.category === 'Urgent Hazard';
+      if (isUrgentA && !isUrgentB) return -1;
+      if (!isUrgentA && isUrgentB) return 1;
+      return String(b.date || '').localeCompare(String(a.date || ''));
+    })
     .slice(0, 5);
 
   const goTickets = () => onNavigate('faculty-tickets');
   const goHistory = () => onNavigate('faculty-history');
 
-  /* Tiles report a STATE, not a destination. "My Active Tickets" was a
-     verbatim copy of the sidebar item and therefore said nothing. */
+  /* 2 Stat Cards — Total and Completed. The per-status breakdown
+     (Pending, Under Review, Ongoing) lives in the "My Requests by Status"
+     donut chart below, and urgency breakdown lives in "My Requests by Urgency",
+     so repeating them as extra tiles is redundant. */
   const tiles = [
     {
       label: 'Open Requests',
       value: openTickets.length,
-      caption: 'Filed by you and still in progress',
+      caption: 'Active service tickets currently ongoing or in queue',
       accent: '#001f9c',
       onClick: goTickets
     },
     {
       label: 'Pending Review',
       value: pendingReview.length,
-      caption: 'With PDAS or awaiting endorsement',
+      caption: 'Awaiting administrative or supervisor review',
       accent: '#f59e0b',
-      highlight: pendingReview.length > 0 ? '#92400e' : null,
       onClick: goTickets
     },
     {
       label: 'Urgent Priority',
       value: urgentOpen.length,
-      caption: 'Open and flagged for immediate action',
+      caption: 'Immediate safety or infrastructure attention required',
       accent: '#dc2626',
       highlight: urgentOpen.length > 0 ? '#b91c1c' : null,
       onClick: goTickets
@@ -127,7 +134,7 @@ export const FacultyStaffDashboard = ({ onNavigate }) => {
     {
       label: 'Completed',
       value: completedTickets.length,
-      caption: 'Repairs verified and closed',
+      caption: 'Repairs verified, completed, and closed',
       accent: '#10b981',
       highlight: completedTickets.length > 0 ? '#047857' : null,
       onClick: goHistory
@@ -158,22 +165,40 @@ export const FacultyStaffDashboard = ({ onNavigate }) => {
 
       <div
         className="faculty-stats-grid"
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}
       >
         {tiles.map((tile) => (
           <StatCard key={tile.label} {...tile} />
         ))}
       </div>
 
-      {/* Statistics — a requester's view: where their own requests stand, how
-          urgent they marked them, and their filing history over time. */}
+      {/* Statistics — a requester's view: clicking segments navigates to active tickets or history */}
       <ChartsRow
         isEmpty={myTickets.length === 0}
         emptyTitle="My request statistics"
         emptyCopy="File your first request and this fills in."
       >
-        <DonutCard title="My Requests by Status" icon="status" list={myTickets} pick={(r) => r.status} palette="status" unit="REQUESTS" />
-        <DonutCard title="My Requests by Urgency" icon="urgency" list={myTickets} pick={(r) => r.urgency} palette="urgency" unit="REQUESTS" />
+        <DonutCard
+          title="My Requests by Status"
+          icon="status"
+          list={myTickets}
+          pick={(r) => r.status}
+          palette="status"
+          unit="REQUESTS"
+          onSegmentClick={(label) => {
+            if (label === 'Completed') goHistory();
+            else goTickets();
+          }}
+        />
+        <DonutCard
+          title="My Requests by Urgency"
+          icon="urgency"
+          list={myTickets}
+          pick={(r) => r.urgency}
+          palette="urgency"
+          unit="REQUESTS"
+          onSegmentClick={() => goTickets()}
+        />
         <ColumnCard
           title="Filed by Month"
           icon="filed"

@@ -166,19 +166,26 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed
 
             {/* Profile Dropdown */}
             {isProfileMenuOpen && (
-              <div style={{
-                position: 'absolute',
-                top: '100%',
-                right: 0,
-                marginTop: '8px',
-                width: '240px',
-                background: '#ffffff',
-                borderRadius: '12px',
-                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
-                border: '1px solid #e2e8f0',
-                padding: '8px',
-                zIndex: 100
-              }}>
+              <>
+                <div
+                  onClick={() => setIsProfileMenuOpen(false)}
+                  style={{ position: 'fixed', inset: 0, zIndex: 99, background: 'transparent' }}
+                  aria-hidden="true"
+                />
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '8px',
+                  width: '240px',
+                  background: '#ffffff',
+                  borderRadius: '12px',
+                  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
+                  border: '1px solid #e2e8f0',
+                  padding: '8px',
+                  zIndex: 100,
+                  animation: 'slideDown 0.15s ease'
+                }}>
                 <div style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', marginBottom: '4px' }}>
                   <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{currentUser.name}</div>
                   <div style={{ fontSize: '11.5px', color: '#64748b' }}>{currentUser.email}</div>
@@ -240,7 +247,8 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed
                   </button>
                 </div>
               </div>
-            )}
+            </>
+          )}
           </div>
         ) : (
           <button 

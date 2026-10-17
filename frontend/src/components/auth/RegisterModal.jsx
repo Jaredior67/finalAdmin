@@ -64,20 +64,18 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
     userType: 'Faculty', // 'Faculty' | 'Staff'
     department: 'BSIT',
     office: 'Office of the Campus Administrator',
-    contactNumber: '',
     gender: 'Male',
-    address: '',
-    birthday: '',
-    age: '',
     gmail: '',
     password: ''
   });
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const [idFile, setIdFile] = useState(null);
   const [idPreview, setIdPreview] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   // RA 10173 (Data Privacy Act) consent. The server refuses a registration with
   // no consent timestamp, so this must be an explicit opt-in rather than a
   // default-on box.
@@ -91,28 +89,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
   const [statusError, setStatusError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Auto-calculate age when birthday changes
-  const handleBirthdayChange = (e) => {
-    const bdayStr = e.target.value;
-    let calculatedAge = '';
-    if (bdayStr) {
-      const birthDate = new Date(bdayStr);
-      const today = new Date();
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const m = today.getMonth() - birthDate.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-        age--;
-      }
-      if (age >= 0 && age <= 120) {
-        calculatedAge = age;
-      }
-    }
-    setFormData(prev => ({
-      ...prev,
-      birthday: bdayStr,
-      age: calculatedAge
-    }));
-  };
+
 
   /* The ID photo travels as a base64 data-URL inside the registration payload.
      A phone camera delivers 3–8MB, which becomes 4–11MB of base64 — far past
@@ -190,10 +167,6 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
       setError('Please provide a valid institutional or Gmail address.');
       return;
     }
-    if (!formData.contactNumber.trim()) {
-      setError('Contact Number is required.');
-      return;
-    }
     if (formData.userType === 'Staff' && !formData.office.trim()) {
       setError('Please select your administrative office.');
       return;
@@ -208,6 +181,10 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
     }
     if (!/[A-Za-z]/.test(formData.password) || !/[0-9]/.test(formData.password)) {
       setError('Password must include at least one letter and one number.');
+      return;
+    }
+    if (formData.password !== confirmPassword) {
+      setError('Passwords do not match. Please re-enter your confirm password.');
       return;
     }
     if (!idPreview && !idFile) {
@@ -267,6 +244,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
     setStatusEmail('');
     setStatusResult(null);
     setStatusError('');
+    setConfirmPassword('');
     setFormData({
       firstName: '',
       middleName: '',
@@ -274,11 +252,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
       userType: 'Faculty',
       department: 'BSIT',
       office: 'Office of the Campus Administrator',
-      contactNumber: '',
       gender: 'Male',
-      address: '',
-      birthday: '',
-      age: '',
       gmail: '',
       password: ''
     });
@@ -373,15 +347,12 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
               <div>• Name: <strong>{formData.firstName} {formData.middleName ? formData.middleName + ' ' : ''}{formData.lastName}</strong></div>
               <div>• Role: <strong>{formData.userType}</strong></div>
-              <div>• Email: <strong>{formData.gmail}</strong></div>
-              <div>• Contact: <strong>{formData.contactNumber}</strong></div>
+              <div style={{ gridColumn: '1 / -1' }}>• Email: <strong>{formData.gmail}</strong></div>
               <div>• Gender: <strong>{formData.gender}</strong></div>
-              <div>• Age: <strong>{formData.age || '—'}</strong></div>
-              <div style={{ gridColumn: '1 / -1' }}>• Address: <strong>{formData.address || '—'}</strong></div>
               {formData.userType === 'Faculty' ? (
-                <div style={{ gridColumn: '1 / -1' }}>• Department: <strong>{formData.department}</strong></div>
+                <div>• Department: <strong>{formData.department}</strong></div>
               ) : (
-                <div style={{ gridColumn: '1 / -1' }}>• Office: <strong>{formData.office}</strong></div>
+                <div>• Office: <strong>{formData.office}</strong></div>
               )}
               <div style={{ gridColumn: '1 / -1' }}>• Institutional ID: <strong style={{ color: '#059669' }}>Photo attached for review</strong></div>
             </div>
@@ -584,42 +555,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
             </div>
           </div>
 
-          {/* 3. Birthday, Age & Address */}
-          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '14px' }}>
-            <div className="form-group">
-              <label className="form-label">Birthday</label>
-              <input
-                type="date"
-                className="form-input"
-                value={formData.birthday}
-                onChange={handleBirthdayChange}
-              />
-            </div>
 
-            <div className="form-group">
-              <label className="form-label">Age</label>
-              <input
-                type="number"
-                className="form-input"
-                placeholder="Auto-calculated"
-                value={formData.age}
-                onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                min={15}
-                max={100}
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Complete Address</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="e.g. P.D. Monfort South, Dumangas, Iloilo"
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-            />
-          </div>
 
           {/* 4. Department (Faculty) / Office (Staff) Dropdown */}
           {formData.userType === 'Faculty' ? (
@@ -656,31 +592,17 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
             </div>
           )}
 
-          {/* 5. Email & Contact Number */}
-          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <div className="form-group">
-              <label className="form-label">Institutional Email / Gmail *</label>
-              <input
-                type="email"
-                className="form-input"
-                placeholder="e.g. username@isatu.edu.ph"
-                value={formData.gmail}
-                onChange={(e) => setFormData({ ...formData, gmail: e.target.value })}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Mobile Contact Number *</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="+63 9XX XXX XXXX"
-                value={formData.contactNumber}
-                onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
-                required
-              />
-            </div>
+          {/* 5. Email */}
+          <div className="form-group">
+            <label className="form-label">Institutional Email / Gmail *</label>
+            <input
+              type="email"
+              className="form-input"
+              placeholder="e.g. username@isatu.edu.ph"
+              value={formData.gmail}
+              onChange={(e) => setFormData({ ...formData, gmail: e.target.value })}
+              required
+            />
           </div>
 
           <div className="form-group">
@@ -727,6 +649,42 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
                   {rule.label}
                 </span>
               ))}
+            </div>
+          </div>
+
+          {/* Confirm Password */}
+          <div className="form-group">
+            <label className="form-label">Confirm Password *</label>
+            <div className="input-with-icon-wrapper">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                className="form-input"
+                placeholder="Re-enter your password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+              >
+                {showConfirmPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px 16px', marginTop: '7px' }}>
+              <span
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                  fontSize: '11.5px',
+                  fontWeight: (confirmPassword && confirmPassword === formData.password) ? '700' : '500',
+                  color: (confirmPassword && confirmPassword === formData.password) ? '#059669' : '#94a3b8'
+                }}
+              >
+                <CheckCircle2 size={13} />
+                Passwords match
+              </span>
             </div>
           </div>
 

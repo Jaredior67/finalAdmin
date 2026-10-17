@@ -25,7 +25,13 @@ import { useOptionalToast } from '../../components/ui/Toast';
 
 export const SupervisorDashboard = () => {
   const { currentUser } = useAuth();
-  const { requisitions, submitSupervisorAction, ticketSearch: searchTerm } = useData();
+  const {
+    requisitions,
+    submitSupervisorAction,
+    ticketSearch: searchTerm,
+    focusedTicketRef,
+    setFocusedTicketRef
+  } = useData();
 
   const now = new Date();
   const formattedDate = formatHeaderDate(now);
@@ -41,6 +47,22 @@ export const SupervisorDashboard = () => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [successToast, setSuccessToast] = useState('');
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+
+  // Deep link: a clicked notification opens that exact ticket in preview modal
+  useEffect(() => {
+    if (!focusedTicketRef) return;
+    const refStr = String(focusedTicketRef || '').trim();
+    const found = (requisitions || []).find(r =>
+      String(r.controlNo || '') === refStr ||
+      String(r.id || '') === refStr ||
+      String(r.ticket_no || '') === refStr
+    );
+    if (found) {
+      setSelectedReq(found);
+      setIsPreviewOpen(true);
+    }
+    setFocusedTicketRef(null);
+  }, [focusedTicketRef, requisitions, setFocusedTicketRef]);
 
   // Requisitions relevant to supervisor:
   // Either assigned supervisor matches, department matches, or currently in Pending Supervisor Approval
@@ -117,9 +139,10 @@ export const SupervisorDashboard = () => {
 
     return matchesSearch && matchesCategory && matchesTab;
   }).sort((a, b) => {
-    // High Risk prioritized first
-    const uA = a.urgency === 'High Risk' ? 1 : a.urgency === 'Medium Risk' ? 2 : 3;
-    const uB = b.urgency === 'High Risk' ? 1 : b.urgency === 'Medium Risk' ? 2 : 3;
+    const isUrgentA = /high|urgent|emergency/i.test(String(a.urgency || '')) || a.requestType === 'Urgent Request' || a.category === 'Urgent Hazard';
+    const isUrgentB = /high|urgent|emergency/i.test(String(b.urgency || '')) || b.requestType === 'Urgent Request' || b.category === 'Urgent Hazard';
+    const uA = isUrgentA ? 0 : (a.urgency === 'High Risk' ? 1 : a.urgency === 'Medium Risk' ? 2 : 3);
+    const uB = isUrgentB ? 0 : (b.urgency === 'High Risk' ? 1 : b.urgency === 'Medium Risk' ? 2 : 3);
     if (uA !== uB) return uA - uB;
     return String(b.date || '').localeCompare(String(a.date || ''));
   });
@@ -212,8 +235,10 @@ export const SupervisorDashboard = () => {
         </div>
       )}
 
-      {/* Metrics Row — semantic border accents, interactive tab shortcuts */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+      {/* Metrics Row — 2 cards: Pending Supervisor Review and Total Subordinate Tickets.
+          The intermediate breakdown (Approved & Forwarded, Returned for Revision)
+          lives in the Endorsement Record donut below. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
         <div 
           onClick={() => setTabFilter('pending')}
           style={{
@@ -236,76 +261,24 @@ export const SupervisorDashboard = () => {
             {pendingApproval.length}
           </div>
           <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', fontWeight: '400' }}>
-            Not yet reviewed
+            Action required · Click to filter
           </div>
         </div>
 
         <div 
-          onClick={() => setTabFilter('approved')}
-          style={{
-            background: '#ffffff',
-            borderRadius: '10px',
-            padding: '14px 16px',
-            border: '1px solid #e2e8f0',
-            borderLeft: '3px solid #001f9c',
-            boxShadow: tabFilter === 'approved' ? '0 0 0 2px #001f9c, var(--shadow-subtle)' : 'var(--shadow-subtle)',
-            cursor: 'pointer',
-            transition: 'box-shadow 0.15s, border-color 0.15s'
-          }}
-          onMouseEnter={(e) => { if (tabFilter !== 'approved') e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
-          onMouseLeave={(e) => { if (tabFilter !== 'approved') e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
-        >
-          <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
-            Approved &amp; Forwarded
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: '700', color: approvedBySupervisor.length > 0 ? '#001f9c' : '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {approvedBySupervisor.length}
-          </div>
-          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', fontWeight: '400' }}>
-            Endorsed to PDAS for processing
-          </div>
-        </div>
-
-        <div 
-          onClick={() => setTabFilter('rejected')}
-          style={{
-            background: '#ffffff',
-            borderRadius: '10px',
-            padding: '14px 16px',
-            border: '1px solid #e2e8f0',
-            borderLeft: '3px solid #f2a33a',
-            boxShadow: tabFilter === 'rejected' ? '0 0 0 2px #f2a33a, var(--shadow-subtle)' : 'var(--shadow-subtle)',
-            cursor: 'pointer',
-            transition: 'box-shadow 0.15s, border-color 0.15s'
-          }}
-          onMouseEnter={(e) => { if (tabFilter !== 'rejected') e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
-          onMouseLeave={(e) => { if (tabFilter !== 'rejected') e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
-        >
-          <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
-            Returned for Revision
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: '700', color: rejectedBySupervisor.length > 0 ? '#92400e' : '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {rejectedBySupervisor.length}
-          </div>
-          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', fontWeight: '400' }}>
-            Sent back to requester for changes
-          </div>
-        </div>
-
-        <div 
-          onClick={() => setTabFilter('all')}
+          onClick={() => { setTabFilter('all'); setCategoryFilter('all'); }}
           style={{
             background: '#ffffff',
             borderRadius: '10px',
             padding: '14px 16px',
             border: '1px solid #e2e8f0',
             borderLeft: '3px solid #5b6a82',
-            boxShadow: tabFilter === 'all' ? '0 0 0 2px #5b6a82, var(--shadow-subtle)' : 'var(--shadow-subtle)',
+            boxShadow: tabFilter === 'all' && categoryFilter === 'all' ? '0 0 0 2px #5b6a82, var(--shadow-subtle)' : 'var(--shadow-subtle)',
             cursor: 'pointer',
             transition: 'box-shadow 0.15s, border-color 0.15s'
           }}
-          onMouseEnter={(e) => { if (tabFilter !== 'all') e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
-          onMouseLeave={(e) => { if (tabFilter !== 'all') e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
+          onMouseEnter={(e) => { if (tabFilter !== 'all' || categoryFilter !== 'all') e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
+          onMouseLeave={(e) => { if (tabFilter !== 'all' || categoryFilter !== 'all') e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
         >
           <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
             Total Subordinate Tickets
@@ -314,13 +287,12 @@ export const SupervisorDashboard = () => {
             {supervisorRequisitions.length}
           </div>
           <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', fontWeight: '400' }}>
-            Departmental work orders volume
+            All departmental work orders · Click to view all
           </div>
         </div>
       </div>
 
-      {/* Statistics — an endorser's view: the split of what has and has not
-          been endorsed, plus where that work sits by urgency and trade. */}
+      {/* Statistics — interactive charts: clicking a segment or category filters the review queue */}
       <ChartsRow
         isEmpty={supervisorRequisitions.length === 0}
         emptyTitle="Endorsement statistics"
@@ -333,6 +305,18 @@ export const SupervisorDashboard = () => {
           pick={endorseStage}
           palette={ENDORSE_STAGE_COLORS}
           unit="REQUESTS"
+          onSegmentClick={(label) => {
+            const lower = String(label).toLowerCase();
+            if (lower.includes('awaiting') || lower.includes('pending')) {
+              setTabFilter('pending');
+            } else if (lower.includes('endorsed') || lower.includes('approved')) {
+              setTabFilter('approved');
+            } else if (lower.includes('returned') || lower.includes('revision') || lower.includes('rejected')) {
+              setTabFilter('rejected');
+            } else {
+              setTabFilter('all');
+            }
+          }}
         />
         <DonutCard
           title="Endorsements by Urgency"
@@ -341,6 +325,7 @@ export const SupervisorDashboard = () => {
           pick={(r) => r.urgency}
           palette="urgency"
           unit="REQUESTS"
+          onSegmentClick={() => setTabFilter('all')}
         />
         <BarCard
           title="Endorsements by Category"
@@ -350,36 +335,26 @@ export const SupervisorDashboard = () => {
           colorPick={endorseStage}
           colorPalette={ENDORSE_STAGE_COLORS}
           totalLabel="departmental work orders"
+          onBarClick={(cat) => setCategoryFilter(cat)}
         />
       </ChartsRow>
 
       {/* Tabs & Filter Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'flex', gap: '8px', background: 'var(--bg-muted)', padding: '4px', borderRadius: '8px' }}>
-          {[
-            { id: 'pending', label: `Pending Review (${pendingApproval.length})` },
-            { id: 'approved', label: `Approved (${approvedBySupervisor.length})` },
-            { id: 'rejected', label: `Returned (${rejectedBySupervisor.length})` },
-            { id: 'all', label: `All Tickets (${supervisorRequisitions.length})` }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setTabFilter(tab.id)}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '6px',
-                border: 'none',
-                background: tabFilter === tab.id ? '#ffffff' : 'transparent',
-                color: tabFilter === tab.id ? '#0f172a' : '#64748b',
-                fontWeight: tabFilter === tab.id ? '700' : '500',
-                fontSize: '13px',
-                cursor: 'pointer',
-                boxShadow: tabFilter === tab.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '12.5px', fontWeight: '700', color: '#64748b' }}>Queue View:</span>
+          <select
+            aria-label="Queue View"
+            className="form-select form-select-sm"
+            value={tabFilter}
+            onChange={(e) => setTabFilter(e.target.value)}
+            style={{ minWidth: '210px', fontWeight: '700', borderRadius: '8px', padding: '6px 12px', fontSize: '13px', background: '#ffffff', border: '1px solid #cbd5e1' }}
+          >
+            <option value="pending">Pending Review ({pendingApproval.length})</option>
+            <option value="approved">Approved &amp; Endorsed ({approvedBySupervisor.length})</option>
+            <option value="rejected">Returned for Revision ({rejectedBySupervisor.length})</option>
+            <option value="all">All Assigned Tickets ({supervisorRequisitions.length})</option>
+          </select>
         </div>
 
         <select

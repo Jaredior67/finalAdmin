@@ -14,7 +14,7 @@ router.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, first_name, middle_name, last_name, email, role, is_supervisor, department, office, contact_number,
-              gender, address, birthday, age, id_photo_url, status, created_at
+              gender, address, birthday, age, id_photo_url, status, availability_status, specialization, created_at
        FROM users ORDER BY created_at DESC`
     );
     res.json(rows);
@@ -353,9 +353,14 @@ router.put('/:id', async (req, res) => {
       address,
       birthday,
       age,
+      specialization,
+      availabilityStatus,
+      availability_status,
     } = req.body;
 
     const isSupVal = isSupervisor !== undefined ? (isSupervisor ? 1 : 0) : (is_supervisor !== undefined ? (is_supervisor ? 1 : 0) : undefined);
+    const rawAvail = availabilityStatus || availability_status;
+    const finalAvail = rawAvail !== undefined && rawAvail !== null ? (['available', 'busy', 'off_duty'].includes(String(rawAvail).toLowerCase()) ? String(rawAvail).toLowerCase() : null) : null;
 
     // Role allow-list guard — prevents privilege escalation via crafted API body.
     // 'supervisor' is NOT a role; designation is controlled via PUT /:id/supervisor-designation.
@@ -378,9 +383,11 @@ router.put('/:id', async (req, res) => {
          gender = COALESCE(?, gender),
          address = COALESCE(?, address),
          birthday = COALESCE(?, birthday),
-         age = COALESCE(?, age)
+         age = COALESCE(?, age),
+         specialization = COALESCE(?, specialization),
+         availability_status = COALESCE(?, availability_status)
        WHERE id = ?`,
-      [firstName, middleName, lastName, department, office, contactNumber, role, isSupVal, gender, address, birthday, age, req.params.id]
+      [firstName, middleName, lastName, department, office, contactNumber, role, isSupVal, gender, address, birthday, age, specialization, finalAvail, req.params.id]
     );
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'User not found.' });
@@ -412,6 +419,25 @@ router.put('/:id/status', async (req, res) => {
   } catch (err) {
     console.error('PUT /users/:id/status error:', err);
     res.status(500).json({ message: 'Failed to update user status.' });
+  }
+});
+
+// PUT /api/users/:id/availability - update technician availability (available, busy, off_duty)
+router.put('/:id/availability', async (req, res) => {
+  try {
+    const { availabilityStatus } = req.body;
+    if (!['available', 'busy', 'off_duty'].includes(availabilityStatus)) {
+      return res.status(400).json({ message: "availabilityStatus must be 'available', 'busy', or 'off_duty'." });
+    }
+    const [result] = await pool.query('UPDATE users SET availability_status = ? WHERE id = ?', [availabilityStatus, req.params.id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    invalidateUserCache(Number(req.params.id));
+    res.json({ message: `Availability status updated to ${availabilityStatus}.`, availabilityStatus });
+  } catch (err) {
+    console.error('PUT /users/:id/availability error:', err);
+    res.status(500).json({ message: 'Failed to update user availability.' });
   }
 });
 

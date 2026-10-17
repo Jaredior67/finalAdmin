@@ -29,7 +29,7 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
     clearAllNotifications,
     setFocusedTicketRef,
   } = useData();
-  const { isCampusAdmin, isMaintenance, isFacultyOrStaff } = useAuth();
+  const { isCampusAdmin, isMaintenance, isFacultyOrStaff, isSupervisor } = useAuth();
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isClearAllOpen, setIsClearAllOpen] = useState(false);
 
@@ -55,9 +55,11 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
       ? 'campus-admin-dashboard'
       : isMaintenance
         ? 'tech-tasks'
-        : isFacultyOrStaff
-          ? 'faculty-tickets'
-          : 'job-requests';
+        : isSupervisor
+          ? 'supervisor-queue'
+          : isFacultyOrStaff
+            ? 'faculty-tickets'
+            : 'job-requests';
     if (onNavigateTab) onNavigateTab(tab);
     if (onClose) onClose();
   };
@@ -74,19 +76,31 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
 
   return (
     <>
+      {/* Invisible backdrop to dismiss drawer on outside click smoothly */}
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 49,
+          background: 'transparent'
+        }}
+        aria-hidden="true"
+      />
+
       <div
         style={{
           position: 'absolute',
           top: '60px',
           right: '24px',
-          width: 'min(380px, calc(100vw - 32px))',
+          width: 'min(390px, calc(100vw - 32px))',
           background: '#ffffff',
           border: '1px solid #e2e8f0',
           borderRadius: '16px',
-          boxShadow: '0 20px 30px -10px rgba(15, 23, 42, 0.15)',
+          boxShadow: '0 20px 35px -10px rgba(15, 23, 42, 0.18)',
           zIndex: 50,
           overflow: 'hidden',
-          animation: 'slideUp 0.15s ease'
+          animation: 'slideDown 0.18s cubic-bezier(0.16, 1, 0.3, 1)'
         }}
       >
         <div style={{
@@ -148,17 +162,17 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
             safeNotifications.map(n => (
               <div
                 key={n.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleOpenNotification(n)}
-                title="Open this ticket"
-                style={{
-                  padding: '14px 18px',
-                  borderBottom: '1px solid #f1f5f9',
-                  background: n.unread ? '#eff6ff' : '#ffffff',
-                  display: 'flex',
-                  gap: '12px',
-                  transition: 'background 0.15s',
-                  cursor: 'pointer'
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleOpenNotification(n);
+                  }
                 }}
+                className={`notification-drawer-item ${n.unread ? 'is-unread' : 'is-read'}`}
+                title="Click to view ticket details"
               >
                 <div style={{
                   width: '32px',

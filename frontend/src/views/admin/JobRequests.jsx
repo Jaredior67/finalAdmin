@@ -99,6 +99,65 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
     u.userType === 'maintenance'
   );
 
+  // Dynamic availability and workload calculation for realistic dispatch
+  const getTechnicianWorkload = (tech) => {
+    if (!tech) return null;
+    const activeJobs = (requisitions || []).filter(r => {
+      const isOngoing = r.status === 'Ongoing' || r.status === 'In Progress' || r.status === 'Approved';
+      const matchesId = String(r.assignedTo || '') === String(tech.id || '');
+      const matchesName = String(r.assignedTo || '').toLowerCase() === String(tech.name || '').toLowerCase();
+      return isOngoing && (matchesId || matchesName);
+    });
+
+    const baseStatus = String(tech.availabilityStatus || 'available').toLowerCase();
+
+    if (baseStatus === 'off_duty') {
+      return {
+        status: 'off_duty',
+        label: 'Off Duty / On Leave',
+        color: '#ef4444',
+        bgColor: '#fee2e2',
+        dot: '🔴',
+        activeCount: activeJobs.length,
+        isAvailable: false
+      };
+    }
+
+    if (baseStatus === 'busy' || activeJobs.length >= 3) {
+      return {
+        status: 'busy',
+        label: `Busy (${activeJobs.length} active ${activeJobs.length === 1 ? 'task' : 'tasks'})`,
+        color: '#d97706',
+        bgColor: '#fef3c7',
+        dot: '🟡',
+        activeCount: activeJobs.length,
+        isAvailable: true
+      };
+    }
+
+    if (activeJobs.length > 0) {
+      return {
+        status: 'available',
+        label: `On Duty (${activeJobs.length} ongoing)`,
+        color: '#059669',
+        bgColor: '#ecfdf5',
+        dot: '🟢',
+        activeCount: activeJobs.length,
+        isAvailable: true
+      };
+    }
+
+    return {
+      status: 'available',
+      label: 'Available (Ready for dispatch)',
+      color: '#10b981',
+      bgColor: '#d1fae5',
+      dot: '🟢',
+      activeCount: 0,
+      isAvailable: true
+    };
+  };
+
   /* What the admin may do with this ticket right now, derived from its status.
    *
    * A free "Workflow Status" dropdown used to stand in for this. It offered every
@@ -383,56 +442,34 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #e2e8f0', marginBottom: '20px', paddingBottom: '2px', overflowX: 'auto' }}>
-        {[
-          { id: 'all', label: 'All Requests', count: requisitions.filter(r => !r.isArchived).length },
-          { id: 'pending', label: 'Pending Endorsement', count: requisitions.filter(r => !r.isArchived && (r.status === 'Pending' || r.status === 'Pending Supervisor Approval')).length },
-          { id: 'under-review', label: 'Under Review', count: requisitions.filter(r => !r.isArchived && r.status === 'Under Review').length },
-          { id: 'pending-final', label: 'Pending Final Approval', count: requisitions.filter(r => !r.isArchived && (r.status === 'Pending Final Approval' || r.status === 'Awaiting Signatures')).length },
-          { id: 'approved', label: 'Approved / Ready to Assign', count: requisitions.filter(r => !r.isArchived && r.status === 'Approved').length },
-          { id: 'in-progress', label: 'Ongoing (On-Site)', count: requisitions.filter(r => !r.isArchived && (r.status === 'In Progress' || r.status === 'Ongoing')).length },
-          { id: 'on-hold', label: 'On Hold', count: requisitions.filter(r => !r.isArchived && r.status === 'On Hold').length },
-          { id: 'returned', label: 'Returned for Revision', count: requisitions.filter(r => !r.isArchived && r.status === 'Returned').length },
-          { id: 'flagged', label: 'Maintenance flags', count: requisitions.filter(r => !r.isArchived && (r.replacementFlag?.isFlagged || r.maintenanceFlag?.type)).length },
-          { id: 'completed', label: 'Completed', count: requisitions.filter(r => !r.isArchived && r.status === 'Completed').length },
-        ].map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveStatusTab(tab.id)}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              background: 'none',
-              fontWeight: activeStatusTab === tab.id ? '700' : '500',
-              color: activeStatusTab === tab.id ? '#001f9c' : '#64748b',
-              borderBottom: activeStatusTab === tab.id ? '2px solid #001f9c' : '2px solid transparent',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '13.5px',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {tab.label}
-            <span style={{
-              fontSize: '11px',
-              padding: '1px 6px',
-              borderRadius: '10px',
-              background: activeStatusTab === tab.id ? '#eff6ff' : 'var(--bg-hover)',
-              color: activeStatusTab === tab.id ? '#1d4ed8' : '#64748b',
-              fontWeight: '700'
-            }}>
-              {tab.count}
-            </span>
-          </button>
-        ))}
-      </div>
-
       {/* Filters Bar (search lives in the top navbar) */}
       <div className="filter-bar">
+        {/* Status Dropdown — replaces the wide, overflowing horizontal tab strip */}
+        <select
+          className="select-filter"
+          value={activeStatusTab}
+          onChange={(e) => setActiveStatusTab(e.target.value)}
+          aria-label="Filter by Request Status"
+          style={{ minWidth: '220px', fontWeight: '600' }}
+        >
+          {[
+            { id: 'all', label: 'All Requests', count: requisitions.filter(r => !r.isArchived).length },
+            { id: 'pending', label: 'Pending Endorsement', count: requisitions.filter(r => !r.isArchived && (r.status === 'Pending' || r.status === 'Pending Supervisor Approval')).length },
+            { id: 'under-review', label: 'Under Review', count: requisitions.filter(r => !r.isArchived && r.status === 'Under Review').length },
+            { id: 'pending-final', label: 'Pending Final Approval', count: requisitions.filter(r => !r.isArchived && (r.status === 'Pending Final Approval' || r.status === 'Awaiting Signatures')).length },
+            { id: 'approved', label: 'Approved / Ready to Assign', count: requisitions.filter(r => !r.isArchived && r.status === 'Approved').length },
+            { id: 'in-progress', label: 'Ongoing (On-Site)', count: requisitions.filter(r => !r.isArchived && (r.status === 'In Progress' || r.status === 'Ongoing')).length },
+            { id: 'on-hold', label: 'On Hold', count: requisitions.filter(r => !r.isArchived && r.status === 'On Hold').length },
+            { id: 'returned', label: 'Returned for Revision', count: requisitions.filter(r => !r.isArchived && r.status === 'Returned').length },
+            { id: 'flagged', label: 'Maintenance flags', count: requisitions.filter(r => !r.isArchived && (r.replacementFlag?.isFlagged || r.maintenanceFlag?.type)).length },
+            { id: 'completed', label: 'Completed', count: requisitions.filter(r => !r.isArchived && r.status === 'Completed').length },
+          ].map(tab => (
+            <option key={tab.id} value={tab.id}>
+              {tab.label} ({tab.count})
+            </option>
+          ))}
+        </select>
+
         <select
           className="select-filter"
           value={categoryFilter}
@@ -571,7 +608,35 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
                       </td>
                       <td style={{ fontSize: '12.5px', color: req.assignedTo ? '#1e293b' : '#94a3b8' }}>
                         {req.assignedTo ? (
-                          <div style={{ fontWeight: '600', color: '#0f172a' }}>{req.assignedTo}</div>
+                          (() => {
+                            const assignedTech = (technicians || []).find(t => 
+                              String(t.id) === String(req.assignedTo) || 
+                              String(t.name || '').toLowerCase() === String(req.assignedTo || '').toLowerCase()
+                            );
+                            const workload = assignedTech ? getTechnicianWorkload(assignedTech) : null;
+                            const displayName = assignedTech ? (assignedTech.name || `${assignedTech.firstName || ''} ${assignedTech.lastName || ''}`.trim()) : req.assignedTo;
+                            return (
+                              <div>
+                                <div style={{ fontWeight: '600', color: '#0f172a' }}>{displayName}</div>
+                                {workload ? (
+                                  <div style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    color: workload.color,
+                                    marginTop: '2px'
+                                  }}>
+                                    <span>{workload.dot}</span>
+                                    <span>{workload.status === 'off_duty' ? 'Off Duty' : workload.label}</span>
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '11px', color: '#64748b' }}>Assigned Personnel</div>
+                                )}
+                              </div>
+                            );
+                          })()
                         ) : (
                           <span style={{ color: '#d97706', fontWeight: '600' }}>Pending Assignment</span>
                         )}
@@ -581,8 +646,8 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
-                            onClick={() => { handleOpenDetail(req); setIsEditOverlayOpen(true); }}
-                            title="View full automated QF-PDAS-DC-01 form"
+                            onClick={() => handleOpenDetail(req)}
+                            title="View request details & live QF-PDAS-DC-01 form"
                             style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}
                           >
                             <FileSignature size={13} />
@@ -859,18 +924,89 @@ export const JobRequests = ({ initialStatusTab = 'all' }) => {
                       <option value="">Select maintenance personnel</option>
                       {technicians.map(t => {
                         const name = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
-                        const spec = t.specialization || t.title || 'Maintenance';
+                        const spec = t.specialization || t.title || 'General Maintenance';
+                        const wl = getTechnicianWorkload(t);
                         return (
                           /* The value is the account id, not the label. The server
                              stores assigned_to as a foreign key and matches on it
                              for visibility, so sending the display string left
                              the work order invisible to the person it named. */
                           <option key={t.id} value={String(t.id)}>
-                            {name} — {spec}
+                            {wl.dot} {name} — {spec} · {wl.label}
                           </option>
                         );
                       })}
                     </select>
+
+                    {/* Interactive Visual Technician Availability & Workload Grid */}
+                    {technicians.length > 0 && (
+                      <div style={{ marginTop: '10px' }}>
+                        <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Technician Duty Status &amp; Active Load
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '8px' }}>
+                          {technicians.map(t => {
+                            const name = t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim();
+                            const spec = t.specialization || t.title || 'General Maintenance';
+                            const wl = getTechnicianWorkload(t);
+                            const isSelected = String(assignee) === String(t.id);
+                            const isOffDuty = wl.status === 'off_duty';
+
+                            return (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => {
+                                  if (!busy) {
+                                    setAssignee(String(t.id));
+                                    setDecisionError('');
+                                  }
+                                }}
+                                style={{
+                                  textAlign: 'left',
+                                  padding: '8px 10px',
+                                  borderRadius: '8px',
+                                  border: isSelected ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                                  background: isSelected ? '#eff6ff' : (isOffDuty ? '#f8fafc' : '#ffffff'),
+                                  cursor: 'pointer',
+                                  opacity: isOffDuty ? 0.7 : 1,
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '12.5px', fontWeight: '700', color: isSelected ? '#1e40af' : '#0f172a' }}>
+                                    {name}
+                                  </span>
+                                  <span style={{
+                                    fontSize: '10px',
+                                    fontWeight: '700',
+                                    padding: '2px 6px',
+                                    borderRadius: '999px',
+                                    background: wl.bgColor,
+                                    color: wl.color
+                                  }}>
+                                    {wl.dot} {wl.status === 'off_duty' ? 'Off Duty' : (wl.activeCount === 0 ? 'Free' : `${wl.activeCount} active`)}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                                  {spec}
+                                </div>
+                                {isSelected ? (
+                                  <div style={{ fontSize: '10.5px', color: '#2563eb', fontWeight: '700', marginTop: '4px' }}>
+                                    ✓ Selected for assignment
+                                  </div>
+                                ) : isOffDuty ? (
+                                  <div style={{ fontSize: '10.5px', color: '#dc2626', fontWeight: '500', marginTop: '4px' }}>
+                                    ⚠ Currently marked off-duty
+                                  </div>
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {technicians.length === 0 && (
                       <div style={{ marginTop: '6px', fontSize: '12.5px', color: '#b45309', fontWeight: '600' }}>
                         No maintenance accounts exist. Add one under User Management before issuing a work order.

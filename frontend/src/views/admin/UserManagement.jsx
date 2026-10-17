@@ -20,11 +20,12 @@ import {
   UserCheck,
   UserX,
   Trash2,
-  Landmark
+  Landmark,
+  ChevronDown
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../components/ui/Toast';
-import { apiGetSupervisors, apiGetSupervisorAssignments, apiAssignSupervisor } from '../../backend/api';
+import { apiGetSupervisors, apiGetSupervisorAssignments, apiAssignSupervisor, apiDesignateSupervisor } from '../../backend/api';
 import { Modal } from '../../components/common/Modal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { RegisterModal } from '../../components/auth/RegisterModal';
@@ -117,6 +118,25 @@ export const UserManagement = () => {
     setActiveTabState(tab);
     try { sessionStorage.setItem('fixit_user_mgmt_tab', tab); } catch {}
   };
+
+  // View Switcher Dropdown State
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+    };
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [dropdownOpen]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
@@ -126,18 +146,43 @@ export const UserManagement = () => {
      current supervisor resolved from GET /users/supervisor-assignments, because
      GET /users does not return supervisor_id. */
   const [supervisors, setSupervisors] = useState([]);
+  const [supervisorAssignments, setSupervisorAssignments] = useState([]);
   const [editSupervisorId, setEditSupervisorId] = useState('');
   // Sequence token for the assignment lookup: a slow response for the account
   // that was edited first must not overwrite the one now on screen.
   const editFetchRef = useRef(0);
 
+  // Dedicated "Assign Immediate Supervisor" modal states
+  const [isAssignSupervisorModalOpen, setIsAssignSupervisorModalOpen] = useState(false);
+  const [targetAssignUser, setTargetAssignUser] = useState(null);
+  const [selectedSupervisorId, setSelectedSupervisorId] = useState('');
+  const [isDesignatedSupervisor, setIsDesignatedSupervisor] = useState(false);
+  const [isSavingSupervisor, setIsSavingSupervisor] = useState(false);
+
+  const refreshSupervisorsAndAssignments = React.useCallback(async () => {
+    try {
+      const [sups, assignmentsData] = await Promise.all([
+        apiGetSupervisors(),
+        apiGetSupervisorAssignments()
+      ]);
+      setSupervisors(Array.isArray(sups) ? sups : []);
+      setSupervisorAssignments(Array.isArray(assignmentsData?.employees) ? assignmentsData.employees : []);
+    } catch (requestError) {
+      console.error('Error refreshing supervisors and assignments:', requestError);
+    }
+  }, []);
+
   useEffect(() => {
-    let live = true;
-    apiGetSupervisors()
-      .then(rows => { if (live) setSupervisors(rows); })
-      .catch(requestError => toast(requestError.message || 'The supervisors list could not be loaded.', 'error'));
-    return () => { live = false; };
-  }, [toast]);
+    refreshSupervisorsAndAssignments();
+  }, [refreshSupervisorsAndAssignments]);
+
+  const assignmentMap = React.useMemo(() => {
+    const map = new Map();
+    (supervisorAssignments || []).forEach(emp => {
+      if (emp?.id != null) map.set(Number(emp.id), emp);
+    });
+    return map;
+  }, [supervisorAssignments]);
   
   // Maintenance creation modal
   const [isTechModalOpen, setIsTechModalOpen] = useState(false);
@@ -189,13 +234,14 @@ export const UserManagement = () => {
 
   const filteredPending = pendingRegistrations.filter(r => {
     const fullName = `${r.firstName} ${r.middleName} ${r.lastName}`;
+    const contactNumber = r.contactNumber || '';
     return (
       fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.gmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (r.department && r.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (r.office && r.office.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (r.idNumber && r.idNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      r.contactNumber.includes(searchTerm)
+      contactNumber.includes(searchTerm)
     );
   });
 
@@ -281,7 +327,11 @@ export const UserManagement = () => {
       designation: user.designation || '',
       phone: user.phone || user.contactNumber || '',
       role: normalizedRole,
-      isSupervisor: Boolean(user.isSupervisor || user.is_supervisor || rawRole === 'supervisor')
+      specialization: user.specialization || 'General Campus Facility',
+      availabilityStatus: user.availabilityStatus || 'available',
+      // normalizeUser (api.js) now guarantees isSupervisor is a boolean,
+      // so this will always reflect the real DB value on first open.
+      isSupervisor: Boolean(user.isSupervisor)
     });
     setEditSupervisorId('');
     setIsEditModalOpen(true);
@@ -313,9 +363,69 @@ export const UserManagement = () => {
     try {
       const result = await apiAssignSupervisor(editingUser.id, nextValue === '' ? null : Number(nextValue));
       toast(result?.message || 'Supervisor assignment updated.');
+      refreshSupervisorsAndAssignments();
     } catch (requestError) {
       setEditSupervisorId(previousValue);
       toast(requestError.message || 'The supervisor assignment could not be saved.', 'error');
+    }
+  };
+
+  const handleOpenAssignSupervisor = (user) => {
+    if (user) {
+      setTargetAssignUser(user);
+      const assignment = assignmentMap.get(Number(user.id));
+      setSelectedSupervisorId(assignment?.supervisor_id ? String(assignment.supervisor_id) : '');
+      setIsDesignatedSupervisor(Boolean(user.isSupervisor || user.is_supervisor));
+    } else {
+      const eligible = filteredUsers.find(u => String(u.role || u.userType || '').toLowerCase() !== 'admin') || users[0] || null;
+      setTargetAssignUser(eligible);
+      if (eligible) {
+        const assignment = assignmentMap.get(Number(eligible.id));
+        setSelectedSupervisorId(assignment?.supervisor_id ? String(assignment.supervisor_id) : '');
+        setIsDesignatedSupervisor(Boolean(eligible.isSupervisor || eligible.is_supervisor));
+      } else {
+        setSelectedSupervisorId('');
+        setIsDesignatedSupervisor(false);
+      }
+    }
+    setIsAssignSupervisorModalOpen(true);
+  };
+
+  const handleSelectTargetUser = (userId) => {
+    const found = users.find(u => Number(u.id) === Number(userId));
+    if (found) {
+      setTargetAssignUser(found);
+      const assignment = assignmentMap.get(Number(found.id));
+      setSelectedSupervisorId(assignment?.supervisor_id ? String(assignment.supervisor_id) : '');
+      setIsDesignatedSupervisor(Boolean(found.isSupervisor || found.is_supervisor));
+    }
+  };
+
+  const handleSaveSupervisorAssignment = async (event) => {
+    event.preventDefault();
+    if (!targetAssignUser) return;
+    setIsSavingSupervisor(true);
+    try {
+      const originalDesignation = Boolean(targetAssignUser.isSupervisor || targetAssignUser.is_supervisor);
+      if (isDesignatedSupervisor !== originalDesignation) {
+        await apiDesignateSupervisor(targetAssignUser.id, isDesignatedSupervisor);
+        updateUser(targetAssignUser.id, {
+          ...targetAssignUser,
+          isSupervisor: isDesignatedSupervisor,
+          is_supervisor: isDesignatedSupervisor ? 1 : 0
+        }).catch(() => {});
+      }
+
+      const supId = selectedSupervisorId === '' ? null : Number(selectedSupervisorId);
+      await apiAssignSupervisor(targetAssignUser.id, supId);
+
+      toast('Immediate supervisor assignment updated successfully.', 'success');
+      setIsAssignSupervisorModalOpen(false);
+      await refreshSupervisorsAndAssignments();
+    } catch (requestError) {
+      toast(requestError.message || 'Failed to update supervisor assignment.', 'error');
+    } finally {
+      setIsSavingSupervisor(false);
     }
   };
 
@@ -329,7 +439,15 @@ export const UserManagement = () => {
         : { role: editForm.role, userType: editForm.role };
     // The designation flag rides along with the profile fields, so a refused
     // save (bad role, server down) must say so: userDataError is never rendered.
-    updateUser(editingUser.id, { ...editForm, ...roleFields, isSupervisor: Boolean(editForm.isSupervisor), is_supervisor: editForm.isSupervisor ? 1 : 0 })
+    updateUser(editingUser.id, {
+      ...editForm,
+      ...roleFields,
+      isSupervisor: Boolean(editForm.isSupervisor),
+      is_supervisor: editForm.isSupervisor ? 1 : 0,
+      specialization: editForm.role === 'Maintenance' ? editForm.specialization : undefined,
+      availabilityStatus: editForm.role === 'Maintenance' ? editForm.availabilityStatus : undefined
+    })
+      .then(() => refreshSupervisorsAndAssignments())
       .catch(requestError => toast(requestError.message || 'The account changes could not be saved.', 'error'));
     setIsEditModalOpen(false);
     setEditingUser(null);
@@ -415,83 +533,224 @@ export const UserManagement = () => {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '10px', borderBottom: '1px solid #e2e8f0', marginBottom: '20px' }}>
-        <button
-          type="button"
-          onClick={() => setActiveTab('verified')}
-          style={{
-            padding: '10px 18px',
-            border: 'none',
-            background: 'none',
-            fontWeight: activeTab === 'verified' ? '700' : '500',
-            color: activeTab === 'verified' ? '#001f9c' : '#64748b',
-            borderBottom: activeTab === 'verified' ? '2px solid #001f9c' : '2px solid transparent',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '14px'
-          }}
-        >
-          <Users size={16} />
-          Active Campus Personnel ({users.length})
-        </button>
+      {/* View Switcher Dropdown Selector */}
+      {(() => {
+        const tabs = [
+          {
+            id: 'verified',
+            label: 'Active Campus Personnel',
+            count: users.length,
+            icon: Users,
+            desc: 'Verified accounts with active campus roles and institutional permissions',
+            badge: null
+          },
+          {
+            id: 'pending-id',
+            label: 'Pending ID Confirmations',
+            count: pendingRegistrationsCount,
+            icon: FileCheck,
+            desc: 'New registrations awaiting official ISAT U ID verification and approval',
+            badge: pendingRegistrationsCount > 0 ? `${pendingRegistrationsCount} Pending` : null,
+            badgeColor: '#ef4444'
+          },
+          {
+            id: 'rejected-logs',
+            label: 'Rejected Applications Log',
+            count: rejectedRegistrations?.length || 0,
+            icon: FileWarning,
+            desc: 'Archive of denied registrations with recorded audit rejection remarks',
+            badge: null
+          }
+        ];
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('pending-id')}
-          style={{
-            padding: '10px 18px',
-            border: 'none',
-            background: 'none',
-            fontWeight: activeTab === 'pending-id' ? '700' : '500',
-            color: activeTab === 'pending-id' ? '#001f9c' : '#64748b',
-            borderBottom: activeTab === 'pending-id' ? '2px solid #001f9c' : '2px solid transparent',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '14px'
-          }}
-        >
-          <FileCheck size={16} />
-          Pending ID Confirmations
-          {pendingRegistrationsCount > 0 && (
-            <span style={{
-              background: '#ef4444',
-              color: '#ffffff',
-              fontSize: '11px',
-              fontWeight: '700',
-              padding: '1px 7px',
-              borderRadius: '10px'
-            }}>
-              {pendingRegistrationsCount}
-            </span>
-          )}
-        </button>
+        const currentTab = tabs.find(t => t.id === activeTab) || tabs[0];
+        const CurrentIcon = currentTab.icon;
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('rejected-logs')}
-          style={{
-            padding: '10px 18px',
-            border: 'none',
-            background: 'none',
-            fontWeight: activeTab === 'rejected-logs' ? '700' : '500',
-            color: activeTab === 'rejected-logs' ? '#001f9c' : '#64748b',
-            borderBottom: activeTab === 'rejected-logs' ? '2px solid #001f9c' : '2px solid transparent',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '14px'
-          }}
-        >
-          <FileWarning size={16} />
-          Rejected Applications Log ({rejectedRegistrations?.length || 0})
-        </button>
-      </div>
+        return (
+          <div ref={dropdownRef} style={{ position: 'relative', marginBottom: '20px' }}>
+            <div
+              onClick={() => setDropdownOpen(prev => !prev)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'var(--bg-card, #ffffff)',
+                border: `1px solid ${dropdownOpen ? 'var(--primary, #001f9c)' : 'var(--border-color, #c4cbdb)'}`,
+                borderRadius: '12px',
+                padding: '12px 18px',
+                boxShadow: dropdownOpen ? '0 0 0 3px rgba(0, 31, 156, 0.1)' : '0 1px 3px rgba(0,0,0,0.04)',
+                cursor: 'pointer',
+                userSelect: 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0 }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: 'var(--primary-light, #eff6ff)',
+                  color: 'var(--primary, #001f9c)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <CurrentIcon size={20} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-light, #64748b)', letterSpacing: '0.05em' }}>
+                      Personnel View
+                    </span>
+                    {currentTab.badge && (
+                      <span style={{
+                        fontSize: '10px',
+                        fontWeight: '800',
+                        textTransform: 'uppercase',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        background: currentTab.badgeColor || '#eff6ff',
+                        color: '#ffffff',
+                      }}>
+                        {currentTab.badge}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary, #0f172a)', letterSpacing: '-0.01em', marginTop: '1px' }}>
+                    {currentTab.label} <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-muted, #64748b)' }}>({currentTab.count})</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted, #525d76)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {currentTab.desc}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '12px' }}>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary, #001f9c)' }}>
+                  Change View
+                </span>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  background: dropdownOpen ? 'var(--primary, #001f9c)' : 'var(--bg-sunken, #f1f5f9)',
+                  color: dropdownOpen ? '#ffffff' : 'var(--text-primary, #1e293b)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease'
+                }}>
+                  <ChevronDown
+                    size={18}
+                    style={{
+                      transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s ease'
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {dropdownOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                left: 0,
+                right: 0,
+                background: 'var(--bg-card, #ffffff)',
+                border: '1px solid var(--border-color, #c4cbdb)',
+                borderRadius: '12px',
+                boxShadow: '0 14px 30px rgba(0, 0, 0, 0.12), 0 6px 12px rgba(0, 0, 0, 0.06)',
+                zIndex: 100,
+                padding: '8px',
+                overflowY: 'auto'
+              }}>
+                {tabs.map(tab => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        setDropdownOpen(false);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        width: '100%',
+                        padding: '10px 12px',
+                        border: 'none',
+                        borderRadius: '8px',
+                        background: isActive ? 'var(--primary-light, #eff6ff)' : 'transparent',
+                        color: isActive ? 'var(--primary, #001f9c)' : 'var(--text-primary, #1e293b)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'background 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) e.currentTarget.style.background = 'var(--bg-hover, #f8fafc)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                        <div style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '6px',
+                          background: isActive ? 'var(--primary, #001f9c)' : 'var(--bg-sunken, #f1f5f9)',
+                          color: isActive ? '#ffffff' : 'var(--text-muted, #64748b)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          <Icon size={16} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '13.5px', fontWeight: isActive ? '800' : '600' }}>
+                              {tab.label}
+                            </span>
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted, #64748b)', fontWeight: '600' }}>
+                              ({tab.count})
+                            </span>
+                            {tab.badge && (
+                              <span style={{
+                                fontSize: '10px',
+                                fontWeight: '700',
+                                padding: '1px 5px',
+                                borderRadius: '4px',
+                                background: tab.badgeColor || '#eff6ff',
+                                color: '#ffffff',
+                              }}>
+                                {tab.badge}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '11.5px', color: 'var(--text-muted, #64748b)', marginTop: '1px' }}>
+                            {tab.desc}
+                          </div>
+                        </div>
+                      </div>
+                      {isActive && (
+                        <div style={{ color: 'var(--primary, #001f9c)', marginLeft: '8px' }}>
+                          <Check size={16} />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Filter Bar */}
       <div className="filter-bar">
@@ -511,19 +770,39 @@ export const UserManagement = () => {
         </div>
 
         {activeTab === 'verified' && (
-          <select
-            className="select-filter"
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-          >
-            <option value="all">All Roles</option>
-            <option value="Faculty">Faculty</option>
-            <option value="Staff">Staff</option>
-            <option value="Supervisor">Supervisor</option>
-            <option value="Maintenance">Maintenance Personnel</option>
-            <option value="Approver">Approver (Campus Admin)</option>
-            <option value="Admin">Admin</option>
-          </select>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              className="select-filter"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <option value="all">All Roles</option>
+              <option value="Faculty">Faculty</option>
+              <option value="Staff">Staff</option>
+              <option value="Supervisor">Supervisor</option>
+              <option value="Maintenance">Maintenance Personnel</option>
+              <option value="Approver">Approver (Campus Admin)</option>
+              <option value="Admin">Admin</option>
+            </select>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => handleOpenAssignSupervisor(null)}
+              title="Assign an immediate supervisor to personnel"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                whiteSpace: 'nowrap',
+                padding: '8px 14px',
+                fontSize: '12.5px',
+                fontWeight: '600'
+              }}
+            >
+              <UserCheck size={14} />
+              <span>Assign Immediate Supervisor</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -610,6 +889,38 @@ export const UserManagement = () => {
                             Trade: {user.specialization}
                           </div>
                         )}
+                        {(() => {
+                          const isAdmin = String(user.role || user.userType || '').toLowerCase() === 'admin';
+                          if (isAdmin) return null;
+                          const assignment = assignmentMap.get(Number(user.id));
+                          if (assignment?.supervisor_name) {
+                            return (
+                              <div style={{
+                                fontSize: '11px',
+                                color: '#3730a3',
+                                fontWeight: '600',
+                                marginTop: '4px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                background: '#e0e7ff',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                border: '1px solid #c7d2fe'
+                              }}>
+                                <UserCheck size={11} /> Reports to: {assignment.supervisor_name}
+                              </div>
+                            );
+                          }
+                          if (!Boolean(user.isSupervisor || user.is_supervisor)) {
+                            return (
+                              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
+                                Reports to: <span style={{ color: '#d97706', fontWeight: '500' }}>Unassigned</span>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </td>
                       <td style={{ fontSize: '12.5px', color: '#64748b' }}>
                         {user.phone || user.contactNumber}
@@ -623,11 +934,31 @@ export const UserManagement = () => {
                       <td>
                         {(() => {
                           const isUserActive = String(user.status || '').trim().toLowerCase() === 'active';
+                          const isTech = String(user.role || user.userType || '').toLowerCase() === 'technician' || String(user.role || user.userType || '').toLowerCase() === 'maintenance';
+                          const availStatus = String(user.availabilityStatus || 'available').toLowerCase();
                           return (
-                            <span className={`badge ${isUserActive ? 'status-approved' : 'status-rejected'}`}>
-                              <span className="badge-dot"></span>
-                              {isUserActive ? 'Active' : 'Inactive'}
-                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <span className={`badge ${isUserActive ? 'status-approved' : 'status-rejected'}`}>
+                                <span className="badge-dot"></span>
+                                {isUserActive ? 'Active' : 'Inactive'}
+                              </span>
+                              {isTech && (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  padding: '2px 6px',
+                                  borderRadius: '6px',
+                                  background: availStatus === 'off_duty' ? '#fee2e2' : availStatus === 'busy' ? '#fef3c7' : '#ecfdf5',
+                                  color: availStatus === 'off_duty' ? '#dc2626' : availStatus === 'busy' ? '#b45309' : '#047857',
+                                  border: availStatus === 'off_duty' ? '1px solid #fecaca' : availStatus === 'busy' ? '1px solid #fde68a' : '1px solid #a7f3d0'
+                                }}>
+                                  {availStatus === 'off_duty' ? '🔴 Off Duty' : availStatus === 'busy' ? '🟡 Busy' : '🟢 Available'}
+                                </span>
+                              )}
+                            </div>
                           );
                         })()}
                       </td>
@@ -637,6 +968,29 @@ export const UserManagement = () => {
                           const isAdminUser = String(user.role || user.userType || '').toLowerCase() === 'admin';
                           return (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                              {!isAdminUser && (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm"
+                                  onClick={() => handleOpenAssignSupervisor(user)}
+                                  title="Assign immediate supervisor"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '5px 10px',
+                                    fontSize: '12px',
+                                    background: '#e0e7ff',
+                                    color: '#3730a3',
+                                    border: '1px solid #c7d2fe',
+                                    fontWeight: '600'
+                                  }}
+                                >
+                                  <UserCheck size={13} />
+                                  <span>Assign Supervisor</span>
+                                </button>
+                              )}
+
                               <button
                                 type="button"
                                 className="btn btn-secondary btn-sm"
@@ -733,7 +1087,43 @@ export const UserManagement = () => {
             </select>
           </div>
 
-          {(editForm.role === 'Faculty' || editForm.role === 'Staff') && (
+          {/* Maintenance Personnel Trade Specialization & Availability Status */}
+          {editForm.role === 'Maintenance' && (
+            <div style={{ background: '#fffbeb', padding: '12px 14px', borderRadius: '8px', border: '1px solid #fde68a', marginBottom: '16px' }}>
+              <div className="form-group" style={{ marginBottom: '10px' }}>
+                <label className="form-label" style={{ fontWeight: '700', color: '#92400e' }}>Trade Specialization</label>
+                <select
+                  className="form-select"
+                  value={editForm.specialization || 'General Campus Facility'}
+                  onChange={e => setEditForm({ ...editForm, specialization: e.target.value })}
+                >
+                  <option value="Electrical & HVAC">Electrical &amp; HVAC Systems</option>
+                  <option value="Plumbing & Drainage">Plumbing &amp; Water Systems</option>
+                  <option value="Carpentry & Masonry">Carpentry &amp; Structural Masonry</option>
+                  <option value="Network & IT Infrastructure">Network &amp; IT Hardware</option>
+                  <option value="General Campus Facility">General Campus Maintenance</option>
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '0' }}>
+                <label className="form-label" style={{ fontWeight: '700', color: '#92400e' }}>Duty Availability Status</label>
+                <select
+                  className="form-select"
+                  value={editForm.availabilityStatus || 'available'}
+                  onChange={e => setEditForm({ ...editForm, availabilityStatus: e.target.value })}
+                >
+                  <option value="available">🟢 Available (On Duty - Ready for Dispatch)</option>
+                  <option value="busy">🟡 Busy (Active On Field Job)</option>
+                  <option value="off_duty">🔴 Off Duty / On Leave</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Supervisor designation — available for any non-admin account so the
+              admin can designate and assign supervisors to any Faculty, Staff,
+              Maintenance, or Campus Admin account as needed. */}
+          {editingUser?.role !== 'Admin' && editingUser?.userType !== 'Admin' && (
             <>
               <div className="form-group" style={{ background: 'var(--bg-sunken)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle, #e2e8f0)' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', color: '#0f172a', fontSize: '13px' }}>
@@ -750,9 +1140,8 @@ export const UserManagement = () => {
                 </p>
               </div>
 
-              {/* Employee → Supervisor side of the same paper feature: which
-                  Supervisor this Faculty/Staff account falls under. Saved as
-                  soon as it is changed, since the server owns the assignment. */}
+              {/* Employee → Supervisor side: which Supervisor this account falls under.
+                  Saved immediately on change — the server owns the assignment. */}
               <div className="form-group">
                 <label className="form-label">Reports to (Immediate Supervisor)</label>
                 <select
@@ -765,12 +1154,17 @@ export const UserManagement = () => {
                     .filter(sup => Number(sup.id) !== Number(editingUser?.id))
                     .map(sup => (
                       <option key={sup.id} value={String(sup.id)}>
-                        {sup.name}{sup.department ? ` — ${sup.department}` : ''}
+                        {sup.name}{sup.department ? ` — ${sup.department}` : ''}{sup.office ? ` (${sup.office})` : ''}
                       </option>
                     ))}
                 </select>
                 <div className="form-help">
-                  Saved immediately. Choose &quot;Unassigned&quot; to clear this account&apos;s supervisor.
+                  Saved immediately when changed. Choose &quot;Unassigned&quot; to clear this account&apos;s supervisor.
+                  {supervisors.length === 0 && (
+                    <span style={{ color: '#b45309', fontWeight: '600' }}>
+                      {' '}No designated supervisors yet — designate one first using the checkbox above.
+                    </span>
+                  )}
                 </div>
               </div>
             </>
@@ -779,6 +1173,148 @@ export const UserManagement = () => {
         </form>
       </Modal>
       <RegisterModal isOpen={isRegisterModalOpen} onClose={() => setIsRegisterModalOpen(false)} />
+
+      {/* Assign Immediate Supervisor Modal */}
+      <Modal
+        isOpen={isAssignSupervisorModalOpen}
+        onClose={() => setIsAssignSupervisorModalOpen(false)}
+        onBack={() => setIsAssignSupervisorModalOpen(false)}
+        title="Assign Immediate Supervisor"
+        maxWidth="520px"
+      >
+        <form onSubmit={handleSaveSupervisorAssignment}>
+          {/* Target Personnel Selection */}
+          <div className="form-group" style={{ marginBottom: '16px' }}>
+            <label className="form-label" style={{ fontWeight: '700', marginBottom: '6px' }}>
+              Personnel Member *
+            </label>
+            <select
+              className="form-select"
+              value={targetAssignUser?.id || ''}
+              onChange={(e) => handleSelectTargetUser(e.target.value)}
+              required
+            >
+              <option value="" disabled>-- Select a personnel member --</option>
+              {users
+                .filter(u => String(u.role || u.userType || '').toLowerCase() !== 'admin')
+                .map(u => {
+                  const name = u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim();
+                  const dept = u.department || u.office || userRoleLabel(u);
+                  return (
+                    <option key={u.id} value={u.id}>
+                      {name} ({dept})
+                    </option>
+                  );
+                })}
+            </select>
+          </div>
+
+          {targetAssignUser && (
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '12px 14px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px'
+            }}>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '13.5px', color: '#0f172a' }}>
+                  {targetAssignUser.name || `${targetAssignUser.firstName || ''} ${targetAssignUser.lastName || ''}`.trim()}
+                </div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                  {targetAssignUser.department || 'No department'} {targetAssignUser.office ? `· ${targetAssignUser.office}` : ''}
+                </div>
+              </div>
+              <div>
+                {assignmentMap.get(Number(targetAssignUser.id))?.supervisor_name ? (
+                  <span style={{ fontSize: '11px', background: '#e0e7ff', color: '#3730a3', padding: '3px 8px', borderRadius: '6px', fontWeight: '600' }}>
+                    Current: {assignmentMap.get(Number(targetAssignUser.id)).supervisor_name}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '11px', background: '#fef3c7', color: '#92400e', padding: '3px 8px', borderRadius: '6px', fontWeight: '600' }}>
+                    Current: Unassigned
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Assigned Immediate Supervisor Dropdown */}
+          <div className="form-group" style={{ marginBottom: '16px' }}>
+            <label className="form-label" style={{ fontWeight: '700', marginBottom: '6px' }}>
+              Immediate Supervisor (Reports To) *
+            </label>
+            <select
+              className="form-select"
+              value={selectedSupervisorId}
+              onChange={(e) => setSelectedSupervisorId(e.target.value)}
+            >
+              <option value="">— None (Unassigned) —</option>
+              {supervisors
+                .filter(sup => Number(sup.id) !== Number(targetAssignUser?.id))
+                .map(sup => (
+                  <option key={sup.id} value={String(sup.id)}>
+                    {sup.name}{sup.department ? ` — ${sup.department}` : ''}{sup.office ? ` (${sup.office})` : ''}
+                  </option>
+                ))}
+            </select>
+            <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
+              Job requests submitted by this employee will be automatically routed to this supervisor for first-line departmental endorsement.
+            </p>
+            {supervisors.length === 0 && (
+              <div style={{ marginTop: '8px', fontSize: '12px', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', padding: '8px 10px', borderRadius: '6px' }}>
+                No active designated supervisors found. You can designate this user or another user as an immediate supervisor using the checkbox below.
+              </div>
+            )}
+          </div>
+
+          {/* Designation Checkbox */}
+          <div style={{
+            background: 'var(--bg-sunken)',
+            padding: '12px 14px',
+            borderRadius: '8px',
+            border: '1px solid var(--border-subtle, #e2e8f0)',
+            marginBottom: '20px'
+          }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', color: '#0f172a', fontSize: '13px' }}>
+              <input
+                type="checkbox"
+                checked={isDesignatedSupervisor}
+                onChange={(e) => setIsDesignatedSupervisor(e.target.checked)}
+                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+              />
+              <span>Designate this user as an Immediate Supervisor / Program Head</span>
+            </label>
+            <p style={{ margin: '4px 0 0 24px', fontSize: '11.5px', color: '#64748b' }}>
+              Grants review &amp; endorsement authority over pending facility job requests in their department/office.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsAssignSupervisorModalOpen(false)}
+              disabled={isSavingSupervisor}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isSavingSupervisor || !targetAssignUser}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Check size={16} />
+              <span>{isSavingSupervisor ? 'Saving...' : 'Save Supervisor Assignment'}</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Tab 2: Pending ID Confirmations */}
       {activeTab === 'pending-id' && (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ToastProvider } from './components/ui/Toast';
@@ -130,9 +130,36 @@ function AppContent() {
   // Sidebar collapse control
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  // Track previous user ID to detect new login / account switch
+  const prevUserIdRef = useRef(currentUser?.id || null);
+
   // Sync activeTab with role authorization on account switch or session refresh
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      prevUserIdRef.current = null;
+      return;
+    }
+
+    const currentUserId = currentUser.id;
+    const isNewLogin = prevUserIdRef.current !== currentUserId;
+    prevUserIdRef.current = currentUserId;
+
+    if (isNewLogin) {
+      // On fresh login or switching accounts, ALWAYS land on the role's default dashboard
+      const defaultTab = getRoleDefaultTab(auth);
+      setActiveTabState(defaultTab);
+      try {
+        sessionStorage.setItem('fixit_active_tab', defaultTab);
+        if (currentUserId) {
+          localStorage.setItem(`fixit_active_tab_${currentUserId}`, defaultTab);
+        }
+        if (window.location.hash !== `#${defaultTab}`) {
+          window.history.replaceState(null, '', `#${defaultTab}`);
+        }
+      } catch {}
+      return;
+    }
+
     const hash = typeof window !== 'undefined' ? window.location.hash : '';
     const validatedFromHash = validateTabForAuth(hash, auth);
     const validatedCurrent = validateTabForAuth(activeTab, auth);

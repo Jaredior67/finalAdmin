@@ -24,6 +24,8 @@ import {
   apiAddCampusLocation,
   apiUpdateCampusLocation,
   apiDeleteCampusLocation,
+  apiGetJobRequests,
+  apiReviseJobRequest,
 } from '../backend/api';
 import { submitOrQueue } from '../utils/outbox';
 
@@ -230,6 +232,38 @@ export const DEFAULT_TRACKING_CONFIG = {
   start: 1,
   end: 9999,
   pad: 3,
+};
+
+export const DEFAULT_FORM_TEMPLATE_CONFIG = {
+  // Header
+  republicLine: 'Republic of the Philippines',
+  institutionName: 'ILOILO SCIENCE AND TECHNOLOGY UNIVERSITY',
+  campusName: 'DUMANGAS CAMPUS',
+  campusAddress: 'P.D. Monfort South, Dumangas, Iloilo',
+  documentTitle: 'JOB REQUEST FOR REPAIR, MAINTENANCE AND CONSTRUCTION',
+  department: 'Department: PDAS',
+  documentCode: 'QF-PDAS-DC-01',
+  revisionNo: '00',
+  effectiveDate: 'February 3, 2025',
+  customLogoUrl: '',
+
+  // Body Layout & Typography
+  fontFamily: 'serif', // 'serif' ("Times New Roman") | 'sans' ("Inter", Arial, sans-serif)
+  showDefectPhoto: true,
+  showVerificationQr: true,
+  trackingLabel: 'Tracking Number:',
+  clientNameLabel: 'Name of Client:',
+  clientOfficeLabel: 'Office of Client:',
+  supervisorLabel: 'Immediate Supervisor:',
+  dateLabel: 'Date of Request:',
+  locationLabel: 'Location:',
+
+  // Footer & Signatures
+  pdasHeadTitle: 'Head, PDAS / Director, Planning Development and Auxiliary Services',
+  approverTitle: 'Campus Administrator',
+  copyDistribution: 'Copy distribution: 1 – PDAS, 1 – GSM, 1 – Client',
+  disclaimerNotice: 'The electronic approvals recorded on this form are internal, timestamped, auditable administrative confirmations and do not constitute legally binding digital signatures. This official document is automatically generated and archived for university facility audit, inventory, and official printing.',
+  verificationText: 'Verify this form: scan to check tracking against the PDAS record.',
 };
 
 export const formatTrackingNumber = (cfg, num) => {
@@ -479,7 +513,6 @@ export const DataProvider = ({ children }) => {
     const seq = ++refreshSeqRef.current;
     setIsLoadingRequisitions(true);
     try {
-      const { apiGetJobRequests } = await import('../backend/api');
       /* Two pages, active and archived, fetched together.
          The endpoint defaults to `is_archived = 0` and nothing in the client
          ever passed `archived=true`, so a row left `requisitions` the moment it
@@ -792,6 +825,27 @@ export const DataProvider = ({ children }) => {
     if (saved && typeof saved === 'object') return { ...DEFAULT_TRACKING_CONFIG, ...saved };
     return { ...DEFAULT_TRACKING_CONFIG };
   });
+
+  // QF-PDAS-DC-01 Form Template Configuration (admin-editable Header, Footer & Layout).
+  const [formTemplateConfig, setFormTemplateConfig] = useState(() => {
+    const saved = readJson('fixit_form_template_config_v1', null);
+    if (saved && typeof saved === 'object') return { ...DEFAULT_FORM_TEMPLATE_CONFIG, ...saved };
+    return { ...DEFAULT_FORM_TEMPLATE_CONFIG };
+  });
+
+  const updateFormTemplateConfig = (patch) => {
+    if (!patch || typeof patch !== 'object') return formTemplateConfig;
+    const next = { ...formTemplateConfig, ...patch };
+    setFormTemplateConfig(next);
+    writeJson('fixit_form_template_config_v1', next);
+    return next;
+  };
+
+  const resetFormTemplateConfig = () => {
+    setFormTemplateConfig({ ...DEFAULT_FORM_TEMPLATE_CONFIG });
+    writeJson('fixit_form_template_config_v1', { ...DEFAULT_FORM_TEMPLATE_CONFIG });
+    return { ...DEFAULT_FORM_TEMPLATE_CONFIG };
+  };
 
   const [campusLocations, setCampusLocations] = useState(() => readJson('fixit_pdas_campus_locations_v5', INITIAL_CAMPUS_LOCATIONS));
 
@@ -1561,6 +1615,44 @@ export const DataProvider = ({ children }) => {
     }
   };
 
+  const reviseRequisition = async (reqId, revisionData) => {
+    const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId || r.id_raw === reqId);
+    const idToUse = target?.id_raw ?? target?.id ?? reqId;
+    try {
+      const result = await apiReviseJobRequest(idToUse, revisionData);
+      setRequisitions(prev => prev.map(r => {
+        if (r.id === reqId || r.controlNo === reqId || r.id_raw === reqId) {
+          return {
+            ...r,
+            ...revisionData,
+            status: 'Pending',
+            rejectionStage: null,
+            rejectionRemarks: '',
+            category: revisionData.category ? (revisionData.category.charAt(0).toUpperCase() + revisionData.category.slice(1)) : r.category,
+            urgency: revisionData.urgency || revisionData.urgencyLevel || r.urgency,
+            timeline: [
+              ...(r.timeline || []),
+              {
+                status: 'Revised & Resubmitted',
+                timestamp: new Date().toLocaleString(),
+                actor: currentUser?.name || 'Requester',
+                note: revisionData.revisionNotes || 'Revised by requester',
+              }
+            ]
+          };
+        }
+        return r;
+      }));
+      await refreshRequisitions();
+      toast(result?.message || 'Job request revised and resubmitted successfully.', 'success');
+      return result;
+    } catch (err) {
+      const reason = err?.message || 'Failed to submit revision.';
+      toast(reason, 'error');
+      throw err;
+    }
+  };
+
   const raiseMaintenanceFlag = (reqId, flagData) => {
     const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
     if (!target) return;
@@ -2171,6 +2263,7 @@ export const DataProvider = ({ children }) => {
         confirmSignatures,
         assignTechnician,
         updateRequisitionStatus,
+        reviseRequisition,
         raiseMaintenanceFlag,
         raiseReplacementFlag,
         updateProcurementStatus,
@@ -2193,6 +2286,9 @@ export const DataProvider = ({ children }) => {
         createMessageThread,
         trackingConfig,
         updateTrackingConfig,
+        formTemplateConfig,
+        updateFormTemplateConfig,
+        resetFormTemplateConfig,
         peekNextTrackingNumber,
         generateNextTrackingNumber,
         updateRequisitionTrackingNo,

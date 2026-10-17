@@ -10,7 +10,8 @@ import {
   Download,
   Check,
   CheckCircle,
-  X
+  X,
+  Edit
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -131,11 +132,66 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
     offices,
     ticketSearch: searchTerm,
     focusedTicketRef,
-    setFocusedTicketRef
+    setFocusedTicketRef,
+    reviseRequisition
   } = useData();
 
   const [selectedTicketDetail, setSelectedTicketDetail] = useState(null);
   const [evaluationRequest, setEvaluationRequest] = useState(null);
+  const [revisionTarget, setRevisionTarget] = useState(null);
+
+  // Revision Form State
+  const [revTitle, setRevTitle] = useState('');
+  const [revCategory, setRevCategory] = useState('');
+  const [revLocation, setRevLocation] = useState('');
+  const [revUrgency, setRevUrgency] = useState('');
+  const [revDescription, setRevDescription] = useState('');
+  const [revNotes, setRevNotes] = useState('');
+  const [revPhotoUrl, setRevPhotoUrl] = useState('');
+  const [revPhotoName, setRevPhotoName] = useState('');
+  const [isSubmittingRevision, setIsSubmittingRevision] = useState(false);
+  const [revError, setRevError] = useState('');
+
+  useEffect(() => {
+    if (revisionTarget) {
+      setRevTitle(revisionTarget.title || '');
+      setRevCategory(revisionTarget.category || 'Carpentry');
+      setRevLocation(revisionTarget.location || '');
+      setRevUrgency(revisionTarget.urgency || 'Medium Risk');
+      setRevDescription(revisionTarget.description || '');
+      setRevNotes('');
+      setRevPhotoUrl(revisionTarget.photoUrl || '');
+      setRevPhotoName(revisionTarget.photoName || '');
+      setRevError('');
+    }
+  }, [revisionTarget]);
+
+  const handleSubmitRevision = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    if (!revDescription.trim()) {
+      setRevError('Please provide a detailed description of the work needed.');
+      return;
+    }
+    setIsSubmittingRevision(true);
+    setRevError('');
+    try {
+      await reviseRequisition(revisionTarget.id, {
+        title: revTitle.trim() || revCategory,
+        category: revCategory,
+        location: revLocation.trim(),
+        urgency: revUrgency,
+        description: revDescription.trim(),
+        revisionNotes: revNotes.trim(),
+        photoUrl: revPhotoUrl || null,
+        photoName: revPhotoName || null
+      });
+      setRevisionTarget(null);
+    } catch (err) {
+      setRevError(err?.message || 'Failed to submit revision. Please try again.');
+    } finally {
+      setIsSubmittingRevision(false);
+    }
+  };
 
   // Filters State (search text comes from the navbar global search box)
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -442,6 +498,23 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                       <td>
                         <div style={{ fontWeight: '700', color: '#0f172a' }}>{req.title}</div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>{req.location}</div>
+                        {req.status === 'Returned' && (
+                          <div style={{
+                            marginTop: '4px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: '#fffbeb',
+                            border: '1px solid #fde68a',
+                            color: '#b45309',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: '700'
+                          }}>
+                            <AlertTriangle size={11} /> Returned for Revision
+                          </div>
+                        )}
                         {req.replacementFlag?.isFlagged && (
                           <div style={{
                             marginTop: '4px',
@@ -478,6 +551,29 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'inline-flex', gap: '6px' }}>
+                          {req.status === 'Returned' && (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => setRevisionTarget(req)}
+                              style={{
+                                background: '#f59e0b',
+                                color: '#ffffff',
+                                border: 'none',
+                                fontWeight: '700',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '5px 9px',
+                                borderRadius: '6px',
+                                cursor: 'pointer'
+                              }}
+                              title="Edit and resubmit this returned request"
+                            >
+                              <Edit size={13} />
+                              Revise
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
@@ -743,6 +839,31 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
               Close
             </button>
             <div style={{ display: 'flex', gap: '8px' }}>
+              {selectedTicketDetail?.status === 'Returned' && (
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    const target = selectedTicketDetail;
+                    setSelectedTicketDetail(null);
+                    setRevisionTarget(target);
+                  }}
+                  style={{
+                    background: '#d97706',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontWeight: '700',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Edit size={14} /> Revise Request
+                </button>
+              )}
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
@@ -759,6 +880,47 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
       >
         {selectedTicketDetail && (
           <div>
+            {/* Returned for Revision Notice Banner */}
+            {selectedTicketDetail.status === 'Returned' && (
+              <div style={{
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                borderRadius: '10px',
+                padding: '14px 16px',
+                marginBottom: '18px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontWeight: '800', fontSize: '13.5px', marginBottom: '6px' }}>
+                  <AlertTriangle size={18} /> Returned for Revision by {selectedTicketDetail.rejectionStage === 'supervisor' ? 'Immediate Supervisor' : 'PDAS Administration'}
+                </div>
+                <div style={{ fontSize: '13px', color: '#92400e', lineHeight: 1.5, background: '#fef3c7', padding: '10px 12px', borderRadius: '8px', marginBottom: '12px' }}>
+                  <strong>Reviewer Remarks:</strong> {selectedTicketDetail.rejectionRemarks || selectedTicketDetail.supervisorRemarks || selectedTicketDetail.adminRemarks || 'Please review and update the problem scope and specifications.'}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    const target = selectedTicketDetail;
+                    setSelectedTicketDetail(null);
+                    setRevisionTarget(target);
+                  }}
+                  style={{
+                    background: '#d97706',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontWeight: '700',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Edit size={14} /> Edit &amp; Resubmit Request
+                </button>
+              </div>
+            )}
+
             {/* Visual Lifecycle Stepper */}
             <div style={{
               background: 'var(--bg-sunken)',
@@ -934,6 +1096,216 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
 
       {/* The shared intake dialogs: standard overlay, urgent fast path, print sheet. */}
       <RequestIntake intake={intake} />
+
+      {/* Requester Revision & Resubmission Modal */}
+      <Modal
+        isOpen={Boolean(revisionTarget)}
+        onClose={() => { if (!isSubmittingRevision) setRevisionTarget(null); }}
+        title={`Revise Request: ${revisionTarget?.controlNo || revisionTarget?.id || ''}`}
+        maxWidth="680px"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', width: '100%' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setRevisionTarget(null)}
+              disabled={isSubmittingRevision}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSubmitRevision}
+              disabled={isSubmittingRevision || !revDescription.trim()}
+              style={{
+                background: '#d97706',
+                borderColor: '#d97706',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Send size={14} />
+              {isSubmittingRevision ? 'Submitting Revision...' : 'Submit Revision & Resend'}
+            </button>
+          </div>
+        }
+      >
+        {revisionTarget && (
+          <form onSubmit={handleSubmitRevision} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Return Remarks Alert */}
+            <div style={{
+              background: '#fffbeb',
+              border: '1px solid #fde68a',
+              borderRadius: '10px',
+              padding: '14px 16px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontWeight: '800', fontSize: '13.5px', marginBottom: '6px' }}>
+                <AlertTriangle size={18} />
+                Revision Requested by {revisionTarget.rejectionStage === 'supervisor' ? 'Immediate Supervisor' : 'PDAS Administration'}
+              </div>
+              <div style={{ fontSize: '13px', color: '#92400e', lineHeight: 1.5, background: '#fef3c7', padding: '10px 12px', borderRadius: '8px' }}>
+                <strong>Reviewer Instructions:</strong> {revisionTarget.rejectionRemarks || revisionTarget.supervisorRemarks || revisionTarget.adminRemarks || 'Please review and update the problem scope and specifications.'}
+              </div>
+            </div>
+
+            {revError && (
+              <div style={{
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                color: '#b91c1c',
+                fontSize: '13px'
+              }}>
+                {revError}
+              </div>
+            )}
+
+            {/* Grid: Subject & Category */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  Request Subject / Title *
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={revTitle}
+                  onChange={(e) => setRevTitle(e.target.value)}
+                  placeholder="e.g. Leaking Aircon Unit"
+                  required
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  Work Category *
+                </label>
+                <select
+                  className="form-select"
+                  value={revCategory}
+                  onChange={(e) => setRevCategory(e.target.value)}
+                  style={{ width: '100%' }}
+                >
+                  {CATEGORY_OPTIONS.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Grid: Location & Risk Level */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  Facility Location *
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={revLocation}
+                  onChange={(e) => setRevLocation(e.target.value)}
+                  placeholder="e.g. CEA Building - Room 204"
+                  required
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  Risk / Urgency Level *
+                </label>
+                <select
+                  className="form-select"
+                  value={revUrgency}
+                  onChange={(e) => setRevUrgency(e.target.value)}
+                  style={{ width: '100%' }}
+                >
+                  {URGENCY_OPTIONS.map((u) => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Problem Description with Word Count */}
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', textTransform: 'uppercase' }}>
+                Updated Problem Scope &amp; Details *
+              </label>
+              <LimitedTextArea
+                value={revDescription}
+                onChange={(val) => setRevDescription(val)}
+                placeholder="Provide detailed description of the maintenance or repair needed..."
+                maxWords={300}
+                rows={4}
+              />
+            </div>
+
+            {/* Explanation of changes */}
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', textTransform: 'uppercase' }}>
+                Revision Note (What was changed/clarified)
+              </label>
+              <input
+                type="text"
+                className="form-input"
+                value={revNotes}
+                onChange={(e) => setRevNotes(e.target.value)}
+                placeholder="e.g. Clarified the exact room number and unit serial number."
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            {/* Photo Attachment preview/upload */}
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', textTransform: 'uppercase' }}>
+                Defect Photo (Optional)
+              </label>
+              {revPhotoUrl ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-sunken)', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <img
+                    src={revPhotoUrl}
+                    alt="Preview"
+                    style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '6px' }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '12.5px', fontWeight: '600', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {revPhotoName || 'Attached Photo'}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => { setRevPhotoUrl(''); setRevPhotoName(''); }}
+                      style={{ marginTop: '4px', fontSize: '11px', padding: '2px 8px' }}
+                    >
+                      Remove / Replace
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="form-input"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setRevPhotoUrl(reader.result);
+                      setRevPhotoName(file.name);
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                  style={{ width: '100%' }}
+                />
+              )}
+            </div>
+          </form>
+        )}
+      </Modal>
 
 
       {/* Urgent Request Standard Form Completion Modal */}

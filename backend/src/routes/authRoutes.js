@@ -342,6 +342,22 @@ router.post('/logout', verifyToken, (req, res) => {
   res.json({ message: 'Signed out.' });
 });
 
+// PUT /api/auth/availability — update logged in technician's availability status
+router.put('/availability', verifyToken, async (req, res) => {
+  const { availabilityStatus } = req.body || {};
+  if (!['available', 'busy', 'off_duty'].includes(availabilityStatus)) {
+    return res.status(400).json({ message: "availabilityStatus must be 'available', 'busy', or 'off_duty'." });
+  }
+  try {
+    await pool.query('UPDATE users SET availability_status = ? WHERE id = ?', [availabilityStatus, req.user.id]);
+    invalidateUserCache(req.user.id);
+    res.json({ message: `Availability status updated to ${availabilityStatus}.`, availabilityStatus });
+  } catch (err) {
+    console.error('PUT /auth/availability error:', err);
+    res.status(500).json({ message: 'Failed to update availability status.' });
+  }
+});
+
 /* PUT /api/auth/password - change your own password.
  *
  * There was no password-change or reset path anywhere in the system: not for
