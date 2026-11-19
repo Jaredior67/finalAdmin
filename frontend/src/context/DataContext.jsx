@@ -14,10 +14,14 @@ import {
   apiSetUserStatus,
   apiRemoveUser,
   apiCreatePreventiveSchedule,
+  apiUpdatePreventiveSchedule,
+  apiCompletePreventiveSchedule,
   apiDeletePreventiveSchedule,
   apiGetNotifications,
   apiMarkNotificationRead,
   apiMarkAllNotificationsRead,
+  apiArchiveNotification,
+  apiRestoreNotification,
   apiDeleteNotification,
   apiClearAllNotifications,
   apiGetCampusLocations,
@@ -25,7 +29,16 @@ import {
   apiUpdateCampusLocation,
   apiDeleteCampusLocation,
   apiGetJobRequests,
+  apiGetJobRequestById,
+  apiConfirmSignedForm,
+  apiUpdateJobRequestTrackingNo,
+  apiUpdateJobRequestFormDetails,
   apiReviseJobRequest,
+  apiSendContactMessage,
+  apiGetMessages,
+  apiGetMessageThread,
+  apiReplyMessage,
+  apiMarkMessageRead,
 } from '../backend/api';
 import { submitOrQueue } from '../utils/outbox';
 
@@ -178,6 +191,7 @@ export const INITIAL_OFFICES = [
   'Office of the Campus Administrator',
   'Office of Instruction',
   'Extension Services Office',
+  'Research Office',
   'Research Services Office',
   'Office of the Bids and Awards Committee (BAC)',
   'Office of the Legal Affairs Coordinator',
@@ -266,6 +280,50 @@ export const DEFAULT_FORM_TEMPLATE_CONFIG = {
   verificationText: 'Verify this form: scan to check tracking against the PDAS record.',
 };
 
+export const DEFAULT_CSM_TEMPLATE_CONFIG = {
+  // Header
+  republicLine: 'Republic of the Philippines',
+  institutionName: 'ILOILO SCIENCE AND TECHNOLOGY UNIVERSITY',
+  campusAddress: 'La Paz, Iloilo City',
+  documentTitle: 'CLIENT SATISFACTION MEASUREMENT',
+  department: 'HRMO',
+  documentCode: 'QF-HRM-15',
+  revisionNo: '07',
+  effectiveDate: 'April 15, 2026',
+
+  // Intro & Privacy Commitment
+  introText: 'This Client Satisfaction Measurement (CSM) tracks the customer experience of government offices. Your feedback on your recently concluded transaction will help this office provide a better service. Personal information shared will be kept confidential and you always have the option to not answer this form.',
+  dataPrivacyTitle: 'Data Privacy Commitment',
+  dataPrivacyText: 'Pursuant to Republic Act No. 10173, also known as the Data Privacy Act of 2012, Iloilo Science and Technology University affirms its commitment to protect and respect the privacy of its clients and stakeholders. All information collected through the Client Satisfaction Measurement (CSM) Form shall be processed and safeguarded in accordance with the principles of transparency, legitimate purpose, and proportionality, as mandated under the Data Privacy Act of 2012.',
+  consentTitle: 'Consent of Data Subject',
+  consentText: 'I hereby give my consent and authorize Iloilo Science and Technology University to collect, process, share, disclose, or transfer my personal data to authorized third parties when necessary for journalistic, artistic, literary, research, or other lawful purposes, in accordance with the provisions of Republic Act No. 10173, also known as the Data Privacy Act of 2012.',
+
+  // Demographics default
+  officeTransactedWith: 'Physical Development and Auxiliary Services (PDAS)',
+  defaultRegion: 'Region VI - Western Visayas',
+
+  // Citizen\'s Charter Instructions & Questions
+  ccInstructions: "Check mark (✓) your answer to the Citizen's Charter (CC) questions. The Citizen's Charter is an official document that reflects the services of a government agency/office including its requirements, fees, and processing times among others.",
+  cc1Prompt: 'Which of the following best describes your awareness of a CC?',
+  cc2Prompt: 'If aware of CC (answered 1-3 in CC1), would you say that the CC of this office was...?',
+  cc3Prompt: 'If aware of CC (answered codes 1-3 in CC1), how much did the CC help you in your transaction?',
+
+  // SQD Table Instructions & Dimensions
+  sqdInstructions: 'For SQD 0-8, please put a check mark (✓) on the column that best corresponds to your answer.',
+  sqd0: 'I am satisfied with the service that I availed.',
+  sqd1: 'I spent a reasonable amount of time for my transaction.',
+  sqd2: "The office followed the transaction's requirements and steps based on the information provided.",
+  sqd3: 'The steps (including payment) I needed to do for my transaction were easy and simple.',
+  sqd4: 'I easily found information about my transaction from the office or its website.',
+  sqd5: 'I paid a reasonable amount of fees for my transaction.',
+  sqd6: 'I feel the office was fair to everyone, or "walang palakasan", during my transaction.',
+  sqd7: 'I was treated courteously by the staff, and (if asked for help) the staff was helpful.',
+  sqd8: 'I got what I needed from the government office, or (if denied) denial of request was sufficiently explained to me.',
+
+  suggestionsPrompt: 'Suggestions on how we can further improve our services (optional):',
+  footerClosing: 'THANK YOU!'
+};
+
 export const formatTrackingNumber = (cfg, num) => {
   const pad = Math.max(1, Math.min(6, Number(cfg?.pad) || 3));
   return `${cfg?.prefix ?? 'REQ-2026-'}${String(num).padStart(pad, '0')}`;
@@ -278,7 +336,8 @@ export const INITIAL_CAMPUS_LOCATIONS = [
   { id: 'loc-adm-03', building: 'Administration Building', bldgShort: 'Admin', floor: '2nd Floor', room: 'Office of the Bids and Awards Committee (BAC)', qrCodeRef: 'ISATU-ADM-BAC' },
   { id: 'loc-adm-04', building: 'Administration Building', bldgShort: 'Admin', floor: '2nd Floor', room: 'Office of the Legal Affairs Coordinator', qrCodeRef: 'ISATU-ADM-LEGAL' },
   { id: 'loc-adm-05', building: 'Administration Building', bldgShort: 'Admin', floor: '2nd Floor', room: 'Extension Services Office', qrCodeRef: 'ISATU-ADM-EXTENSION' },
-  { id: 'loc-adm-06', building: 'Administration Building', bldgShort: 'Admin', floor: '2nd Floor', room: 'Research Services Office', qrCodeRef: 'ISATU-ADM-RESEARCH' },
+  { id: 'loc-adm-06', building: 'Administration Building', bldgShort: 'Admin', floor: '2nd Floor', room: 'Research Office', qrCodeRef: 'ISATU-ADM-RESEARCH-OFFICE' },
+  { id: 'loc-adm-06b', building: 'Administration Building', bldgShort: 'Admin', floor: '2nd Floor', room: 'Research Services Office', qrCodeRef: 'ISATU-ADM-RESEARCH' },
   { id: 'loc-adm-07', building: 'Administration Building', bldgShort: 'Admin', floor: '2nd Floor', room: 'Quality Assurance Office', qrCodeRef: 'ISATU-ADM-QA' },
   { id: 'loc-adm-08', building: 'Administration Building', bldgShort: 'Admin', floor: '2nd Floor', room: 'External Affairs / National and International Affairs Office', qrCodeRef: 'ISATU-ADM-EXT-AFFAIRS' },
   { id: 'loc-adm-09', building: 'Administration Building', bldgShort: 'Admin', floor: '2nd Floor', room: 'Office of Alumni Affairs and Relations', qrCodeRef: 'ISATU-ADM-ALUMNI' },
@@ -362,40 +421,7 @@ export const INITIAL_CAMPUS_LOCATIONS = [
 
 
 
-const INITIAL_MESSAGES = [
-  {
-    id: 'msg_001',
-    sender: 'Engr. Carlos Mendoza (MIS)',
-    senderAvatar: 'C',
-    role: 'Department Head',
-    subject: 'Follow-up: Server Room Inverter AC Repair',
-    controlNo: 'REQ-2026-002',
-    time: '1:34 PM',
-    unread: true,
-    preview: 'Director, technician Mark has assessed the precision AC. Replacement compressor unit is needed...',
-    thread: [
-      { sender: 'Engr. Carlos Mendoza', text: 'Good day Director! Request REQ-2026-002 has been filed for the server room cooling unit.', time: '09:15 AM' },
-      { sender: 'PDAS Director', text: 'Approved immediately under urgent status. Lead technician Mark is dispatched.', time: '09:32 AM' },
-      { sender: 'Engr. Carlos Mendoza', text: 'Director, technician Mark checked the thermal sensor. Replacement compressor unit is needed due to burnt coils. Replacement flag raised.', time: '1:34 PM' }
-    ]
-  },
-  {
-    id: 'msg_002',
-    sender: 'Dr. Elena Ramos (CEA)',
-    senderAvatar: 'E',
-    role: 'Dean / Requester',
-    subject: 'Room 302 Wiring Safety Concern',
-    controlNo: 'REQ-2026-001',
-    time: 'Yesterday',
-    unread: false,
-    preview: 'Thank you for prioritizing this. We have temporarily moved electronics classes to Room 204.',
-    thread: [
-      { sender: 'Dr. Elena Ramos', text: 'Good day Director. Filed REQ-2026-001 for room 302 outlet sparks.', time: 'Yesterday 10:20 AM' },
-      { sender: 'PDAS Director', text: 'Noted Dean Ramos. We are scheduling the electrical team for a complete circuit load analysis today.', time: 'Yesterday 11:05 AM' },
-      { sender: 'Dr. Elena Ramos', text: 'Thank you for prioritizing this. We have temporarily moved electronics classes to Room 204.', time: 'Yesterday 11:30 AM' }
-    ]
-  }
-];
+const INITIAL_MESSAGES = [];
 
 /* Read a localStorage value and parse it, falling back to a default.
  *
@@ -418,6 +444,12 @@ const readJson = (key, fallback) => {
   }
 };
 
+const writeJson = (key, val) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch { /* private browsing */ }
+};
+
 /* The campus calendar stores its dates as local YYYY-MM-DD strings, so every
    "today" comparison has to be built the same way. toISOString() converts to
    UTC first, which is a different calendar day for the eight hours after
@@ -426,7 +458,7 @@ export const toLocalISODate = (date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
 export const DataProvider = ({ children }) => {
-  const { currentUser, isAdmin, isMaintenance, isFacultyOrStaff } = useAuth();
+  const { currentUser, isAdmin, isSuperAdmin, isMaintenance, isFacultyOrStaff } = useAuth();
   const { toast } = useToast();
   const [offices, setOffices] = useState(() => readJson('fixit_pdas_offices_v5', INITIAL_OFFICES));
   const [departments, setDepartments] = useState(() => readJson('fixit_pdas_departments_v5', INITIAL_DEPARTMENTS));
@@ -452,14 +484,14 @@ export const DataProvider = ({ children }) => {
   const [messageParticipants, setMessageParticipants] = useState([]);
 
   const refreshUserData = async () => {
-    if (!isAdmin) return;
+    if (!isAdmin && !isSuperAdmin) return;
     setIsLoadingUsers(true);
     setUserDataError(null);
     try {
       const [usersData, pendingData, rejectedData] = await Promise.all([
         apiGetUsers(),
-        apiGetPendingRegistrations(),
-        apiGetRejectedRegistrations(),
+        isSuperAdmin ? apiGetPendingRegistrations().catch(() => []) : Promise.resolve([]),
+        isSuperAdmin ? apiGetRejectedRegistrations().catch(() => []) : Promise.resolve([]),
       ]);
       setUsers(usersData);
       setPendingRegistrations(pendingData);
@@ -474,7 +506,7 @@ export const DataProvider = ({ children }) => {
   useEffect(() => {
     refreshUserData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
+  }, [isAdmin, isSuperAdmin]);
 
   /* Row totals, and the live page, come from the server.
      The endpoint returns { rows, total, limit, offset }. Previously it returned a
@@ -522,7 +554,9 @@ export const DataProvider = ({ children }) => {
          `ch3.md:115` requires archived records to stay retrievable. */
       const [activeResult, archivedResult] = await Promise.allSettled([
         apiGetJobRequests({ limit: 200 }),
-        apiGetJobRequests({ limit: 200, archived: 'true' })
+        (isAdmin || isSuperAdmin)
+          ? apiGetJobRequests({ limit: 200, archived: 'true' })
+          : Promise.resolve({ rows: [], total: 0 })
       ]);
       // A newer refresh started while this one was reading, so this response
       // is at best as fresh and at worst pre-commit. Dropping it here still
@@ -557,6 +591,11 @@ export const DataProvider = ({ children }) => {
           category: r.category ? (r.category.charAt(0).toUpperCase() + r.category.slice(1)) : 'Other',
           urgency: r.urgency_level || 'Medium Risk',
           status: r.status || 'Pending',
+          requestType: 'Standard Request',
+          isStandardFormFilled: true,
+          urgentPendingStandardForm: false,
+          urgentAssignedAt: r.urgent_assigned_at || null,
+          urgentOverdueNotified: false,
           location: [r.building, r.floor, r.room].filter(Boolean).join(' - ') || r.location || 'Campus Facilities',
           // The photo and the originating QR tag are stored snake_case on the
           // row and read camelCase everywhere in the UI — without the mapping
@@ -589,6 +628,7 @@ export const DataProvider = ({ children }) => {
               : toLocalISODate(new Date(r.scheduled_date)))
             : '',
           isArchived: !!r.is_archived,
+          archivedAt: r.archived_at || null,
           requesterApproved: !!r.requester_approved,
           requesterApprovedAt: r.requester_approved_at,
           immediateSupervisor: r.immediate_supervisor || '',
@@ -611,10 +651,97 @@ export const DataProvider = ({ children }) => {
             reason: r.replacement_reason || '',
             itemSpecs: r.replacement_item_specs || '',
             procurementStatus: r.replacement_procurement_status || 'None',
+            disposition: r.replacement_disposition || 'replacement',
+            flaggedBy: r.replacement_flagged_by || '',
+            flaggedDate: r.replacement_flagged_at
+              ? new Date(r.replacement_flagged_at).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+              : '',
           },
           timeline: r.history || r.timeline || [],
+          materialsUsed: r.materials_used || (() => {
+            try {
+              const det = typeof r.request_details === 'string' ? JSON.parse(r.request_details) : (r.request_details || {});
+              return det.materialsUsed || '';
+            } catch { return ''; }
+          })(),
+          completionPhotoUrl: r.completion_photo_url || (() => {
+            try {
+              const det = typeof r.request_details === 'string' ? JSON.parse(r.request_details) : (r.request_details || {});
+              return det.completionPhotoUrl || '';
+            } catch { return ''; }
+          })(),
+          signedFormConfirmed: !!r.signed_form_confirmed,
+          signedFormScanUrl: (() => {
+            try {
+              const det = typeof r.request_details === 'string' ? JSON.parse(r.request_details) : (r.request_details || {});
+              return det.signedFormScanUrl || '';
+            } catch { return ''; }
+          })(),
+          // Unpack stored JSON details (scopeOfWorks, actionTaken, finalAction)
+          ...(() => {
+            try {
+              const det = typeof r.request_details === 'string'
+                ? JSON.parse(r.request_details)
+                : (r.request_details || {});
+              // Restore maintenanceFlag for 'Cannot Complete' flags stored in request_details.
+              // This prevents the flag from being lost after a page reload.
+              const restoredMaintenanceFlag =
+                det.maintenanceFlagType === 'Cannot Complete'
+                  ? {
+                      type: 'Cannot Complete',
+                      reason: det.maintenanceFlagReason || '',
+                      scheduledWork: det.scheduledWork || '',
+                      scheduledDate: det.scheduledDate || '',
+                      scheduledTime: det.scheduledTime || '',
+                      flaggedBy: r.replacement_flagged_by || '',
+                      flaggedDate: r.replacement_flagged_at
+                        ? new Date(r.replacement_flagged_at).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : ''
+                    }
+                  : null;
+              return {
+                ...(det.title ? { title: det.title } : {}),
+                ...(det.notes ? { notes: det.notes } : {}),
+                scopeOfWorks: det.scopeOfWorks || undefined,
+                actionTaken: det.actionTaken || undefined,
+                finalAction: det.finalAction || (r.campus_admin_approved || r.status === 'Approved' ? {
+                  status: 'Approved',
+                  remarks: r.campus_admin_remarks || '',
+                  date: r.campus_admin_approved_at || ''
+                } : (r.rejection_stage === 'approver' ? {
+                  status: 'Disapproved',
+                  remarks: r.rejection_remarks || '',
+                  date: ''
+                } : undefined)),
+                ...(restoredMaintenanceFlag ? { maintenanceFlag: restoredMaintenanceFlag } : {})
+              };
+            } catch {
+              return {};
+            }
+          })()
         }));
-        setRequisitions(normalized);
+        setRequisitions(prev => {
+          const prevPhotos = new Map();
+          prev.forEach(item => {
+            if (item.photoUrl || item.completionPhotoUrl || (item.timeline && item.timeline.length > 0)) {
+              prevPhotos.set(String(item.id_raw ?? item.id), {
+                photoUrl: item.photoUrl,
+                completionPhotoUrl: item.completionPhotoUrl,
+                timeline: item.timeline,
+              });
+            }
+          });
+          return normalized.map(item => {
+            const cached = prevPhotos.get(String(item.id_raw ?? item.id));
+            if (!cached) return item;
+            return {
+              ...item,
+              photoUrl: item.photoUrl || cached.photoUrl || '',
+              completionPhotoUrl: item.completionPhotoUrl || cached.completionPhotoUrl || '',
+              timeline: (item.timeline && item.timeline.length > 0) ? item.timeline : (cached.timeline || []),
+            };
+          });
+        });
       } else {
         setRequisitions([]);
       }
@@ -667,34 +794,61 @@ export const DataProvider = ({ children }) => {
       .catch(() => setMessageParticipants([]));
   }, [currentUser?.id]);
 
-  const [messages, setMessages] = useState(() => {
-    const saved = localStorage.getItem('fixit_pdas_messages_v3');
-    return saved ? JSON.parse(saved) : INITIAL_MESSAGES;
-  });
+  // Messages are authoritative from the database only; localStorage is just a
+  // write-through cache for offline resilience. When the DB is reset (empty),
+  // the cache is cleared on the next fetch. We start with the cached value for
+  // instant display, but the DB sync immediately corrects any stale threads.
+  const [messages, setMessages] = useState(() => readJson('fixit_pdas_messages_v4', INITIAL_MESSAGES));
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fixit_pdas_messages_v4', JSON.stringify(messages));
+    } catch (e) {
+      console.warn('Failed to save messages to localStorage:', e);
+    }
+  }, [messages]);
 
   // Live notifications from MySQL — no localStorage fallback.
   // Polling keeps the bell badge in sync without requiring a page refresh.
+  // Archived notifications are fetched separately so they never reappear in the
+  // active inbox or unread badge.
   const [allNotifications, setAllNotifications] = useState([]);
+  const [archivedNotifications, setArchivedNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const notifPollRef = useRef(null);
 
   const fetchNotifications = React.useCallback(async () => {
     if (!currentUser) return;
-    try {
-      const result = await apiGetNotifications({ limit: 100 });
+    const mapRows = (result) => {
       const notifs = Array.isArray(result) ? result : (result.notifications || []);
-      const mapped = notifs.map(n => ({
+      return notifs.map(n => ({
         id: n.id,
         title: n.title,
         text: n.message || n.text || '',
         time: n.created_at || n.time || '',
         unread: !n.is_read,
         link: n.link || null,
+        archivedAt: n.archived_at || null,
         // Keep recipientUserId so isNotificationForUser still works on any in-memory additions
         recipientUserId: n.user_id || currentUser.id,
       }));
-      setAllNotifications(mapped);
-      setUnreadCount(typeof result.unread_count === 'number' ? result.unread_count : mapped.filter(n => n.unread).length);
+    };
+
+    try {
+      const [activeResult, archivedResult] = await Promise.allSettled([
+        apiGetNotifications({ limit: 100 }),
+        apiGetNotifications({ limit: 100, archived: true }),
+      ]);
+
+      if (activeResult.status === 'fulfilled') {
+        const mapped = mapRows(activeResult.value);
+        setAllNotifications(mapped);
+        const serverUnread = activeResult.value?.unread_count;
+        setUnreadCount(typeof serverUnread === 'number' ? serverUnread : mapped.filter(n => n.unread).length);
+      }
+      if (archivedResult.status === 'fulfilled') {
+        setArchivedNotifications(mapRows(archivedResult.value));
+      }
     } catch {
       // Offline or backend down — keep existing state, don't clear
     }
@@ -702,9 +856,131 @@ export const DataProvider = ({ children }) => {
 
   useEffect(() => {
     fetchNotifications();
-    notifPollRef.current = setInterval(fetchNotifications, 30 * 1000); // 30-second poll
+    notifPollRef.current = setInterval(() => {
+      if (document.hidden) return;
+      fetchNotifications();
+    }, 30 * 1000); // 30-second poll
     return () => clearInterval(notifPollRef.current);
   }, [fetchNotifications]);
+
+  const fetchBackendMessages = React.useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const rows = await apiGetMessages();
+      if (!Array.isArray(rows)) return;
+
+      setMessages(prev => {
+        const existingMap = new Map();
+        prev.forEach(m => {
+          if (m.backendId) existingMap.set(String(m.backendId), m);
+          if (m.id && String(m.id).startsWith('db_msg_')) {
+            existingMap.set(String(m.id).replace('db_msg_', ''), m);
+          }
+        });
+
+        const serverMapped = rows.map(r => {
+          const rowIdStr = String(r.id);
+          const existing = existingMap.get(rowIdStr);
+          const isContact = Boolean(r.contact_name || r.contact_email);
+          const senderLabel = isContact
+            ? `${r.contact_name} (${r.contact_email})`
+            : (r.sender_name || 'Visitor');
+          const timeFormatted = r.created_at ? new Date(r.created_at).toLocaleString([], {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }) : 'Recently';
+
+          const replies = Array.isArray(r.replies) ? r.replies.map(rep => ({
+            sender: rep.sender_name || 'PDAS Director',
+            text: rep.body,
+            time: rep.created_at ? new Date(rep.created_at).toLocaleString([], {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            }) : 'Recently'
+          })) : [];
+
+          const initialMsgItem = {
+            sender: senderLabel,
+            text: r.body || '',
+            time: timeFormatted
+          };
+
+          const fullThread = [initialMsgItem, ...replies];
+
+          if (existing) {
+            return {
+              ...existing,
+              backendId: r.id,
+              subject: r.subject || existing.subject,
+              unread: typeof existing.unread === 'boolean' ? existing.unread : !Boolean(r.is_read),
+              thread: fullThread.length >= existing.thread.length ? fullThread : existing.thread,
+              preview: fullThread[fullThread.length - 1]?.text || r.body || existing.preview
+            };
+          }
+
+          return {
+            id: `db_msg_${r.id}`,
+            backendId: r.id,
+            sender: senderLabel,
+            contactName: r.contact_name || '',
+            contactEmail: r.contact_email || '',
+            role: isContact ? 'Public Visitor' : 'Requester',
+            controlNo: isContact ? 'PUBLIC-CONTACT' : `MSG-${String(r.id).padStart(4, '0')}`,
+            subject: r.subject || (isContact ? `Inquiry from ${r.contact_name}` : 'Direct Message'),
+            time: timeFormatted,
+            unread: !Boolean(r.is_read),
+            preview: fullThread[fullThread.length - 1]?.text || r.body || '',
+            thread: fullThread
+          };
+        });
+
+        // When the DB is empty (after a data reset) return only what the server
+        // knows about. Non-server / localStorage-only threads are discarded so
+        // the inbox matches the database exactly — stale cached threads no longer
+        // ghost-appear after a full data wipe.
+        if (rows.length === 0) {
+          try { localStorage.removeItem('fixit_pdas_messages_v4'); } catch { /* private browsing */ }
+          return [];
+        }
+
+        // Keep non-server local threads (offline drafts, unsynced items)
+        const serverIds = new Set(rows.map(r => String(r.id)));
+        const nonServerThreads = prev.filter(m => {
+          const bid = m.backendId ? String(m.backendId) : null;
+          const did = m.id && String(m.id).startsWith('db_msg_') ? String(m.id).replace('db_msg_', '') : null;
+          return !(bid && serverIds.has(bid)) && !(did && serverIds.has(did));
+        });
+
+        return [...serverMapped, ...nonServerThreads];
+      });
+    } catch {
+      // Offline or network error
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    fetchBackendMessages();
+    const msgPoll = setInterval(() => {
+      if (document.hidden) return;
+      fetchBackendMessages();
+    }, 20 * 1000);
+    return () => clearInterval(msgPoll);
+  }, [fetchBackendMessages]);
+
+  // When an offline outbox item finishes syncing, refresh list, messages and notifications
+  useEffect(() => {
+    const onSynced = () => {
+      refreshRequisitions();
+      fetchNotifications();
+      fetchBackendMessages();
+    };
+    window.addEventListener('fixit:outbox-synced', onSynced);
+    return () => window.removeEventListener('fixit:outbox-synced', onSynced);
+  }, [refreshRequisitions, fetchNotifications, fetchBackendMessages]);
 
   // Notifications are persisted in MySQL — no localStorage sync needed.
 
@@ -796,6 +1072,42 @@ export const DataProvider = ({ children }) => {
     setUnreadCount(prev => Math.max(0, prev - 1));
   };
 
+  const archiveNotification = async (id) => {
+    const target = allNotifications.find(n => n.id === id) || archivedNotifications.find(n => n.id === id);
+    try {
+      await apiArchiveNotification(id);
+    } catch (err) {
+      toast(`Could not archive notification: ${err?.message || 'request failed.'}`, 'error');
+      return false;
+    }
+    setAllNotifications(prev => {
+      const n = prev.find(x => x.id === id);
+      if (n?.unread) setUnreadCount(c => Math.max(0, c - 1));
+      return prev.filter(x => x.id !== id);
+    });
+    if (target) {
+      setArchivedNotifications(prev => [
+        { ...target, unread: false, archivedAt: new Date().toISOString() },
+        ...prev.filter(n => n.id !== id),
+      ]);
+    }
+    toast('Notification moved to the Archive Center.', 'info');
+    return true;
+  };
+
+  const restoreNotification = async (id) => {
+    try {
+      await apiRestoreNotification(id);
+    } catch (err) {
+      toast(`Could not restore notification: ${err?.message || 'request failed.'}`, 'error');
+      return false;
+    }
+    setArchivedNotifications(prev => prev.filter(n => n.id !== id));
+    await fetchNotifications();
+    toast('Notification restored to your inbox.', 'info');
+    return true;
+  };
+
   const deleteNotification = async (id) => {
     try {
       await apiDeleteNotification(id);
@@ -805,6 +1117,7 @@ export const DataProvider = ({ children }) => {
       if (n?.unread) setUnreadCount(c => Math.max(0, c - 1));
       return prev.filter(x => x.id !== id);
     });
+    setArchivedNotifications(prev => prev.filter(x => x.id !== id));
     toast('Notification deleted.', 'info');
   };
 
@@ -813,11 +1126,62 @@ export const DataProvider = ({ children }) => {
       await apiClearAllNotifications();
     } catch { /* best-effort */ }
     setAllNotifications([]);
+    setArchivedNotifications([]);
     setUnreadCount(0);
     toast('All notifications cleared.', 'info');
   };
 
   const [evaluations, setEvaluations] = useState(() => readJson('fixit_pdas_evaluations_v3', []));
+
+  useEffect(() => {
+    if (!currentUser) return;
+    import('../backend/api').then(({ apiGetEvaluations }) => {
+      apiGetEvaluations()
+        .then(rows => {
+          if (Array.isArray(rows)) {
+            const mapped = rows.map(ev => ({
+              id: ev.id ? `EVAL-${ev.id}` : `EVAL-${Date.now()}`,
+              backendId: ev.id,
+              reqId: ev.ticket_no || ev.job_request_id,
+              jobRequestId: ev.job_request_id,
+              controlNo: ev.ticket_no || ev.job_request_id,
+              category: ev.category || 'General',
+              location: [ev.building, ev.floor, ev.room].filter(Boolean).join(' - ') || 'Unknown',
+              resolutionStatus: ev.resolution_status || 'Completed',
+              submittedBy: ev.evaluated_by_name || 'Requester',
+              submittedAt: ev.created_at ? new Date(ev.created_at).toLocaleString() : '',
+              functionalSuitability: ev.functional_suitability,
+              usability: ev.usability,
+              reliability: ev.reliability,
+              performanceEfficiency: ev.performance_efficiency,
+              security: ev.security,
+              comments: ev.comments || ev.suggestions || '',
+              consent: ev.consent ?? 1,
+              clientType: ev.client_type || 'Government',
+              region: ev.region || 'Region VI - Western Visayas',
+              serviceAvailed: ev.service_availed || ev.ticket_no,
+              cc1: ev.cc1,
+              cc2: ev.cc2,
+              cc3: ev.cc3,
+              sqd0: ev.sqd0,
+              sqd1: ev.sqd1,
+              sqd2: ev.sqd2,
+              sqd3: ev.sqd3,
+              sqd4: ev.sqd4,
+              sqd5: ev.sqd5,
+              sqd6: ev.sqd6,
+              sqd7: ev.sqd7,
+              sqd8: ev.sqd8,
+              suggestions: ev.suggestions,
+              csmData: ev.csm_data
+            }));
+            setEvaluations(mapped);
+            writeJson('fixit_pdas_evaluations_v3', mapped);
+          }
+        })
+        .catch(() => {});
+    });
+  }, [currentUser?.id]);
 
   // QF-PDAS-DC-01 Tracking Number sequence config (admin-editable).
   const [trackingConfig, setTrackingConfig] = useState(() => {
@@ -845,6 +1209,27 @@ export const DataProvider = ({ children }) => {
     setFormTemplateConfig({ ...DEFAULT_FORM_TEMPLATE_CONFIG });
     writeJson('fixit_form_template_config_v1', { ...DEFAULT_FORM_TEMPLATE_CONFIG });
     return { ...DEFAULT_FORM_TEMPLATE_CONFIG };
+  };
+
+  // QF-HRM-15 Client Satisfaction Measurement Form Template Configuration (admin-editable).
+  const [csmTemplateConfig, setCsmTemplateConfig] = useState(() => {
+    const saved = readJson('fixit_csm_template_config_v1', null);
+    if (saved && typeof saved === 'object') return { ...DEFAULT_CSM_TEMPLATE_CONFIG, ...saved };
+    return { ...DEFAULT_CSM_TEMPLATE_CONFIG };
+  });
+
+  const updateCsmTemplateConfig = (patch) => {
+    if (!patch || typeof patch !== 'object') return csmTemplateConfig;
+    const next = { ...csmTemplateConfig, ...patch };
+    setCsmTemplateConfig(next);
+    writeJson('fixit_csm_template_config_v1', next);
+    return next;
+  };
+
+  const resetCsmTemplateConfig = () => {
+    setCsmTemplateConfig({ ...DEFAULT_CSM_TEMPLATE_CONFIG });
+    writeJson('fixit_csm_template_config_v1', { ...DEFAULT_CSM_TEMPLATE_CONFIG });
+    return { ...DEFAULT_CSM_TEMPLATE_CONFIG };
   };
 
   const [campusLocations, setCampusLocations] = useState(() => readJson('fixit_pdas_campus_locations_v5', INITIAL_CAMPUS_LOCATIONS));
@@ -908,10 +1293,6 @@ export const DataProvider = ({ children }) => {
   }, [calendarEvents]);
 
   useEffect(() => {
-    localStorage.setItem('fixit_pdas_messages_v3', JSON.stringify(messages));
-  }, [messages]);
-
-  useEffect(() => {
     localStorage.setItem('fixit_pdas_evaluations_v3', JSON.stringify(evaluations));
   }, [evaluations]);
 
@@ -965,15 +1346,25 @@ export const DataProvider = ({ children }) => {
     if (!clean) return false;
     const duplicate = requisitions.some(r => r.controlNo === clean && r.id !== reqId && r.controlNo !== reqId);
     if (duplicate) return false;
+    const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId || r.id_raw === reqId);
+    const rawId = target?.id_raw ?? target?.id ?? reqId;
     setRequisitions(prev => prev.map(r => (r.id === reqId || r.controlNo === reqId)
-      ? { ...r, controlNo: clean, timeline: [...(r.timeline || []), { status: 'Tracking Updated', timestamp: new Date().toLocaleString(), actor: 'PDAS Admin', note: `Tracking number set to ${clean}.` }] }
+      ? { ...r, controlNo: clean, officialTrackingNo: clean, timeline: [...(r.timeline || []), { status: 'Tracking Updated', timestamp: new Date().toLocaleString(), actor: 'PDAS Admin', note: `Tracking number set to ${clean}.` }] }
       : r));
+    apiUpdateJobRequestTrackingNo(rawId, clean)
+      .then(() => refreshRequisitions())
+      .catch((err) => {
+        toast(`Could not save tracking number to server: ${err?.message || 'request failed.'}`, 'error');
+        refreshRequisitions();
+      });
     return true;
   };
 
   // Generic save for overlay-edited QF-PDAS-DC-01 fields (before print).
   const updateRequisitionForm = (reqId, patch) => {
     if (!patch || typeof patch !== 'object') return false;
+    const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId || r.id_raw === reqId);
+    const rawId = target?.id_raw ?? target?.id ?? reqId;
     setRequisitions(prev => prev.map(r => {
       if (r.id === reqId || r.controlNo === reqId) {
         return {
@@ -986,8 +1377,62 @@ export const DataProvider = ({ children }) => {
       }
       return r;
     }));
+    apiUpdateJobRequestFormDetails(rawId, patch)
+      .then(() => refreshRequisitions())
+      .catch((err) => {
+        console.warn('Could not persist form details:', err?.message);
+      });
     return true;
   };
+
+  // Fetch full single ticket detail (photo_url, completion_photo_url, history) on demand
+  const fetchRequisitionDetail = React.useCallback(async (reqId) => {
+    if (!reqId) return null;
+    const target = requisitions.find(r =>
+      r.id === reqId ||
+      r.controlNo === reqId ||
+      r.id_raw === reqId ||
+      String(r.id_raw) === String(reqId) ||
+      r.ticket_no === reqId
+    );
+    const rawId = target?.id_raw ?? target?.id ?? reqId;
+    try {
+      const detail = await apiGetJobRequestById(rawId);
+      if (!detail) return null;
+      let detJson = {};
+      try {
+        detJson = typeof detail.request_details === 'string'
+          ? JSON.parse(detail.request_details)
+          : (detail.request_details || {});
+      } catch {}
+      const mappedTimeline = Array.isArray(detail.history) && detail.history.length > 0
+        ? detail.history.map(h => ({
+            status: h.to_status || h.status || 'Updated',
+            timestamp: h.created_at ? new Date(h.created_at).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+            actor: h.changed_by_name || 'System',
+            note: h.remarks || '',
+          }))
+        : (target?.timeline || []);
+      const patch = {
+        photoUrl: detail.photo_url || detJson.photoUrl || target?.photoUrl || '',
+        photoName: detail.photo_name || detJson.photoName || target?.photoName || '',
+        completionPhotoUrl: detail.completion_photo_url || detJson.completionPhotoUrl || target?.completionPhotoUrl || '',
+        materialsUsed: detail.materials_used || detJson.materialsUsed || target?.materialsUsed || '',
+        signedFormConfirmed: detail.signed_form_confirmed !== undefined ? Boolean(detail.signed_form_confirmed) : target?.signedFormConfirmed,
+        signedFormScanUrl: detJson.signedFormScanUrl || target?.signedFormScanUrl || '',
+        timeline: mappedTimeline,
+      };
+      setRequisitions(prev => prev.map(r => {
+        if (r.id === reqId || r.controlNo === reqId || String(r.id_raw) === String(detail.id) || r.ticket_no === detail.ticket_no) {
+          return { ...r, ...patch };
+        }
+        return r;
+      }));
+      return { ...(target || {}), ...patch };
+    } catch {
+      return target || null;
+    }
+  }, [requisitions]);
 
   // Registration Flow — submits to registration_requests via the backend.
   // `idPhotoUrl` carries a downscaled base64 JPEG of the applicant's ISAT U ID;
@@ -1040,12 +1485,14 @@ export const DataProvider = ({ children }) => {
     try {
       const result = await apiCreateUser({
         firstName: techData.firstName,
+        middleName: techData.middleName || null,
         lastName: techData.lastName,
         email: techData.email,
         password: techData.password,
-        role: 'Technician',
+        role: 'maintenance',
         department: 'PDAS Technical Crew Unit',
         phone: techData.phone,
+        specialization: techData.specialization || 'General Campus Facility',
       });
       await refreshUserData();
       return result;
@@ -1095,9 +1542,17 @@ export const DataProvider = ({ children }) => {
     const isUrgent = newReq.requestType === 'Urgent Request' || newReq.urgency === 'High Risk' || newReq.urgency === 'Urgent';
     const urgency = newReq.urgency || (isUrgent ? 'High Risk' : 'Medium Risk');
     
+    // Urgent emergency requests bypass the supervisor endorsement chain entirely:
+    // they route straight to Admin (Pending) for immediate dispatch.
+    // Campus Admin filings self-endorse and auto-approve immediately.
+    const isCampusAdminFiling = !isDraft && currentUser?.role === 'campus_admin';
     const initialStatus = isDraft
       ? 'Draft'
-      : (newReq.immediateSupervisor ? 'Pending Supervisor Approval' : 'Pending');
+      : isCampusAdminFiling
+        ? 'Approved'
+        : isUrgent
+          ? 'Pending Final Approval'
+          : (newReq.immediateSupervisor ? 'Pending Supervisor Approval' : 'Pending');
 
     const entry = {
       id: requestId,
@@ -1105,22 +1560,28 @@ export const DataProvider = ({ children }) => {
       date: toLocalISODate(new Date()),
       status: initialStatus,
       urgency,
-      requestType: newReq.requestType || (isUrgent ? 'Urgent Request' : 'Standard Request'),
-      urgentPendingStandardForm: isUrgent && !newReq.isStandardFormFilled,
-      urgentDeadline: isUrgent ? 'Within Today (24 Hours)' : null,
+      requestType: 'Standard Request',
+      urgentPendingStandardForm: false,
+      urgentDeadline: null,
       immediateSupervisor: newReq.immediateSupervisor || '',
+      requesterId: currentUser?.id ?? newReq.requesterId ?? null,
+      requester_id: currentUser?.id ?? newReq.requester_id ?? null,
+      requesterEmail: currentUser?.email || newReq.requesterEmail || '',
+      requester_email: currentUser?.email || newReq.requester_email || '',
+      requestedBy: newReq.requestedBy || currentUser?.name || 'Requester',
+      idNumber: currentUser?.idNumber || newReq.idNumber || '',
       requesterApproved: !isDraft,
       requesterApprovedAt: isDraft ? null : new Date().toISOString(),
-      supervisorApproved: false,
-      supervisorApprovedAt: null,
-      supervisorRemarks: '',
+      supervisorApproved: isCampusAdminFiling ? true : false,
+      supervisorApprovedAt: isCampusAdminFiling ? new Date().toISOString() : null,
+      supervisorRemarks: isCampusAdminFiling ? 'Self-endorsed by Campus Administrator' : '',
       adminApproved: false,
       adminApprovedAt: null,
       adminRemarks: '',
       adminFieldRemarks: null,
-      campusAdminApproved: false,
-      campusAdminApprovedAt: null,
-      campusAdminRemarks: '',
+      campusAdminApproved: isCampusAdminFiling ? true : false,
+      campusAdminApprovedAt: isCampusAdminFiling ? new Date().toISOString() : null,
+      campusAdminRemarks: isCampusAdminFiling ? 'Auto-approved by Campus Administrator' : '',
       officialTrackingNo: '',
       rejectionStage: null,
       rejectionRemarks: '',
@@ -1155,7 +1616,7 @@ export const DataProvider = ({ children }) => {
             ? 'Request saved as draft.'
             : isUrgent && !newReq.isStandardFormFilled 
               ? 'Urgent High Risk Request submitted. Requester required to complete full form within the day.'
-              : 'Job Request submitted and electronically approved.'
+              : 'Job Request submitted and electronically signed.'
         }
       ],
       ...newReq
@@ -1228,7 +1689,8 @@ export const DataProvider = ({ children }) => {
       entry.status = res.status || initialStatus;
     }
 
-    setRequisitions(prev => [entry, ...prev.filter(r => r.id !== entry.id)]);
+    // Append to end to maintain first-come, first-served (FCFS) order
+    setRequisitions(prev => [...prev.filter(r => r.id !== entry.id), entry]);
     await refreshRequisitions();
     await fetchNotifications();
     toast(isDraft ? `Draft saved as ${entry.id}.` : `${entry.id} filed.`);
@@ -1241,8 +1703,6 @@ export const DataProvider = ({ children }) => {
     const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
     const nowStr = new Date().toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     const isApprove = action === 'approve';
-    // A return is revise-and-resubmit, not a refusal — it must not land in the
-    // terminal 'Rejected' state the way it used to.
     const nextStatus = isApprove ? 'Under Review' : 'Returned';
 
     try {
@@ -1250,7 +1710,8 @@ export const DataProvider = ({ children }) => {
       const rawId = target?.id_raw || target?.id || reqId;
       await apiSupervisorAction(rawId, { action, remarks });
     } catch (e) {
-      console.warn('API supervisor action fallback:', e.message);
+      toast(e.message || 'Could not process supervisor action.', 'error');
+      return false;
     }
 
     setRequisitions(prev => prev.map(r => {
@@ -1269,7 +1730,7 @@ export const DataProvider = ({ children }) => {
               status: isApprove ? 'Supervisor Approved' : 'Supervisor Returned',
               timestamp: nowStr,
               actor: 'Immediate Supervisor',
-              note: remarks || (isApprove ? 'Electronically approved' : 'Returned for revision')
+              note: remarks || (isApprove ? 'Electronically signed' : 'Returned for revision')
             }
           ]
         };
@@ -1322,7 +1783,14 @@ export const DataProvider = ({ children }) => {
    * status flip was applied even when the call failed, so a refused approval
    * still reported "Final Approval granted!". */
   const submitApproverAction = async (reqId, action, remarks = '') => {
-    const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
+    const target = requisitions.find(r =>
+      r.id === reqId ||
+      r.controlNo === reqId ||
+      r.id_raw === reqId ||
+      String(r.id_raw) === String(reqId) ||
+      r.ticket_no === reqId ||
+      r.officialTrackingNo === reqId
+    );
     const ref = target?.controlNo || target?.ticket_no || reqId;
     if (!target) return false;
 
@@ -1462,30 +1930,61 @@ export const DataProvider = ({ children }) => {
   };
 
   // Complete Standard Form Details for Urgent Requests
-  const completeStandardFormForUrgent = (reqId, standardDetails) => {
+  const completeStandardFormForUrgent = async (reqId, standardDetails) => {
     const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
     if (!target) return;
+
+    const rawId = target?.id_raw || target?.id || reqId;
+    try {
+      const { apiCompleteStandardForm } = await import('../backend/api');
+      await apiCompleteStandardForm(rawId, {
+        immediateSupervisor: standardDetails.immediateSupervisor || target.immediateSupervisor,
+        description: standardDetails.description || target.description,
+        scopeOfWorks: standardDetails.scopeOfWorks || target.scopeOfWorks || undefined,
+        title: standardDetails.title || target.title,
+        category: standardDetails.category || target.category,
+        location: standardDetails.location || target.location,
+        building: standardDetails.building || target.building,
+        floor: standardDetails.floor || target.floor,
+        room: standardDetails.room || target.room,
+        contactNumber: standardDetails.contactNumber || target.contactNumber,
+        photoUrl: standardDetails.photoUrl || target.photoUrl,
+        photoName: standardDetails.photoName || target.photoName
+      });
+    } catch (e) {
+      toast(e.message || 'Could not submit follow-up form.', 'error');
+      return false;
+    }
 
     const nowStr = new Date().toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
     setRequisitions(prev => prev.map(r => {
-      if (r.id === reqId || r.controlNo === reqId) {
+      if (r.id === reqId || r.controlNo === reqId || r.ticket_no === reqId) {
         return {
           ...r,
           urgentPendingStandardForm: false,
+          isStandardFormFilled: true,
+          adminApproved: false,
+          title: standardDetails.title || r.title,
+          category: standardDetails.category || r.category,
+          location: standardDetails.location || r.location,
+          building: standardDetails.building || r.building,
+          floor: standardDetails.floor || r.floor,
+          room: standardDetails.room || r.room,
+          contactNumber: standardDetails.contactNumber || r.contactNumber,
           immediateSupervisor: standardDetails.immediateSupervisor || r.immediateSupervisor,
           immediateSupervisorSignature: 'Signed',
           scopeOfWorks: standardDetails.scopeOfWorks || r.scopeOfWorks,
-          // Persist the completed work description. The field is free text and
-          // unbounded — do not truncate it.
           description: standardDetails.description || r.description,
+          photoUrl: standardDetails.photoUrl || r.photoUrl,
+          photoName: standardDetails.photoName || r.photoName,
           timeline: [
             ...r.timeline,
             {
-              status: 'Standard Form Filed',
+              status: 'Follow-up Form Filed',
               timestamp: nowStr,
               actor: `${r.requestedBy} (${r.requesterRole || 'Requester'})`,
-              note: 'Standard QF-PDAS-DC-01 Form details filed for urgent request.'
+              note: 'Official follow-up QF-PDAS-DC-01 form submitted. Routed to Admin for electronic approval (Supervisor and Approver notified for information only).'
             }
           ]
         };
@@ -1493,17 +1992,50 @@ export const DataProvider = ({ children }) => {
       return r;
     }));
 
-    setNotifications(prev => [
-      {
-        id: `notif-${Date.now()}`,
-        title: 'Standard QF-PDAS-DC-01 Form Filed',
-        text: `Full Standard Form filed for urgent ticket ${target.controlNo || target.id} by ${target.requestedBy}.`,
-        time: 'Just now',
-        unread: true,
-        targetRole: 'admin'
-      },
-      ...prev
-    ]);
+    toast('Follow-up form submitted and routed to Admin for electronic approval.');
+    refreshRequisitions();
+  };
+
+  // Electronic approval of follow-up form by PDAS Admin
+  const approveFollowUpForm = async (reqId, remarks = 'Follow-up form electronically signed') => {
+    const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
+    const rawId = target?.id_raw || target?.id || reqId;
+
+    try {
+      const { apiApproveFollowUpForm } = await import('../backend/api');
+      await apiApproveFollowUpForm(rawId, { remarks });
+    } catch (e) {
+      toast(e.message || 'Could not approve follow-up form.', 'error');
+      return false;
+    }
+
+    const nowStr = new Date().toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    setRequisitions(prev => prev.map(r => {
+      if (r.id === reqId || r.controlNo === reqId) {
+        return {
+          ...r,
+          adminApproved: true,
+          adminApprovedAt: new Date().toISOString(),
+          adminRemarks: remarks,
+          isStandardFormFilled: true,
+          timeline: [
+            ...r.timeline,
+            {
+              status: 'Follow-up Form Approved',
+              timestamp: nowStr,
+              actor: 'PDAS Administrator',
+              note: `Follow-up form electronically signed: ${remarks}`
+            }
+          ]
+        };
+      }
+      return r;
+    }));
+
+    toast('Follow-up form electronically signed.');
+    refreshRequisitions();
+    return true;
   };
 
   // Update Action Taken (PDAS Director & Team)
@@ -1567,7 +2099,14 @@ export const DataProvider = ({ children }) => {
    * from a successful approval that happened to have no number yet — so the
    * caller reported success on both. */
   const updateFinalAction = async (reqId, finalStatus, remarks = '') => {
-    const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
+    const target = requisitions.find(r =>
+      r.id === reqId ||
+      r.controlNo === reqId ||
+      r.id_raw === reqId ||
+      String(r.id_raw) === String(reqId) ||
+      r.ticket_no === reqId ||
+      r.officialTrackingNo === reqId
+    );
     if (!target) return { ok: false, trackingNo: null };
 
     const action = finalStatus === 'Approved' ? 'approve' : 'reject';
@@ -1593,7 +2132,7 @@ export const DataProvider = ({ children }) => {
      The server is now authoritative: it owns the transition policy, the
      terminal-state guard, the history row and the notifications. We call it,
      then re-read. A rejection is reported with the server's own message. */
-  const updateRequisitionStatus = async (reqId, newStatus, actorName = 'Maintenance Staff', notes = '') => {
+  const updateRequisitionStatus = async (reqId, newStatus, actorName = 'Maintenance Staff', notes = '', materialsUsed = '', completionPhotoUrl = undefined) => {
     const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
     if (!target) {
       toast(`Request ${reqId} was not found.`, 'error');
@@ -1603,7 +2142,9 @@ export const DataProvider = ({ children }) => {
       const { apiUpdateJobRequestStatus } = await import('../backend/api');
       const res = await apiUpdateJobRequestStatus(target.id ?? reqId, {
         status: newStatus,
-        remarks: notes || `Status updated to ${newStatus}.`
+        remarks: notes || `Status updated to ${newStatus}.`,
+        materialsUsed: materialsUsed !== undefined && materialsUsed !== null ? materialsUsed : undefined,
+        completionPhotoUrl: completionPhotoUrl !== undefined && completionPhotoUrl !== null ? completionPhotoUrl : undefined,
       });
       await refreshRequisitions();
       toast(res?.message || `Request ${target.controlNo || reqId} updated to ${newStatus}.`);
@@ -1653,21 +2194,65 @@ export const DataProvider = ({ children }) => {
     }
   };
 
-  const raiseMaintenanceFlag = (reqId, flagData) => {
+  // ── Unified Outcome Flagging (Fix: Bugs 2, 3, 5)
+  //
+  // Previously two separate functions (raiseMaintenanceFlag + raiseReplacementFlag)
+  // with three problems:
+  //   1. "Cannot Complete" had no API call — state was lost on page reload.
+  //   2. "Disposal" fired the optimistic UI update even when the API call failed.
+  //   3. Routing split meant different code paths for identical operations.
+  //
+  // This single function always calls the API first for all three types, and only
+  // updates local state after a successful server response. The endpoint is
+  // /replacement-flag for every disposition, so the historical name is kept.
+  const raiseReplacementFlag = async (reqId, flagData) => {
     const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
-    if (!target) return;
+    if (!target) {
+      toast(`Request ${reqId} was not found.`, 'error');
+      return false;
+    }
 
     const nowStr = new Date().toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     const flaggedBy = flagData.flaggedBy || 'Maintenance Personnel';
+    const type = flagData.type || 'Replacement'; // 'Replacement' | 'Disposal' | 'Cannot Complete'
+
+    // Map the UI flag type to the API disposition value
+    const disposition =
+      type === 'Disposal' ? 'disposal'
+      : type === 'Cannot Complete' ? 'cannot_complete'
+      : 'replacement';
+
+    // Always persist to the server first — no optimistic update.
+    try {
+      const { apiFlagReplacement } = await import('../backend/api');
+      // Use raw DB integer id so WHERE id=? works reliably.
+      await apiFlagReplacement(target.id_raw ?? target.id ?? reqId, {
+        reason: flagData.reason,
+        itemSpecs: flagData.itemSpecs || null,
+        disposition,
+        flaggedBy,
+        // Cannot Complete extra fields stored in request_details on the server
+        scheduledWork: flagData.scheduledWork || null,
+        scheduledDate: flagData.scheduledDate || null,
+        scheduledTime: flagData.scheduledTime || null
+      });
+    } catch (err) {
+      toast(`Could not flag ${target.controlNo || reqId}: ${err?.message || 'rejected by the server.'}`, 'error');
+      return false;
+    }
+
+    // API succeeded — now update local state
+    const isReplacement = type === 'Replacement';
+    const isDisposal = type === 'Disposal';
 
     setRequisitions(prev =>
       prev.map(r => {
         if (r.id === reqId || r.controlNo === reqId) {
-          const isDisposal = flagData.type === 'Disposal';
           return {
             ...r,
+            // maintenanceFlag holds the full flag for WorkOrderCard display
             maintenanceFlag: {
-              type: flagData.type,
+              type,
               reason: flagData.reason,
               scheduledWork: flagData.scheduledWork || '',
               scheduledDate: flagData.scheduledDate || '',
@@ -1675,20 +2260,33 @@ export const DataProvider = ({ children }) => {
               flaggedBy,
               flaggedDate: nowStr
             },
-            // Keep disposition marker on replacementFlag so the
-            // For Replacement list can indicate Replacement vs Disposal.
+            // replacementFlag drives the ReplacementRequests list
             replacementFlag: {
               ...r.replacementFlag,
-              ...(isDisposal ? { disposition: 'disposal', reason: flagData.reason, flaggedBy, flaggedDate: nowStr } : {})
+              isFlagged: isReplacement || isDisposal,
+              disposition,
+              reason: flagData.reason,
+              itemSpecs: isReplacement ? (flagData.itemSpecs || '') : (r.replacementFlag?.itemSpecs || ''),
+              flaggedBy,
+              flaggedDate: nowStr,
+              procurementStatus: isReplacement
+                ? (r.replacementFlag?.procurementStatus || 'Pending Purchase Request (PR)')
+                : null
             },
-            status: flagData.type === 'Cannot Complete' ? 'Unable to Complete' : r.status,
+            status: type === 'Cannot Complete' ? 'On Hold' : r.status,
             timeline: [
               ...r.timeline,
               {
-                status: flagData.type,
+                status: type,
                 timestamp: nowStr,
                 actor: flaggedBy,
-                note: flagData.reason
+                note: type === 'Replacement'
+                  ? `Irreparable item reported: ${flagData.reason}. Recommends procurement of ${flagData.itemSpecs}.`
+                  : type === 'Disposal'
+                  ? `Asset condemned for disposal: ${flagData.reason}.`
+                  : `Cannot complete — external contractor needed: ${flagData.reason}.${
+                      flagData.scheduledDate ? ` Proposed: ${flagData.scheduledWork} on ${flagData.scheduledDate} at ${flagData.scheduledTime}.` : ''
+                    }`
               }
             ]
           };
@@ -1697,78 +2295,18 @@ export const DataProvider = ({ children }) => {
       })
     );
 
-    setNotifications(prev => [{
-      id: `notif-${Date.now()}`,
-      title: `Maintenance Flag: ${flagData.type}`,
-      text: `${target.controlNo} was flagged by ${flaggedBy}.${flagData.scheduledDate ? ` Proposed follow-up: ${flagData.scheduledWork} on ${flagData.scheduledDate} at ${flagData.scheduledTime}.` : ''}`,
-      time: 'Just now',
-      unread: true,
-      targetRole: 'admin'
-    }, ...prev]);
-    toast(`Maintenance flag recorded on request ${target.controlNo || reqId}.`, 'info');
-  };
-
-  // Replacement / Irreparable Item Flagging Workflow
-  /* Flagging an irreparable item raises a procurement request and notifies the
-     PDAS office — it is a server-side action with an audit row.
-
-     This function was also broken in a way that was invisible until you used it:
-     it referenced `target` in its notification text without ever defining it,
-     so calling it threw a ReferenceError partway through, leaving the UI in a
-     half-updated state. */
-  const raiseReplacementFlag = async (reqId, flagData) => {
-    const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
-    if (!target) {
-      toast(`Request ${reqId} was not found.`, 'error');
-      return false;
-    }
-    const nowStr = new Date().toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-    try {
-      const { apiFlagReplacement } = await import('../backend/api');
-      await apiFlagReplacement(target.id ?? reqId, { reason: flagData.reason });
-    } catch (err) {
-      toast(`Could not flag ${target.controlNo || reqId}: ${err?.message || 'rejected by the server.'}`, 'error');
-      return false;
-    }
-
-    setRequisitions(prev =>
-      prev.map(r => {
-        if (r.id === reqId || r.controlNo === reqId) {
-          return {
-            ...r,
-            replacementFlag: {
-              isFlagged: true,
-              reason: flagData.reason,
-              itemSpecs: flagData.itemSpecs,
-              disposition: 'replacement',
-              flaggedBy: flagData.flaggedBy || 'Maintenance Personnel',
-              flaggedDate: nowStr,
-              procurementStatus: 'Pending Purchase Request (PR)'
-            },
-            maintenanceFlag: {
-              type: 'Replacement',
-              reason: flagData.reason,
-              flaggedBy: flagData.flaggedBy || 'Maintenance Personnel',
-              flaggedDate: nowStr
-            },
-            timeline: [
-              ...r.timeline,
-              {
-                status: 'Replacement Flagged',
-                timestamp: nowStr,
-                actor: flagData.flaggedBy || 'Maintenance Personnel',
-                note: `Irreparable item reported: ${flagData.reason}. Recommends procurement of ${flagData.itemSpecs}.`
-              }
-            ]
-          };
-        }
-        return r;
-      })
-    );
-    toast(`${target.controlNo || reqId} flagged for replacement.`, 'info');
+    await refreshRequisitions();
+    await fetchNotifications();
+    toast(`${target.controlNo || reqId} flagged as "${type}". Notifications and printable PDF report are now available.`, 'info');
     return true;
   };
+
+  // One endpoint serves every outcome flag, so all callers share the same
+  // implementation. raiseMaintenanceFlag remains for existing WorkQueue callers.
+  const raiseOutcomeFlag = (reqId, flagData) =>
+    raiseReplacementFlag(reqId, flagData);
+  const raiseMaintenanceFlag = (reqId, flagData) =>
+    raiseReplacementFlag(reqId, flagData);
 
   /* Confirming the wet-ink hardcopy is the System Administrator's attestation
      that the signed QF-PDAS-DC-01 is on file. It does NOT grant final approval:
@@ -1776,23 +2314,29 @@ export const DataProvider = ({ children }) => {
      write 'Approved'. Sending it straight to 'Approved' skipped that level
      entirely — and the generic endpoint sets no approval flags, so nothing on
      the server noticed. */
-  const confirmSignatures = async (reqId, remarks = 'Signed hardcopy received') => {
+  const confirmSignatures = async (reqId, remarks = 'Signed hardcopy received', scanUrl = '') => {
     const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
     if (!target) {
       toast(`Request ${reqId} was not found.`, 'error');
       return false;
     }
-    if (target.status !== 'Awaiting Signatures' && target.status !== 'Pending Final Approval') {
+    if (target.status !== 'Awaiting Signatures' && target.status !== 'Pending Final Approval' && target.status !== 'Under Review') {
       toast(`${target.controlNo || reqId} is "${target.status}" — there are no signatures pending on it.`, 'error');
       return false;
     }
 
     try {
-      const { apiUpdateJobRequestStatus } = await import('../backend/api');
-      await apiUpdateJobRequestStatus(target.id ?? reqId, {
-        status: 'Pending Final Approval',
-        remarks
+      await apiConfirmSignedForm(target.id_raw ?? target.id ?? reqId, {
+        confirmed: true,
+        scanRef: scanUrl || '',
       });
+      if (target.status !== 'Pending Final Approval') {
+        const { apiUpdateJobRequestStatus } = await import('../backend/api');
+        await apiUpdateJobRequestStatus(target.id ?? reqId, {
+          status: 'Pending Final Approval',
+          remarks
+        });
+      }
       await refreshRequisitions();
       toast(`Signed form confirmed — request ${target.controlNo || reqId} is now awaiting final approval.`);
       return true;
@@ -1808,36 +2352,60 @@ export const DataProvider = ({ children }) => {
      PUT /job-requests/:id/archive, so an archived ticket was still in the live
      queue for every other user and came back on the next refresh. */
   const archiveRequisition = async (reqId) => {
-    const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
+    const target = requisitions.find(r =>
+      r.id === reqId ||
+      r.controlNo === reqId ||
+      r.id_raw === reqId ||
+      String(r.id_raw) === String(reqId) ||
+      r.ticket_no === reqId ||
+      r.officialTrackingNo === reqId
+    );
     if (!target) {
       toast(`Request ${reqId} was not found.`, 'error');
       return false;
     }
+    const resolvedId = target.id_raw ?? target.id ?? reqId;
     try {
       const { apiArchiveJobRequest } = await import('../backend/api');
-      const res = await apiArchiveJobRequest(target.id ?? reqId);
+      const res = await apiArchiveJobRequest(resolvedId);
       await refreshRequisitions();
       toast(res?.message || `Request ${target.controlNo || reqId} archived.`, 'info');
       return true;
     } catch (err) {
+      if (err?.status === 404 || /not found/i.test(err?.message || '')) {
+        setRequisitions(prev => prev.filter(r => r.id !== (target.id ?? reqId) && r.controlNo !== (target.controlNo ?? reqId)));
+        await refreshRequisitions();
+      }
       toast(`Could not archive ${target.controlNo || reqId}: ${err?.message || 'rejected by the server.'}`, 'error');
       return false;
     }
   };
 
   const unarchiveRequisition = async (reqId) => {
-    const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
+    const target = requisitions.find(r =>
+      r.id === reqId ||
+      r.controlNo === reqId ||
+      r.id_raw === reqId ||
+      String(r.id_raw) === String(reqId) ||
+      r.ticket_no === reqId ||
+      r.officialTrackingNo === reqId
+    );
     if (!target) {
       toast(`Request ${reqId} was not found.`, 'error');
       return false;
     }
+    const resolvedId = target.id_raw ?? target.id ?? reqId;
     try {
       const { apiUnarchiveJobRequest } = await import('../backend/api');
-      const res = await apiUnarchiveJobRequest(target.id ?? reqId);
+      const res = await apiUnarchiveJobRequest(resolvedId);
       await refreshRequisitions();
       toast(res?.message || `Request ${target.controlNo || reqId} restored from archive.`, 'info');
       return true;
     } catch (err) {
+      if (err?.status === 404 || /not found/i.test(err?.message || '')) {
+        setRequisitions(prev => prev.filter(r => r.id !== (target.id ?? reqId) && r.controlNo !== (target.controlNo ?? reqId)));
+        await refreshRequisitions();
+      }
       toast(`Could not restore ${target.controlNo || reqId}: ${err?.message || 'rejected by the server.'}`, 'error');
       return false;
     }
@@ -1849,40 +2417,117 @@ export const DataProvider = ({ children }) => {
      admin's aggregate quality figures were computed from whatever happened to
      still be in one browser's memory. */
   const submitEvaluation = async (reqId, evalData) => {
-    const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
+    const target = requisitions.find(r =>
+      r.id === reqId ||
+      r.id_raw === reqId ||
+      r.controlNo === reqId ||
+      r.ticket_no === reqId ||
+      r.officialTrackingNo === reqId ||
+      String(r.id_raw || '') === String(reqId || '') ||
+      String(r.id || '') === String(reqId || '') ||
+      String(r.controlNo || '') === String(reqId || '')
+    );
     if (!target) {
       toast(`Request ${reqId} was not found.`, 'error');
       return null;
     }
+
+    const isMine = Boolean(
+      currentUser && (
+        (target.requesterId && String(target.requesterId) === String(currentUser.id)) ||
+        (target.userId && String(target.userId) === String(currentUser.id)) ||
+        (target.requestedBy && currentUser.name && target.requestedBy.toLowerCase() === currentUser.name.toLowerCase()) ||
+        (target.requesterEmail && currentUser.email && target.requesterEmail.toLowerCase() === currentUser.email.toLowerCase())
+      )
+    );
+    if (!isMine) {
+      toast('Only the original requester who filed this job request can submit Client Satisfaction (CSM) feedback.', 'error');
+      return null;
+    }
+
     const nowStr = new Date().toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    // Calculate fallback ISO ratings from SQD values if available
+    const sqdList = [
+      evalData.sqd0, evalData.sqd1, evalData.sqd2, evalData.sqd3,
+      evalData.sqd4, evalData.sqd5, evalData.sqd6, evalData.sqd7, evalData.sqd8
+    ].map(v => Number(v)).filter(v => !isNaN(v) && v >= 1 && v <= 5);
+    const avgScore = sqdList.length > 0 ? Math.round(sqdList.reduce((a, b) => a + b, 0) / sqdList.length) : 5;
+
+    const fs = evalData.functionalSuitability || evalData.sqd2 || avgScore;
+    const us = evalData.usability || evalData.sqd3 || avgScore;
+    const rel = evalData.reliability || evalData.sqd1 || avgScore;
+    const pe = evalData.performanceEfficiency || evalData.sqd4 || avgScore;
+    const sec = evalData.security || evalData.sqd6 || avgScore;
 
     const evalEntry = {
       id: `EVAL-${Date.now()}`,
-      reqId,
-      controlNo: target?.controlNo || reqId,
+      reqId: target?.ticket_no || target?.controlNo || reqId,
+      controlNo: target?.controlNo || target?.ticket_no || reqId,
       category: target?.category || 'General',
       location: target?.location || 'Unknown',
       resolutionStatus: target?.status || 'Unknown',
       submittedBy: evalData.submittedBy || target?.requestedBy || 'Requester',
       submittedAt: nowStr,
-      functionalSuitability: evalData.functionalSuitability,
-      usability: evalData.usability,
-      reliability: evalData.reliability,
-      performanceEfficiency: evalData.performanceEfficiency,
-      security: evalData.security,
-      comments: evalData.comments || ''
+      functionalSuitability: fs,
+      usability: us,
+      reliability: rel,
+      performanceEfficiency: pe,
+      security: sec,
+      comments: evalData.comments || evalData.suggestions || '',
+      // Official CSM Form Attributes
+      consent: evalData.consent ?? 1,
+      clientType: evalData.clientType || 'Government',
+      sex: evalData.sex || '',
+      age: evalData.age || '',
+      region: evalData.region || 'Region VI - Western Visayas',
+      serviceAvailed: evalData.serviceAvailed || target?.title || target?.controlNo,
+      cc1: evalData.cc1 || '',
+      cc2: evalData.cc2 || '',
+      cc3: evalData.cc3 || '',
+      sqd0: evalData.sqd0,
+      sqd1: evalData.sqd1,
+      sqd2: evalData.sqd2,
+      sqd3: evalData.sqd3,
+      sqd4: evalData.sqd4,
+      sqd5: evalData.sqd5,
+      sqd6: evalData.sqd6,
+      sqd7: evalData.sqd7,
+      sqd8: evalData.sqd8,
+      suggestions: evalData.suggestions || evalData.comments || '',
+      email: evalData.email || '',
+      csmData: evalData.csmData || evalData
     };
 
     try {
       const { apiSubmitEvaluation } = await import('../backend/api');
       await apiSubmitEvaluation({
-        jobRequestId: target.id ?? reqId,
-        functionalSuitability: evalData.functionalSuitability,
-        usability: evalData.usability,
-        reliability: evalData.reliability,
-        performanceEfficiency: evalData.performanceEfficiency,
-        security: evalData.security,
-        comments: evalData.comments || ''
+        jobRequestId: (target.id_raw || target.id) ?? reqId,
+        functionalSuitability: fs,
+        usability: us,
+        reliability: rel,
+        performanceEfficiency: pe,
+        security: sec,
+        comments: evalData.comments || evalData.suggestions || '',
+        // CSM fields
+        consent: evalData.consent ?? 1,
+        clientType: evalData.clientType || 'Government',
+        region: evalData.region || 'Region VI - Western Visayas',
+        serviceAvailed: evalData.serviceAvailed || target?.title || target?.controlNo,
+        cc1: evalData.cc1 || '',
+        cc2: evalData.cc2 || '',
+        cc3: evalData.cc3 || '',
+        sqd0: evalData.sqd0,
+        sqd1: evalData.sqd1,
+        sqd2: evalData.sqd2,
+        sqd3: evalData.sqd3,
+        sqd4: evalData.sqd4,
+        sqd5: evalData.sqd5,
+        sqd6: evalData.sqd6,
+        sqd7: evalData.sqd7,
+        sqd8: evalData.sqd8,
+        suggestions: evalData.suggestions || evalData.comments || '',
+        csmData: evalEntry
       });
     } catch (err) {
       toast(`Evaluation not saved: ${err?.message || 'rejected by the server.'}`, 'error');
@@ -1890,12 +2535,27 @@ export const DataProvider = ({ children }) => {
     }
 
     setEvaluations(prev => [evalEntry, ...prev]);
-    toast(`Evaluation submitted for request ${target?.controlNo || reqId}. Thank you.`);
+    toast(`Client satisfaction feedback submitted for request ${target?.controlNo || reqId}. Thank you!`);
     return evalEntry;
   };
 
-  const updateProcurementStatus = (reqId, procurementStatus) => {
+  const updateProcurementStatus = async (reqId, procurementStatus) => {
     const target = requisitions.find(r => r.id === reqId || r.controlNo === reqId);
+
+    // Fix 2: use the raw numeric DB id so WHERE id=? in the backend matches correctly.
+    // target.id is the display string (e.g. 'JR-2026-0001'); id_raw is the integer.
+    const dbId = target ? (target.id_raw ?? target.id) : reqId;
+
+    if (target) {
+      try {
+        const { apiUpdateProcurementStatus } = await import('../backend/api');
+        await apiUpdateProcurementStatus(dbId, procurementStatus);
+      } catch (err) {
+        toast?.(`Failed to save procurement status: ${err?.message || 'Unknown error'}`, 'error');
+        return;
+      }
+    }
+
     setRequisitions(prev =>
       prev.map(r => {
         if (r.id === reqId || r.controlNo === reqId) {
@@ -1940,7 +2600,10 @@ export const DataProvider = ({ children }) => {
         // The reminder job joins on this column. Sending the name alone left
         // assigned_to NULL, so no reminder was ever sent for any schedule.
         assignedTo: eventData.assignedTo || null,
-        inChargeName: eventData.inCharge
+        inChargeName: eventData.inCharge,
+        description: eventData.description || null,
+        recurrence: eventData.recurrence || 'Quarterly',
+        reminderLead: eventData.reminderLead || '1 day before'
       });
       // Remember the row's real id so the next read of the server list can
       // match this entry instead of showing the same schedule twice.
@@ -1966,6 +2629,28 @@ export const DataProvider = ({ children }) => {
     ]);
   };
 
+  /* Mark a schedule as completed with optional remarks and photo. */
+  const completeCalendarEvent = async (event, { remarks, photoUrl, photoName } = {}) => {
+    const sId = event?.serverId || (typeof event?.id === 'string' && event.id.startsWith('PMS-') ? parseInt(event.id.replace('PMS-', ''), 10) : (typeof event?.id === 'number' ? event.id : null));
+    if (sId) {
+      await apiCompletePreventiveSchedule(sId, { remarks, photoUrl, photoName });
+    }
+    setCalendarEvents(prev =>
+      prev.map(ev =>
+        ev.id === event?.id || (sId && ev.serverId === sId) || (sId && ev.id === `PMS-${sId}`)
+          ? {
+              ...ev,
+              status: 'Completed',
+              completedAt: new Date().toISOString(),
+              completionNotes: remarks,
+              completionPhoto: photoUrl,
+              completionPhotoName: photoName
+            }
+          : ev
+      )
+    );
+  };
+
   /* Withdraw a schedule. A row that reached the server is deleted there first
      and only then dropped locally, so a failed delete surfaces as an error
      instead of a schedule that vanishes here and reappears on the next read. */
@@ -1974,6 +2659,21 @@ export const DataProvider = ({ children }) => {
       await apiDeletePreventiveSchedule(event.serverId);
     }
     setCalendarEvents(prev => prev.filter(ev => ev.id !== event.id));
+  };
+
+  /* Reschedule or reassign a preventive maintenance event. */
+  const updateCalendarEvent = async (id, patch) => {
+    const serverId = patch?.serverId || id;
+    if (serverId && typeof serverId === 'number') {
+      try {
+        await apiUpdatePreventiveSchedule(serverId, patch);
+      } catch {
+        // Fall back to local update
+      }
+    }
+    setCalendarEvents(prev =>
+      prev.map(ev => (ev.id === id || ev.serverId === serverId ? { ...ev, ...patch } : ev))
+    );
   };
 
   const toggleUserStatus = async (userId) => {
@@ -2025,6 +2725,7 @@ export const DataProvider = ({ children }) => {
   };
 
   const sendMessage = (threadId, text, senderName = 'PDAS Director') => {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     setMessages(prev =>
       prev.map(m => {
         if (m.id === threadId) {
@@ -2033,23 +2734,95 @@ export const DataProvider = ({ children }) => {
             unread: false,
             preview: text,
             time: 'Just now',
-            thread: [...m.thread, { sender: senderName, text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]
+            thread: [...m.thread, { sender: senderName, text, time }]
           };
         }
         return m;
       })
     );
+    const target = messages.find(m => m.id === threadId);
+    if (target?.backendId) {
+      apiReplyMessage(target.backendId, text).catch(err => {
+        console.warn('Failed to send backend message reply:', err);
+      });
+    }
   };
 
-  const createMessageThread = ({ subject, recipient, controlNo = '', initialMessage, senderName = 'PDAS Director' }) => {
+  const markThreadRead = (threadId) => {
+    setMessages(prev =>
+      prev.map(m => (m.id === threadId ? { ...m, unread: false } : m))
+    );
+    const target = messages.find(m => m.id === threadId);
+    if (target?.backendId) {
+      apiMarkMessageRead(target.backendId).catch(err => {
+        console.warn('Failed to mark message read on backend:', err);
+      });
+    }
+  };
+
+  const editMessage = (threadId, msgIndex, newText) => {
+    setMessages(prev =>
+      prev.map(m => {
+        if (m.id !== threadId) return m;
+        const updatedThread = m.thread.map((msg, i) =>
+          i === msgIndex ? { ...msg, text: newText, edited: true } : msg
+        );
+        return { ...m, thread: updatedThread, preview: msgIndex === m.thread.length - 1 ? newText : m.preview };
+      })
+    );
+  };
+
+  const deleteMessage = (threadId, msgIndex) => {
+    setMessages(prev =>
+      prev.map(m => {
+        if (m.id !== threadId) return m;
+        const updatedThread = m.thread.filter((_, i) => i !== msgIndex);
+        const lastMsg = updatedThread[updatedThread.length - 1];
+        return { ...m, thread: updatedThread, preview: lastMsg?.text || '' };
+      })
+    );
+  };
+
+  const createMessageThread = async ({
+    subject,
+    recipient,
+    recipientId = null,
+    controlNo = '',
+    initialMessage,
+    senderName = 'PDAS Director',
+    unread = false,
+    role = 'Participant',
+    contactName = '',
+    contactEmail = '',
+    backendId = null
+  }) => {
+    let serverId = backendId;
+    if (!serverId && currentUser) {
+      try {
+        const { apiSendMessage } = await import('../backend/api');
+        const res = await apiSendMessage({
+          recipientId: recipientId || null,
+          subject: subject || 'Direct Message',
+          body: initialMessage || ''
+        });
+        if (res?.id) serverId = res.id;
+      } catch (err) {
+        console.warn('Backend message thread creation error:', err.message);
+      }
+    }
+
     const newThread = {
-      id: `msg_${Date.now()}`,
+      id: serverId ? `db_msg_${serverId}` : `msg_${Date.now()}`,
+      backendId: serverId,
+      recipientId,
       sender: recipient,
-      role: 'Participant',
+      contactName,
+      contactEmail,
+      role: role || 'Participant',
       controlNo: controlNo || 'GENERAL-INQ',
       subject: subject || 'General Maintenance Inquiry',
       time: 'Just now',
-      unread: false,
+      unread,
       preview: initialMessage,
       thread: [
         {
@@ -2061,6 +2834,40 @@ export const DataProvider = ({ children }) => {
     };
     setMessages(prev => [newThread, ...prev]);
     return newThread;
+  };
+
+  const sendContactInquiry = async ({ name, email, message, subject }) => {
+    const cleanName = String(name || '').trim();
+    const cleanEmail = String(email || '').trim();
+    const cleanMessage = String(message || '').trim();
+    const cleanSubject = (subject && String(subject).trim()) || `Public Inquiry: ${cleanName}`;
+
+    let backendResult = null;
+    try {
+      backendResult = await apiSendContactMessage({
+        name: cleanName,
+        email: cleanEmail,
+        message: cleanMessage,
+        subject: cleanSubject
+      });
+    } catch (err) {
+      console.warn('Backend contact delivery failed (fallback to local state):', err);
+    }
+
+    const newThread = createMessageThread({
+      subject: cleanSubject,
+      recipient: `${cleanName} (${cleanEmail})`,
+      contactName: cleanName,
+      contactEmail: cleanEmail,
+      role: 'Public Visitor',
+      controlNo: 'PUBLIC-CONTACT',
+      initialMessage: cleanMessage,
+      senderName: `${cleanName} (${cleanEmail})`,
+      unread: true,
+      backendId: backendResult?.id || null
+    });
+
+    return { success: true, id: backendResult?.id || newThread.id };
   };
 
   // Campus Locations & QR Code Registry Management
@@ -2209,6 +3016,10 @@ export const DataProvider = ({ children }) => {
   // not a room: the intake flow picks it up, opens the form straight into
   // scanning and clears the flag so every later filing opens normally.
   const [pendingScanIntent, setPendingScanIntent] = useState(false);
+  // When a QR URL is opened (?qr=ISATU-xxx) the resolved location object is
+  // parked here; useRequestIntake picks it up, opens the form pre-filled and
+  // clears the slot so every subsequent filing starts blank.
+  const [pendingScannedLocation, setPendingScannedLocation] = useState(null);
 
   return (
     <DataContext.Provider
@@ -2228,10 +3039,13 @@ export const DataProvider = ({ children }) => {
         refreshUserData,
         messages,
         notifications,
+        archivedNotifications,
         unreadCount,
         fetchNotifications,
         markAllNotificationsRead,
         markNotificationRead,
+        archiveNotification,
+        restoreNotification,
         deleteNotification,
         clearAllNotifications,
         evaluations,
@@ -2264,6 +3078,7 @@ export const DataProvider = ({ children }) => {
         assignTechnician,
         updateRequisitionStatus,
         reviseRequisition,
+        raiseOutcomeFlag,
         raiseMaintenanceFlag,
         raiseReplacementFlag,
         updateProcurementStatus,
@@ -2271,34 +3086,48 @@ export const DataProvider = ({ children }) => {
         refreshRequisitions,
         addRequisition,
         completeStandardFormForUrgent,
+        approveFollowUpForm,
         updateActionTaken,
         updateFinalAction,
         archiveRequisition,
         unarchiveRequisition,
         submitEvaluation,
         addCalendarEvent,
+        updateCalendarEvent,
+        completeCalendarEvent,
         removeCalendarEvent,
         toggleUserStatus,
         updateUser,
         removeUser,
         requestPasswordChange,
         sendMessage,
+        markThreadRead,
+        editMessage,
+        deleteMessage,
         createMessageThread,
+        sendContactInquiry,
+        refreshMessages: fetchBackendMessages,
         trackingConfig,
         updateTrackingConfig,
         formTemplateConfig,
         updateFormTemplateConfig,
         resetFormTemplateConfig,
+        csmTemplateConfig,
+        updateCsmTemplateConfig,
+        resetCsmTemplateConfig,
         peekNextTrackingNumber,
         generateNextTrackingNumber,
         updateRequisitionTrackingNo,
         updateRequisitionForm,
+        fetchRequisitionDetail,
         ticketSearch,
         setTicketSearch,
         focusedTicketRef,
         setFocusedTicketRef,
         pendingScanIntent,
-        setPendingScanIntent
+        setPendingScanIntent,
+        pendingScannedLocation,
+        setPendingScannedLocation
       }}
     >
       {children}

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { apiLogin, apiLogout, getToken, setToken } from '../backend/api';
+import { apiLogin, apiLogout, getToken, setToken, apiRequestPasswordReset, apiVerifyResetCode, apiVerifyAndResetPassword } from '../backend/api';
 
 // Phase 2: idle timeout — 30 minutes without mouse/keyboard/touch activity
 // ends the session automatically (limits unattended-session exposure).
@@ -13,38 +13,45 @@ const AuthContext = createContext();
 // (or npm run seed:admin for the admin one).
 export const TEST_PERSONAS = [
   {
+    key: 'superadmin',
+    roleName: 'Super Administrator',
+    title: 'Super Admin (User & QR Registry)',
+    email: 'superadmin@gmail.com',
+    iconText: '👑',
+  },
+  {
     key: 'admin',
     roleName: 'System Administrator',
     title: 'PDAS Administrator',
-    email: 'adminisatu.edu.ph@gmail.com',
+    email: 'admin@gmail.com',
     iconText: '🛡️',
   },
   {
     key: 'campus_admin',
     roleName: 'Approver',
     title: 'Campus Administrator (Approver)',
-    email: 'campusadmin@isatu.edu.ph',
+    email: 'campusadmin@gmail.com',
     iconText: '🏷️',
   },
   {
     key: 'faculty',
     roleName: 'Faculty Requester',
     title: 'Faculty / College Dean',
-    email: 'faculty@isatu.edu.ph',
+    email: 'faculty@gmail.com',
     iconText: '🎓',
   },
   {
     key: 'staff',
     roleName: 'Staff Requester',
     title: 'Laboratory Property Custodian',
-    email: 'staff@isatu.edu.ph',
+    email: 'staff@gmail.com',
     iconText: '💼',
   },
   {
     key: 'maintenance',
     roleName: 'Maintenance Personnel',
     title: 'Lead Maintenance Specialist',
-    email: 'maintenance@isatu.edu.ph',
+    email: 'maintenance@gmail.com',
     iconText: '🔧',
   },
 ];
@@ -122,7 +129,23 @@ export const AuthProvider = ({ children }) => {
     // Server-side invalidation is best-effort (works offline by just clearing).
     apiLogout();
     setToken(null);
+    const prevId = currentUser?.id;
     setCurrentUser(null);
+    // Clear cached user data keys and remembered email on sign-out
+    try {
+      const keysToClear = [
+        'fixit_pdas_remembered_login_v1',
+        'fixit_pdas_messages_v4',
+        'fixit_pdas_messages_v3',
+        'fixit_pdas_evaluations_v3',
+        'fixit_pdas_calendar_v3',
+        prevId ? `fixit_active_tab_${prevId}` : null,
+      ].filter(Boolean);
+      keysToClear.forEach((k) => localStorage.removeItem(k));
+      ['fixit_active_tab', 'fixit_settings_tab', 'fixit_user_mgmt_tab', 'fixit_job_request_status'].forEach((k) =>
+        sessionStorage.removeItem(k)
+      );
+    } catch { /* private browsing */ }
   };
 
   const switchUser = (userObj) => {
@@ -136,14 +159,40 @@ export const AuthProvider = ({ children }) => {
     });
   };
 
-  const resetPassword = async () => {
-    // A proper token-based reset flow is a follow-up item (see DEPLOYMENT.md
-    // known limitations). For now this is intentionally not implemented
-    // against the real backend to avoid a fake success message.
-    return { success: false, error: 'Password reset is not available. Contact the PDAS office.' };
+  const requestPasswordReset = async (email) => {
+    try {
+      const res = await apiRequestPasswordReset(email);
+      return { success: true, message: res.message };
+    } catch (err) {
+      return { success: false, error: err.message || 'Failed to send verification code.' };
+    }
+  };
+
+  const verifyResetCode = async (email, otp) => {
+    try {
+      const res = await apiVerifyResetCode(email, otp);
+      return { success: true, message: res.message };
+    } catch (err) {
+      return { success: false, error: err.message || 'Incorrect verification code. Please check your Gmail.' };
+    }
+  };
+
+  const verifyAndResetPassword = async (email, otp, newPassword) => {
+    try {
+      const res = await apiVerifyAndResetPassword(email, otp, newPassword);
+      return { success: true, message: res.message };
+    } catch (err) {
+      return { success: false, error: err.message || 'Failed to verify code and reset password.' };
+    }
+  };
+
+  // Kept for backward compatibility
+  const resetPassword = async (email, newPassword) => {
+    return { success: false, error: 'Please use the 2-step Gmail verification code to reset your password.' };
   };
 
   const normalizedRole = String(currentUser?.role || currentUser?.userType || '').toLowerCase();
+  const isSuperAdmin = Boolean(currentUser && (normalizedRole === 'superadmin' || normalizedRole === 'super_admin'));
   const isCampusAdmin = Boolean(currentUser && (normalizedRole === 'campus_admin' || normalizedRole === 'campus_administrator'));
   // A user is a supervisor if their role is 'supervisor' OR they have the
   // is_supervisor designation flag set by an admin (faculty/staff users who
@@ -157,10 +206,7 @@ export const AuthProvider = ({ children }) => {
   const isFaculty = Boolean(currentUser && normalizedRole === 'faculty');
   const isStaff = Boolean(currentUser && normalizedRole === 'staff');
   const isMaintenance = Boolean(currentUser && (normalizedRole === 'technician' || normalizedRole === 'maintenance'));
-  // Designated supervisors log in as faculty/staff and use the Faculty/Staff
-  // dashboard (which shows a supervisor queue tab when is_supervisor=true).
-  // isFacultyOrStaff is now true for supervisors as well.
-  const isFacultyOrStaff = Boolean(isFaculty || isStaff);
+  const isFacultyOrStaff = Boolean(isFaculty || isStaff || normalizedRole === 'supervisor');
 
 
   return (
@@ -168,6 +214,7 @@ export const AuthProvider = ({ children }) => {
       value={{
         currentUser,
         isAdmin,
+        isSuperAdmin,
         isCampusAdmin,
         isSupervisor,
         isFaculty,
@@ -179,6 +226,9 @@ export const AuthProvider = ({ children }) => {
         switchUser,
         updateCurrentUser,
         resetPassword,
+        requestPasswordReset,
+        verifyResetCode,
+        verifyAndResetPassword,
         logout,
         isLoginModalOpen,
         setIsLoginModalOpen,

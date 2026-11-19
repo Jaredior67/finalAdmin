@@ -46,8 +46,8 @@ export const TRANSITIONS = {
      travel through the PDAS office rather than jumping straight to the
      requester. */
   'Pending Final Approval': ['Approved', 'Returned', 'Rejected', 'Under Review', 'On Hold'],
-  'Approved': ['Ongoing', 'On Hold'],
-  'Ongoing': ['Completed', 'On Hold'],
+  'Approved': ['Ongoing', 'On Hold', 'Returned'],
+  'Ongoing': ['Completed', 'On Hold', 'Returned'],
   // An admin may put work on hold and later release it.
   'On Hold': ['Ongoing', 'Rejected'],
   /* 'Returned for Revision' — what a supervisor/admin return produces. Unlike
@@ -67,13 +67,32 @@ export const isTerminalStatus = (status) => terminalStatuses().includes(status);
 /** Every status the policy knows about. */
 export const allStatuses = () => Object.keys(TRANSITIONS);
 
-export const isPrivileged = (role) => role === 'admin' || role === 'campus_admin';
+export const isPrivileged = (role) => role === 'admin' || role === 'campus_admin' || role === 'superadmin';
 export const isTech = (role) => role === 'maintenance' || role === 'technician';
 export const isSupervisor = (role) => role === 'supervisor';
 // Accept a full user object so callers can check both the role and the
 // is_supervisor designation flag without duplicating the logic everywhere.
 export const isUserSupervisor = (user) =>
   !!(user && (user.role === 'supervisor' || user.isSupervisor || user.is_supervisor));
+
+/** Identify urgent emergency tickets that follow the direct dispatch flow. */
+export const isUrgentTicket = (row) => {
+  if (!row) return false;
+  return Boolean(
+    row.is_urgent === true ||
+    row.isUrgent === true ||
+    row.request_type === 'Urgent Request' ||
+    row.requestType === 'Urgent Request' ||
+    row.urgency_level === 'High Risk' ||
+    row.urgency_level === 'Urgent' ||
+    row.urgency === 'High Risk' ||
+    row.urgency === 'Urgent' ||
+    row.priority === 'High Risk' ||
+    row.priority === 'Urgent' ||
+    row.category === 'Urgent Hazard' ||
+    row.urgentPendingStandardForm
+  );
+};
 
 /**
  * Statuses that record an APPROVAL of the request rather than a return, a
@@ -122,10 +141,11 @@ export function canViewTicket(user, row) {
       || Boolean(row.department && user.department && row.department === user.department);
   }
   if (isTech(user.role)) {
-    return (
+    const isAssigned =
       (row.assigned_to != null && (Number(row.assigned_to) === Number(user.id) || String(row.assigned_to) === String(user.id))) ||
-      Boolean(row.assigned_to && user.name && String(row.assigned_to).toLowerCase().includes(String(user.name).toLowerCase()))
-    );
+      Boolean(row.assigned_to && user.name && String(row.assigned_to).toLowerCase().includes(String(user.name).toLowerCase()));
+    if (isAssigned) return true;
+    return ['Approved', 'Ongoing', 'In Progress', 'Completed'].includes(row.status) || isUrgentTicket(row);
   }
   return row.requester_id === user.id;
 }
@@ -185,6 +205,14 @@ export function canSuperviseTicket(user, row) {
  */
 export function missingApprovalFor(row, targetStatus, actor = null) {
   if (!row) return null;
+  // Emergency incident policy: supervisor endorsement is waived to prevent delays,
+  // but Campus Administrator (Approver) approval is strictly required before PDAS Admin can assign maintenance personnel (Ongoing).
+  if (isUrgentTicket(row)) {
+    if (targetStatus === 'Ongoing' && !Boolean(row.campus_admin_approved)) {
+      return 'the Campus Administrator (Approver)';
+    }
+    return null;
+  }
   const missing = (flag) => {
     if (actor === 'supervisor' && flag === 'supervisor_approved') return false;
     if (actor === 'campus_admin' && flag === 'campus_admin_approved') return false;
@@ -196,7 +224,7 @@ export function missingApprovalFor(row, targetStatus, actor = null) {
   // confirmation. (Requests with no Supervisor are auto-confirmed at filing, so
   // they satisfy this like any other.)
   if ((targetStatus === 'Under Review' || targetStatus === 'Pending Final Approval')
-      && missing('supervisor_approved')) {
+    && missing('supervisor_approved')) {
     return 'the Immediate Supervisor';
   }
   if (targetStatus === 'Approved') {
@@ -224,7 +252,7 @@ export function authorizeStatusChange(user, row, targetStatus) {
       (row.assigned_to != null && (Number(row.assigned_to) === Number(user.id) || String(row.assigned_to) === String(user.id))) ||
       Boolean(row.assigned_to && user.name && String(row.assigned_to).toLowerCase().includes(String(user.name).toLowerCase()))
     );
-    const techAllowedStatus = ['Ongoing', 'In Progress', 'Completed'].includes(targetStatus) && ['Approved', 'Ongoing', 'In Progress', 'On Hold'].includes(current);
+    const techAllowedStatus = ['Ongoing', 'In Progress', 'Completed', 'On Hold'].includes(targetStatus) && ['Pending', 'Under Review', 'Approved', 'Ongoing', 'In Progress', 'On Hold'].includes(current);
     const techCompletion = isAssignedTech && techAllowedStatus;
     if (!techCompletion) {
       return { ok: false, status: 403, message: 'Only assigned maintenance personnel or PDAS Admin can update this ticket.' };
@@ -255,7 +283,11 @@ export function authorizeStatusChange(user, row, targetStatus) {
     return { ok: false, status: 403, message: SELF_APPROVAL_MESSAGE };
   }
 
-  if (!(TRANSITIONS[current] || []).includes(targetStatus)) {
+  const allowedTransitions = isUrgentTicket(row)
+    ? [...(TRANSITIONS[current] || []), ...(current === 'Pending' || current === 'Under Review' ? ['Approved', 'Pending Final Approval'] : [])]
+    : (TRANSITIONS[current] || []);
+
+  if (!allowedTransitions.includes(targetStatus)) {
     return { ok: false, status: 422, message: `Cannot move a request from "${current}" to "${targetStatus}".` };
   }
 
@@ -337,7 +369,11 @@ export function assertAgainstPolicy({ user, row, target, actor }) {
   }
 
   // 4. The transition itself must be one the policy allows from here.
-  if (!(TRANSITIONS[row.status] || []).includes(target)) {
+  const allowedTransitions = isUrgentTicket(row)
+    ? [...(TRANSITIONS[row.status] || []), ...(row.status === 'Pending' || row.status === 'Under Review' ? ['Approved', 'Pending Final Approval'] : [])]
+    : (TRANSITIONS[row.status] || []);
+
+  if (!allowedTransitions.includes(target)) {
     return {
       ok: false,
       status: 409,

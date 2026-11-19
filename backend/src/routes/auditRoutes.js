@@ -7,7 +7,7 @@ const router = Router();
    page reads this same endpoint. It was admin-only, so that page received a
    403 and rendered an empty table behind an error banner. Read-only access,
    and the role already reaches Analytics & Reports and Official Documents. */
-router.use(verifyToken, requireRole('admin', 'campus_admin'));
+router.use(verifyToken, requireRole('superadmin', 'admin', 'campus_admin'));
 
 // GET /api/audit-log — read-only accountability trail for PDAS Admin and the
 // Campus Administrator.

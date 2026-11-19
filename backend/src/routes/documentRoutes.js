@@ -59,13 +59,19 @@ router.use(verifyToken);
    Returns 'ok', 'forbidden' or 'not_found' so each caller can translate that
    into its own status code and message without re-running the query. */
 async function jobRequestAccess(user, jobRequestId) {
-  if (['admin', 'campus_admin'].includes(user.role)) return 'ok';
+  if (['superadmin', 'admin', 'campus_admin'].includes(user.role)) return 'ok';
   const [jr] = await pool.query(
-    'SELECT requester_id, assigned_to FROM job_requests WHERE id = ?',
+    'SELECT requester_id, assigned_to, supervisor_id FROM job_requests WHERE id = ?',
     [jobRequestId]
   );
   if (jr.length === 0) return 'not_found';
-  return jr[0].requester_id === user.id || jr[0].assigned_to === user.id ? 'ok' : 'forbidden';
+  return (
+    jr[0].requester_id === user.id ||
+    jr[0].assigned_to === user.id ||
+    jr[0].supervisor_id === user.id
+  )
+    ? 'ok'
+    : 'forbidden';
 }
 
 // POST /api/documents - upload a file, optionally tied to a job request

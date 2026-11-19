@@ -82,20 +82,29 @@ export function enqueue(payload) {
 
 export function discard(idempotencyKey) {
   writeOutbox(readOutbox().filter((e) => e.idempotencyKey !== idempotencyKey));
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('storage'));
+}
+
+export function clearOutbox() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {}
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('storage'));
 }
 
 /**
  * Try to send everything that is waiting.
- * @returns {Promise<{sent:number, failed:number, duplicates:number}>}
+ * @returns {Promise<{sent:number, failed:number, duplicates:number, lastError:string|null}>}
  */
 export async function flushOutbox() {
   const entries = readOutbox();
-  if (entries.length === 0) return { sent: 0, failed: 0, duplicates: 0 };
+  if (entries.length === 0) return { sent: 0, failed: 0, duplicates: 0, lastError: null };
 
   const remaining = [];
   let sent = 0;
   let failed = 0;
   let duplicates = 0;
+  let lastError = null;
 
   for (const entry of entries) {
     try {
@@ -107,22 +116,28 @@ export async function flushOutbox() {
       else sent += 1;
       // Confirmed by the server, so it leaves the queue.
     } catch (err) {
-      // Still not going through. Keep it, but stop after a few attempts so a
-      // permanently bad payload does not retry forever.
       const attempts = (entry.attempts || 0) + 1;
       failed += 1;
-      if (attempts >= 5) {
+      lastError = err?.message || String(err);
+
+      const status = Number(err?.status ?? 0);
+      // Permanent 4xx client errors (400, 422, etc.) other than 401 (auth) or 408/429 (timeout/rate limit)
+      // will never succeed on retry. Drop them so they do not permanently trap the queue.
+      const isPermanentClientError = status >= 400 && status < 500 && status !== 401 && status !== 408 && status !== 429;
+
+      if (isPermanentClientError || attempts >= 3) {
         console.warn(
-          `[outbox] giving up on ${entry.idempotencyKey} after ${attempts} attempts: ${err?.message}`
+          `[outbox] dropping unrecoverable request ${entry.idempotencyKey} (${status}): ${lastError}`
         );
         continue;
       }
-      remaining.push({ ...entry, attempts, lastError: err?.message || String(err) });
+      remaining.push({ ...entry, attempts, lastError });
     }
   }
 
   writeOutbox(remaining);
-  return { sent, failed, duplicates };
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('storage'));
+  return { sent, failed, duplicates, lastError };
 }
 
 /** True when the browser believes it has no connection. */

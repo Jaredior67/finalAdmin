@@ -71,6 +71,7 @@ const ACTION_CONFIG = {
   'auth.password_reset': { label: 'Password Reset', category: 'Authentication', color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
   'preventive.scheduled': { label: 'Preventive Task Scheduled', category: 'Preventive Maint.', color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
   'preventive.updated': { label: 'Preventive Task Updated', category: 'Preventive Maint.', color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
+  'preventive.completed': { label: 'Preventive Task Completed', category: 'Preventive Maint.', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
   'preventive.removed': { label: 'Preventive Task Removed', category: 'Preventive Maint.', color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' }
 };
 
@@ -228,7 +229,7 @@ export const AuditTrail = () => {
       const rows = await apiGetAuditLog(500);
       setEntries(Array.isArray(rows) ? rows : []);
     } catch (err) {
-      setLoadError(err.message || 'Could not fetch audit trail logs.');
+      setLoadError(err.message || 'Could not fetch audit log.');
     } finally {
       setLoading(false);
     }
@@ -339,7 +340,7 @@ export const AuditTrail = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `FixIT_Audit_Trail_${toLocalISODate(new Date())}.csv`);
+    link.setAttribute('download', `FixIT_Audit_Log_${toLocalISODate(new Date())}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -353,10 +354,10 @@ export const AuditTrail = () => {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
             <ShieldCheck size={22} color="#001f9c" />
-            <h1 className="page-title" style={{ margin: 0 }}>System Audit Trail</h1>
+            <h1 className="page-title" style={{ margin: 0 }}>Audit Log</h1>
           </div>
           <p className="page-subtitle" style={{ margin: 0 }}>
-            Official ISAT U Dumangas System Audit Log
+            Complete record of system events, status changes, and administrative actions
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
@@ -424,7 +425,7 @@ export const AuditTrail = () => {
         </div>
       ) : loadError && entries.length === 0 ? (
         <EmptyState
-          title="Audit trail log unavailable"
+          title="Audit log unavailable"
           description={loadError}
           action={<button type="button" className="btn btn-secondary btn-sm" onClick={loadTrail}>Retry Connection</button>}
         />
@@ -458,7 +459,7 @@ export const AuditTrail = () => {
                   type="text"
                   className="form-input"
                   placeholder="Search actor, tracking #, or detail..."
-                  aria-label="Search audit trail"
+                  aria-label="Search audit log"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   style={{ paddingLeft: '36px', height: '36px', fontSize: '13px' }}
@@ -563,7 +564,7 @@ export const AuditTrail = () => {
                                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', 
                                 fontWeight: '600', 
                                 color: '#001f9c',
-                                background: '#f8fafc',
+                                background: 'var(--bg-sunken)',
                                 border: '1px solid #e2e8f0',
                                 padding: '2px 7px',
                                 borderRadius: '4px',

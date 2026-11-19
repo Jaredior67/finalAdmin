@@ -3,22 +3,26 @@ import {
   Check,
   AlertTriangle,
   Eye,
-  Printer,
   Phone,
   MapPin,
   User,
-  Users
+  Users,
+  Printer,
+  FileText
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { LimitedTextArea } from '../common/LimitedTextArea';
 import { CategoryPill, UrgencyBadge } from '../common/StatusBadge';
 import { PDASJobRequestFormDocument } from '../common/PDASJobRequestFormDocument';
+import { TechnicalAssessmentReportSheet } from '../common/TechnicalAssessmentReportSheet';
+import { PrintPortal } from '../common/PrintPortal';
+import { printDocument } from '../../utils/print';
 
 /* ==========================================================================
    Every dialog the work queue can open, in one place:
      1. Status & labor log (update status, materials, hours, photo)
      2. Maintenance outcome flag (replacement / disposal / cannot complete)
-     3. Full ticket detail + defect / completion photos
+     3. Full ticket detail + work order / completion photos
      4. Printable QF-PDAS-DC-01 request form
    ========================================================================== */
 
@@ -41,6 +45,8 @@ export const WorkOrderDialogs = ({
   onTargetStatusChange,
   technicianNotes,
   onTechnicianNotesChange,
+  materialsUsed,
+  onMaterialsUsedChange,
   completionPhoto,
   onCompletionPhotoChange,
   onSaveStatus,
@@ -138,6 +144,21 @@ export const WorkOrderDialogs = ({
             </div>
           </div>
 
+
+          <div className="form-group">
+            <LimitedTextArea
+              id="log-materials"
+              label="Materials & Spare Parts Used (Optional)"
+              rows={2}
+              value={materialsUsed || ''}
+              onChange={onMaterialsUsedChange}
+              placeholder="e.g. 2 pcs 20A circuit breaker, 5m #12 THHN wire, 1 roll electrical tape..."
+              style={{ minHeight: '68px' }}
+            />
+            <span style={{ fontSize: '11.5px', color: '#64748b', marginTop: '3px', display: 'block' }}>
+              List all parts and supplies consumed during this repair (will appear on the official form under Remarks).
+            </span>
+          </div>
 
           <div className="form-group">
             <LimitedTextArea
@@ -346,17 +367,30 @@ export const WorkOrderDialogs = ({
         title={`Request Details: ${task.controlNo || ''}`}
         maxWidth="680px"
         footer={
-          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
               Close
             </button>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => onClose('print')}
-            >
-              <Printer size={14} /> Print Request Slip
-            </button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {Boolean(task.replacementFlag?.isFlagged || task.maintenanceFlag?.type) && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => onClose('flag-report')}
+                  title="View and print PDF Maintenance Technical Assessment & Flag Report"
+                >
+                  <Printer size={14} /> Print Flag Report (PDF)
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => onClose('print')}
+                title="View official job request form"
+              >
+                <Eye size={14} /> View Form
+              </button>
+            </div>
           </div>
         }
       >
@@ -414,15 +448,24 @@ export const WorkOrderDialogs = ({
           <div style={{ fontSize: '13px', color: '#1e293b', lineHeight: 1.5 }}>{task.description}</div>
         </div>
 
+        {task.materialsUsed && (
+          <div style={{ background: 'var(--bg-sunken)', padding: '14px', borderRadius: '10px', marginBottom: '16px', border: '1.5px solid #cbd5e1' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: '800', color: '#001f9c', textTransform: 'uppercase', marginBottom: '4px' }}>
+              Materials Used by Maintenance:
+            </div>
+            <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: '600', lineHeight: 1.5 }}>{task.materialsUsed}</div>
+          </div>
+        )}
+
         {task.photoUrl && (
           <div style={{ marginBottom: '16px' }}>
             <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
               <Eye size={12} style={{ verticalAlign: '-2px', marginRight: '4px' }} />
-              Faculty Attached Defect Photo:
+              Requester Attached Photo:
             </div>
             <img
               src={task.photoUrl}
-              alt="Defect visual evidence"
+              alt="Facility visual evidence"
               style={{ width: '100%', maxHeight: '240px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #cbd5e1' }}
             />
           </div>
@@ -447,21 +490,52 @@ export const WorkOrderDialogs = ({
         isOpen={dialog === 'print'}
         onClose={onClose}
         onBack={onClose}
-        title="Official PDAS Job Request Form (QF-PDAS-DC-01)"
+        title="Official PDAS Job Request Form (QF-PDAS-DC-01) — Read-Only View"
         maxWidth="760px"
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '12px', color: '#64748b' }}>
-              ISAT U Dumangas Quality Management System (ISO 9001:2015 Compliant)
+              Read-only view • Form printing is restricted to administrators and the ticket requester.
             </span>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => window.print()}>
-              <Printer size={15} /> Print / Save PDF
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
+              Close
             </button>
           </div>
         }
       >
         <PDASJobRequestFormDocument req={task} />
       </Modal>
+
+      {/* ---------- 5. Printable Maintenance Technical Assessment & Flag Report (QF-PDAS-TA-02) ---------- */}
+      <Modal
+        isOpen={dialog === 'flag-report'}
+        onClose={onClose}
+        onBack={onClose}
+        title={`Maintenance Technical Assessment & Flag Report (QF-PDAS-TA-02) — ${task.controlNo || task.id}`}
+        maxWidth="820px"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <FileText size={14} /> Official Printable / Exportable PDF Report (Use "Save as PDF" in your print dialog)
+            </span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
+                Close
+              </button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => printDocument()}>
+                <Printer size={14} /> Print / Save as PDF
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <TechnicalAssessmentReportSheet req={task} />
+      </Modal>
+      {dialog === 'flag-report' && (
+        <PrintPortal>
+          <TechnicalAssessmentReportSheet req={task} />
+        </PrintPortal>
+      )}
     </>
   );
 };

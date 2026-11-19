@@ -120,28 +120,24 @@ check('the empty state points at the one button instead of duplicating it', () =
   }
 });
 
-console.log('\nScan QR sits beside New Request');
-check('the header carries the shared pair, Scan QR first', () => {
-  // The pair is defined once in RequestIntake.jsx so every dashboard renders
-  // the same two buttons; the dashboard must reference it, not re-draw it.
+console.log('\nNew Request is the single header action');
+check('the header carries the shared RequestIntakeActions component', () => {
+  // RequestIntakeActions is defined once in RequestIntake.jsx; the dashboard
+  // must reference it rather than re-drawing buttons by hand.
   if (!/action=\{<RequestIntakeActions intake=\{intake\} \/>\}/.test(dashSrc)) {
     throw new Error('the header does not render the shared RequestIntakeActions pair');
   }
-  const scan = withRows.indexOf('Scan QR');
   const req = withRows.indexOf('New Request');
-  if (scan === -1) throw new Error('Scan QR did not render');
   if (req === -1) throw new Error('New Request did not render');
-  if (scan > req) throw new Error('Scan QR should sit beside — not after — New Request');
 });
 check('it hands off to the one scanner instead of mounting a second', () => {
   if (/<QrCodeScannerModal/.test(dashSrc)) {
     throw new Error('the dashboard mounts its own scanner — the location step owns it');
   }
+  // The scan intent wiring must still exist in the hook so QR deep-links and
+  // in-form scanning continue to work.
   if (!/setPendingScanIntent\(true\)/.test(intakeSrc)) {
-    throw new Error('the shared Scan QR button does not signal the intake flow');
-  }
-  if (!/onClick=\{intake\.requestScan\}/.test(intakeSrc)) {
-    throw new Error('the Scan QR button is not wired to the intake flow');
+    throw new Error('the intake hook does not signal a scan intent');
   }
 });
 

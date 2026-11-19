@@ -148,16 +148,55 @@ export async function autoSetup() {
     await rootConn.query(`USE \`${dbName}\``);
     console.log(`[setup] Database "${dbName}" ready.`);
 
-    // ── Step 2: Import schema if tables don't exist ────────────
-    const [tables] = await rootConn.query(
+    // ── Step 2: Import schema if new tables don't exist ────────────
+    // Check for `job_requests` — the canonical new-schema table.
+    // The old database had a `users` table but named its tickets `requisitions`,
+    // so checking only for `users` caused the schema import to be skipped even
+    // when `job_requests`, `registration_requests`, etc. were absent.
+    // Using IF NOT EXISTS in schema.sql means old tables are never dropped.
+    const [newTableCheck] = await rootConn.query(
       `SELECT COUNT(*) AS cnt FROM information_schema.tables
-       WHERE table_schema = ? AND table_name = 'users'`,
+       WHERE table_schema = ? AND table_name = 'job_requests'`,
       [dbName]
     );
-    const usersTableExists = tables[0].cnt > 0;
+    const jobRequestsTableExists = newTableCheck[0].cnt > 0;
 
-    if (!usersTableExists) {
-      console.log('[setup] Tables not found — importing schema.sql...');
+    if (!jobRequestsTableExists) {
+      console.log('[setup] New schema tables not found — importing schema.sql...');
+
+      // ── 2a. Rename old-schema tables that would block FK constraints ──────
+      // The legacy database has users.id as varchar(50). The new schema's FK
+      // columns (reviewed_by, supervisor_id, etc.) are INT — MySQL rejects
+      // CREATE TABLE IF NOT EXISTS when the referenced column type is incompatible,
+      // even though it also prevents the table from being recreated. Rename the
+      // old tables to _legacy_* so the new schema can be imported cleanly.
+      // The old data is preserved (just under different names) in case it's needed.
+      const legacyRenames = [
+        ['users',          '_legacy_users'],
+        ['registrations',  '_legacy_registrations'],
+        ['requisitions',   '_legacy_requisitions'],
+        ['notifications',  '_legacy_notifications'],
+        ['departments',    '_legacy_departments'],
+        ['offices',        '_legacy_offices'],
+        ['calendar_events','_legacy_calendar_events'],
+        ['approval_history','_legacy_approval_history'],
+      ];
+      for (const [oldName, newName] of legacyRenames) {
+        try {
+          const [tbl] = await rootConn.query(
+            `SELECT COUNT(*) AS cnt FROM information_schema.tables
+             WHERE table_schema = ? AND table_name = ?`,
+            [dbName, oldName]
+          );
+          if (tbl[0].cnt > 0) {
+            await rootConn.query(`RENAME TABLE \`${oldName}\` TO \`${newName}\``);
+            console.log(`[migration] Renamed legacy table \`${oldName}\` → \`${newName}\`.`);
+          }
+        } catch (e) {
+          console.warn(`[migration] Could not rename \`${oldName}\`:`, e.message);
+        }
+      }
+
       if (!fs.existsSync(SCHEMA_PATH)) {
         console.warn(`[setup] WARNING: schema.sql not found at ${SCHEMA_PATH}. Skipping.`);
       } else {
@@ -165,18 +204,23 @@ export async function autoSetup() {
         await rootConn.query(sql);
         console.log('[setup] Schema imported successfully.');
       }
-    } else {
-      console.log('[setup] Tables exist — verifying schema migrations...');
+    }
+
+    {
+      console.log('[setup] Verifying schema migrations...');
       
       // Run dynamic non-destructive schema migrations for existing DB
       // 1. users columns
       await ensureColumn(rootConn, dbName, 'users', 'middle_name', 'VARCHAR(100) DEFAULT NULL AFTER first_name');
+      await ensureColumn(rootConn, dbName, 'users', 'ext_name', "VARCHAR(20) DEFAULT NULL AFTER last_name");
+      await ensureColumn(rootConn, dbName, 'users', 'id_number', 'VARCHAR(50) DEFAULT NULL AFTER ext_name');
       await ensureColumn(rootConn, dbName, 'users', 'gender', 'VARCHAR(30) DEFAULT NULL');
       await ensureColumn(rootConn, dbName, 'users', 'address', 'TEXT DEFAULT NULL');
       await ensureColumn(rootConn, dbName, 'users', 'birthday', 'DATE DEFAULT NULL');
       await ensureColumn(rootConn, dbName, 'users', 'age', 'INT DEFAULT NULL');
       await ensureColumn(rootConn, dbName, 'users', 'id_photo_url', 'MEDIUMTEXT DEFAULT NULL');
       await ensureColumn(rootConn, dbName, 'users', 'office', 'VARCHAR(150) DEFAULT NULL AFTER department');
+      await ensureColumn(rootConn, dbName, 'users', 'academic_rank', 'VARCHAR(150) DEFAULT NULL AFTER office');
       await ensureColumn(rootConn, dbName, 'users', 'is_supervisor', 'TINYINT(1) NOT NULL DEFAULT 0');
       // supervisor_id: nullable FK to users(id), used to record which designated
       // supervisor is responsible for a given Faculty/Staff member. The FK is
@@ -186,6 +230,8 @@ export async function autoSetup() {
 
       // 2. registration_requests columns
       await ensureColumn(rootConn, dbName, 'registration_requests', 'middle_name', 'VARCHAR(100) DEFAULT NULL AFTER first_name');
+      await ensureColumn(rootConn, dbName, 'registration_requests', 'ext_name', "VARCHAR(20) DEFAULT NULL AFTER last_name");
+      await ensureColumn(rootConn, dbName, 'registration_requests', 'id_number', 'VARCHAR(50) DEFAULT NULL AFTER ext_name');
       await ensureColumn(rootConn, dbName, 'registration_requests', 'gender', 'VARCHAR(30) DEFAULT NULL');
       await ensureColumn(rootConn, dbName, 'registration_requests', 'address', 'TEXT DEFAULT NULL');
       await ensureColumn(rootConn, dbName, 'registration_requests', 'birthday', 'DATE DEFAULT NULL');
@@ -220,6 +266,8 @@ export async function autoSetup() {
       // ch3: "submit a maintenance request with a photo").
       await ensureColumn(rootConn, dbName, 'job_requests', 'photo_url', "MEDIUMTEXT DEFAULT NULL AFTER immediate_supervisor");
       await ensureColumn(rootConn, dbName, 'job_requests', 'photo_name', "VARCHAR(255) DEFAULT NULL AFTER photo_url");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'materials_used', "TEXT DEFAULT NULL AFTER photo_name");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'completion_photo_url', "MEDIUMTEXT DEFAULT NULL AFTER materials_used");
       // The QR tag the request was filed against — the link back to the
       // physical tag on the wall. Not unique: many tickets may share a room.
       await ensureColumn(rootConn, dbName, 'job_requests', 'qr_code_ref', "VARCHAR(64) DEFAULT NULL AFTER photo_name");
@@ -229,9 +277,14 @@ export async function autoSetup() {
       await ensureColumn(rootConn, dbName, 'job_requests', 'replacement_reason', "TEXT DEFAULT NULL");
       await ensureColumn(rootConn, dbName, 'job_requests', 'replacement_item_specs', "TEXT DEFAULT NULL");
       await ensureColumn(rootConn, dbName, 'job_requests', 'replacement_procurement_status', "VARCHAR(100) DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'replacement_disposition', "VARCHAR(20) DEFAULT 'replacement'");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'replacement_flagged_by', "VARCHAR(255) DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'replacement_flagged_at', "DATETIME DEFAULT NULL");
       await ensureColumn(rootConn, dbName, 'job_requests', 'signed_form_confirmed', "BOOLEAN NOT NULL DEFAULT FALSE");
       await ensureColumn(rootConn, dbName, 'job_requests', 'signed_form_confirmed_by', "INT DEFAULT NULL");
       await ensureColumn(rootConn, dbName, 'job_requests', 'signed_form_confirmed_at', "DATETIME DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'urgent_assigned_at', "DATETIME DEFAULT NULL");
+      await ensureColumn(rootConn, dbName, 'job_requests', 'urgent_overdue_notified', "BOOLEAN NOT NULL DEFAULT FALSE");
 
       // 4-Party Approval Chain & Tracking columns
       await ensureColumn(rootConn, dbName, 'job_requests', 'requester_approved', "TINYINT(1) NOT NULL DEFAULT 0");
@@ -250,6 +303,11 @@ export async function autoSetup() {
       await ensureColumn(rootConn, dbName, 'job_requests', 'official_tracking_no', "VARCHAR(50) DEFAULT NULL");
       await ensureColumn(rootConn, dbName, 'job_requests', 'rejection_stage', "VARCHAR(50) DEFAULT NULL");
       await ensureColumn(rootConn, dbName, 'job_requests', 'rejection_remarks', "TEXT DEFAULT NULL");
+      // request_details: JSON snapshot used by the /:id/revise endpoint to
+      // carry fields (title, location, scopeOfWorks) that were removed from the
+      // main UPDATE columns but still need to be preserved across revisions.
+      await ensureColumn(rootConn, dbName, 'job_requests', 'request_details', "JSON DEFAULT NULL");
+
 
       // Free-text fields must have no length cap. Older databases shipped
       // job_request_status_history.remarks as VARCHAR(255), which silently
@@ -313,6 +371,29 @@ export async function autoSetup() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
       `);
 
+      // Sync ticket_sequences from existing job_requests so sequence never collides with existing records
+      try {
+        const [seqRows] = await rootConn.query(`
+          SELECT 
+            CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(ticket_no, '-', 2), '-', -1) AS UNSIGNED) AS yr,
+            MAX(CAST(SUBSTRING_INDEX(ticket_no, '-', -1) AS UNSIGNED)) AS max_no
+          FROM job_requests
+          WHERE ticket_no REGEXP '^JR-[0-9]{4}-[0-9]+$'
+          GROUP BY yr
+        `);
+        for (const row of seqRows) {
+          if (row.yr && row.max_no) {
+            await rootConn.query(`
+              INSERT INTO ticket_sequences (\`year\`, last_no)
+              VALUES (?, ?)
+              ON DUPLICATE KEY UPDATE last_no = GREATEST(last_no, VALUES(last_no))
+            `, [row.yr, row.max_no]);
+          }
+        }
+      } catch (e) {
+        console.warn('[migration] ticket_sequences sync notice:', e.message);
+      }
+
       // tracking_sequences table: atomic official TRK-YYYY-NNNN generation.
       // Issued once on final approval + technician assignment to avoid conflicts.
       await rootConn.query(`
@@ -321,6 +402,29 @@ export async function autoSetup() {
           \`last_no\` INT  NOT NULL DEFAULT 0
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
       `);
+
+      // Sync tracking_sequences from existing job_requests
+      try {
+        const [trkRows] = await rootConn.query(`
+          SELECT 
+            CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(official_tracking_no, '-', 2), '-', -1) AS UNSIGNED) AS yr,
+            MAX(CAST(SUBSTRING_INDEX(official_tracking_no, '-', -1) AS UNSIGNED)) AS max_no
+          FROM job_requests
+          WHERE official_tracking_no REGEXP '^TRK-[0-9]{4}-[0-9]+$'
+          GROUP BY yr
+        `);
+        for (const row of trkRows) {
+          if (row.yr && row.max_no) {
+            await rootConn.query(`
+              INSERT INTO tracking_sequences (\`year\`, last_no)
+              VALUES (?, ?)
+              ON DUPLICATE KEY UPDATE last_no = GREATEST(last_no, VALUES(last_no))
+            `, [row.yr, row.max_no]);
+          }
+        }
+      } catch (e) {
+        console.warn('[migration] tracking_sequences sync notice:', e.message);
+      }
 
       // documents: add file_size for storage quota tracking
       await ensureColumn(rootConn, dbName, 'documents', 'file_size', 'INT UNSIGNED DEFAULT NULL');
@@ -375,6 +479,7 @@ export async function autoSetup() {
       }
 
       // 4. evaluations columns (ISO/IEC 25010)
+      await ensureColumn(rootConn, dbName, 'evaluations', 'rating', 'TINYINT NOT NULL DEFAULT 5');
       await ensureColumn(rootConn, dbName, 'evaluations', 'functional_suitability', 'TINYINT NOT NULL DEFAULT 5');
       await ensureColumn(rootConn, dbName, 'evaluations', 'usability', 'TINYINT NOT NULL DEFAULT 5');
       await ensureColumn(rootConn, dbName, 'evaluations', 'reliability', 'TINYINT NOT NULL DEFAULT 5');
@@ -384,6 +489,26 @@ export async function autoSetup() {
       // be answered for security. Runs before app.listen (server.js:171), so the
       // column exists before the first INSERT can reference it.
       await ensureColumn(rootConn, dbName, 'evaluations', 'security', 'TINYINT NOT NULL DEFAULT 5');
+
+      // CSM (Client Satisfaction Measurement - QF-HRM-15) columns
+      await ensureColumn(rootConn, dbName, 'evaluations', 'consent', 'TINYINT(1) DEFAULT 1');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'client_type', "VARCHAR(50) DEFAULT 'Government'");
+      await ensureColumn(rootConn, dbName, 'evaluations', 'region', "VARCHAR(100) DEFAULT 'Region VI - Western Visayas'");
+      await ensureColumn(rootConn, dbName, 'evaluations', 'service_availed', 'VARCHAR(255) DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'cc1', 'VARCHAR(50) DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'cc2', 'VARCHAR(50) DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'cc3', 'VARCHAR(50) DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'sqd0', 'TINYINT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'sqd1', 'TINYINT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'sqd2', 'TINYINT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'sqd3', 'TINYINT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'sqd4', 'TINYINT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'sqd5', 'TINYINT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'sqd6', 'TINYINT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'sqd7', 'TINYINT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'sqd8', 'TINYINT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'suggestions', 'TEXT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'evaluations', 'csm_data', 'JSON DEFAULT NULL');
 
       /* One evaluation per person per request.
          The POST handler checks for an existing row before inserting, but two
@@ -403,19 +528,64 @@ export async function autoSetup() {
       // 5. preventive_maintenance_schedules table
       await rootConn.query(`
         CREATE TABLE IF NOT EXISTS \`preventive_maintenance_schedules\` (
-          \`id\`             INT AUTO_INCREMENT PRIMARY KEY,
-          \`title\`          VARCHAR(255) NOT NULL,
-          \`category\`       VARCHAR(100) NOT NULL,
-          \`scheduled_date\` DATE NOT NULL,
-          \`time_window\`    VARCHAR(100) DEFAULT '08:00 AM - 12:00 PM',
-          \`location\`       VARCHAR(255) NOT NULL,
-          \`assigned_to\`    INT DEFAULT NULL,
-          \`in_charge_name\` VARCHAR(150) DEFAULT NULL,
-          \`status\`         ENUM('Scheduled','In Progress','Completed','Cancelled') NOT NULL DEFAULT 'Scheduled',
-          \`created_at\`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`id\`                    INT AUTO_INCREMENT PRIMARY KEY,
+          \`title\`                 VARCHAR(255) NOT NULL,
+          \`category\`              VARCHAR(100) NOT NULL,
+          \`scheduled_date\`        DATE NOT NULL,
+          \`time_window\`           VARCHAR(100) DEFAULT '08:00 AM - 12:00 PM',
+          \`location\`              VARCHAR(255) NOT NULL,
+          \`assigned_to\`           INT DEFAULT NULL,
+          \`in_charge_name\`        VARCHAR(150) DEFAULT NULL,
+          \`status\`                ENUM('Scheduled','In Progress','Completed','Cancelled') NOT NULL DEFAULT 'Scheduled',
+          \`description\`           TEXT DEFAULT NULL,
+          \`recurrence\`            VARCHAR(50) DEFAULT 'Quarterly',
+          \`reminder_lead\`         VARCHAR(50) DEFAULT '1 day before',
+          \`completed_at\`          DATETIME DEFAULT NULL,
+          \`completed_by\`          INT DEFAULT NULL,
+          \`completion_notes\`      TEXT DEFAULT NULL,
+          \`completion_photo\`      MEDIUMTEXT DEFAULT NULL,
+          \`completion_photo_name\` VARCHAR(255) DEFAULT NULL,
+          \`created_at\`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT \`fk_pms_assigned\` FOREIGN KEY (\`assigned_to\`) REFERENCES \`users\`(\`id\`) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
       `);
+      await ensureColumn(rootConn, dbName, 'preventive_maintenance_schedules', 'description', 'TEXT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'preventive_maintenance_schedules', 'recurrence', "VARCHAR(50) DEFAULT 'Quarterly'");
+      await ensureColumn(rootConn, dbName, 'preventive_maintenance_schedules', 'reminder_lead', "VARCHAR(50) DEFAULT '1 day before'");
+      await ensureColumn(rootConn, dbName, 'preventive_maintenance_schedules', 'completed_at', 'DATETIME DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'preventive_maintenance_schedules', 'completed_by', 'INT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'preventive_maintenance_schedules', 'completion_notes', 'TEXT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'preventive_maintenance_schedules', 'completion_photo', 'MEDIUMTEXT DEFAULT NULL');
+      await ensureColumn(rootConn, dbName, 'preventive_maintenance_schedules', 'completion_photo_name', 'VARCHAR(255) DEFAULT NULL');
+
+      // messages: ensure contact_name and contact_email columns for public inquiries
+      await ensureColumn(rootConn, dbName, 'messages', 'contact_name', 'VARCHAR(150) DEFAULT NULL AFTER recipient_id');
+      await ensureColumn(rootConn, dbName, 'messages', 'contact_email', 'VARCHAR(150) DEFAULT NULL AFTER contact_name');
+
+      // notifications: archive instead of permanently deleting. Older databases
+      // only had is_read, so the column is added on boot for existing installs.
+      await ensureColumn(rootConn, dbName, 'notifications', 'is_archived', 'BOOLEAN NOT NULL DEFAULT FALSE');
+      await ensureColumn(rootConn, dbName, 'notifications', 'archived_at', 'DATETIME DEFAULT NULL');
+      await addIndexSafe('idx_notif_archived', 'ALTER TABLE `notifications` ADD INDEX `idx_notif_archived` (`user_id`, `is_archived`)');
+
+      // password_resets: ensure table exists for secure OTP authentication
+      try {
+        await rootConn.query(`
+          CREATE TABLE IF NOT EXISTS \`password_resets\` (
+            \`id\`         INT AUTO_INCREMENT PRIMARY KEY,
+            \`email\`      VARCHAR(150) NOT NULL,
+            \`otp_hash\`   VARCHAR(255) NOT NULL,
+            \`expires_at\` DATETIME NOT NULL,
+            \`attempts\`   INT NOT NULL DEFAULT 0,
+            \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX \`idx_pwd_resets_email\` (\`email\`),
+            INDEX \`idx_pwd_resets_expires\` (\`expires_at\`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+      } catch (e) {
+        console.warn('[migration] password_resets table setup notice:', e.message);
+      }
+
       // ── Supervisor role migration (one-time, idempotent) ─────────────────
       // Any user whose role is 'supervisor' becomes role='faculty' (or 'staff')
       // with is_supervisor=1. The 'supervisor' role value is then removed from
@@ -447,14 +617,14 @@ export async function autoSetup() {
         }
       }
 
-      // Update role enum — remove 'supervisor', keep all other values.
+      // Update role enum — ensure 'superadmin' is included, remove 'supervisor', keep all other values.
       try {
         await rootConn.query(
           `ALTER TABLE \`users\` MODIFY COLUMN \`role\`
-           ENUM('admin','campus_admin','faculty','staff','maintenance','technician')
+           ENUM('superadmin','admin','campus_admin','faculty','staff','maintenance','technician')
            NOT NULL DEFAULT 'faculty'`
         );
-        console.log('[migration] users.role ENUM: removed supervisor value.');
+        console.log('[migration] users.role ENUM: updated with superadmin value.');
       } catch (e) {
         console.warn('[migration] Notice on users role enum update:', e.message);
       }
@@ -471,7 +641,7 @@ export async function autoSetup() {
     }
 
     // ── Step 3: Seed admin user if none exists ─────────────────
-    const adminEmail = process.env.ADMIN_EMAIL || 'adminisatu.edu.ph@gmail.com';
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@gmail.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
     const adminFirst = process.env.ADMIN_FIRST_NAME || 'Kristine J.';
     const adminLast = process.env.ADMIN_LAST_NAME || 'Amar';
@@ -511,12 +681,13 @@ export async function autoSetup() {
       }
     } else {
       const testAccounts = [
-        { firstName: 'Dr. Ramil G.', lastName: 'Lumauag',      email: 'campusadmin@isatu.edu.ph',  password: 'admin123',     role: 'campus_admin', department: 'Office of the Campus Administrator' },
-        // Note: supervisor@isatu.edu.ph is now a faculty account with is_supervisor=1
-        { firstName: 'Engr. Roberto D.', lastName: 'Cruz',    email: 'supervisor@isatu.edu.ph',   password: 'supervisor123', role: 'faculty',      department: 'Office of Instruction', isSupervisor: 1 },
-        { firstName: 'Mark',         lastName: 'Villanueva',   email: 'maintenance@isatu.edu.ph',  password: 'tech123',      role: 'maintenance',  department: 'Planning, Development, and Auxiliary Services' },
-        { firstName: 'Elena',        lastName: 'Ramos',         email: 'faculty@isatu.edu.ph',      password: 'faculty123',   role: 'faculty',      department: 'BSIT' },
-        { firstName: 'Juan',         lastName: 'Santos',        email: 'staff@isatu.edu.ph',        password: 'staff123',     role: 'staff',        department: 'Planning, Development, and Auxiliary Services Office' },
+        { firstName: 'Super',        lastName: 'Administrator', email: 'superadmin@gmail.com',      password: 'superadmin123',role: 'superadmin',   department: 'Office of Institutional Systems' },
+        { firstName: 'Dr. Ramil G.', lastName: 'Lumauag',      email: 'campusadmin@gmail.com',     password: 'admin123',     role: 'campus_admin', department: 'Office of the Campus Administrator' },
+        // Note: supervisor@gmail.com is now a faculty account with is_supervisor=1
+        { firstName: 'Engr. Roberto D.', lastName: 'Cruz',    email: 'supervisor@gmail.com',      password: 'supervisor123', role: 'faculty',      department: 'Office of Instruction', isSupervisor: 1 },
+        { firstName: 'Mark',         lastName: 'Villanueva',   email: 'maintenance@gmail.com',     password: 'tech123',      role: 'maintenance',  department: 'Planning, Development, and Auxiliary Services' },
+        { firstName: 'Elena',        lastName: 'Ramos',         email: 'faculty@gmail.com',         password: 'faculty123',   role: 'faculty',      department: 'BSIT' },
+        { firstName: 'Juan',         lastName: 'Santos',        email: 'staff@gmail.com',           password: 'staff123',     role: 'staff',        department: 'Planning, Development, and Auxiliary Services Office' },
       ];
 
       for (const acct of testAccounts) {
@@ -538,9 +709,100 @@ export async function autoSetup() {
           );
         }
       }
+
+      // Link faculty demo user to supervisor demo user
+      const [supUser] = await rootConn.query("SELECT id FROM users WHERE email = 'supervisor@gmail.com' LIMIT 1");
+      if (supUser.length) {
+        await rootConn.query("UPDATE users SET supervisor_id = ? WHERE email = 'faculty@gmail.com'", [supUser[0].id]);
+      }
     }
 
-    console.log('[setup] Auto-setup & migrations complete.');
+    // Seed initial preventive maintenance schedules
+    const sampleSchedules = [
+        {
+          title: 'Gutter Clearing & Roof Drainage Inspection',
+          category: 'Safety & Compliance',
+          scheduled_date: '2026-10-08',
+          time_window: '08:00 AM - 12:00 PM',
+          location: 'ISAT U Admin Building',
+          in_charge_name: 'Mark Villanueva',
+          description: 'Clear leaves and debris from box gutters and downspout heads before rainy spells.',
+          recurrence: 'Quarterly',
+          reminder_lead: '1 day before'
+        },
+        {
+          title: 'AC Filter Cleaning & Performance Inspection',
+          category: 'Air Conditioning',
+          scheduled_date: '2026-10-26',
+          time_window: '09:00 AM - 12:00 PM',
+          location: 'Computer Laboratory 1 & 2',
+          in_charge_name: 'Mark Villanueva',
+          description: 'Clean blower wheel, wash air filters, check refrigerant pressure and thermostat response.',
+          recurrence: 'Monthly',
+          reminder_lead: '1 day before'
+        },
+        {
+          title: 'Electrical Panel & Circuit Breaker Check',
+          category: 'Electrical',
+          scheduled_date: '2026-10-28',
+          time_window: '01:00 PM - 04:00 PM',
+          location: 'Main Academic Building (Ground & 2nd Floor)',
+          in_charge_name: 'Mark Villanueva',
+          description: 'Inspect distribution boards, thermal scan connections for hot spots, tighten lug terminals.',
+          recurrence: 'Quarterly',
+          reminder_lead: '2 days before'
+        },
+        {
+          title: 'Fire Extinguisher & Safety Equipment Inspection',
+          category: 'Safety & Compliance',
+          scheduled_date: '2026-10-30',
+          time_window: '08:00 AM - 11:30 AM',
+          location: 'Campus-wide (All Buildings & Laboratories)',
+          in_charge_name: 'Mark Villanueva',
+          description: 'Verify pressure gauges, inspect pin seals, tag certification records, check emergency exits.',
+          recurrence: 'Monthly',
+          reminder_lead: '1 day before'
+        },
+        {
+          title: 'Water Storage Tank & Booster Pump Servicing',
+          category: 'Water/Sanitary',
+          scheduled_date: '2026-11-04',
+          time_window: '08:00 AM - 12:00 PM',
+          location: 'Overhead Water Reservoir & GSM Pump House',
+          in_charge_name: 'Mark Villanueva',
+          description: 'Check float switches, flush drainage valves, service booster pump pressure switches.',
+          recurrence: 'Quarterly',
+          reminder_lead: '3 days before'
+        },
+        {
+          title: 'Backup Diesel Generator Load & Battery Health Test',
+          category: 'Mechanical',
+          scheduled_date: '2026-11-10',
+          time_window: '09:00 AM - 11:00 AM',
+          location: 'Powerhouse / Generator Shed',
+          in_charge_name: 'Mark Villanueva',
+          description: 'Check battery electrolyte levels, test automatic transfer switch (ATS), run 15-minute load test.',
+          recurrence: 'Monthly',
+          reminder_lead: '1 day before'
+        }
+      ];
+
+      for (const s of sampleSchedules) {
+        const [ex] = await rootConn.query(
+          'SELECT id FROM preventive_maintenance_schedules WHERE title = ? AND scheduled_date = ?',
+          [s.title, s.scheduled_date]
+        );
+        if (ex.length === 0) {
+          await rootConn.query(
+            `INSERT INTO preventive_maintenance_schedules 
+             (title, category, scheduled_date, time_window, location, in_charge_name, description, recurrence, reminder_lead, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Scheduled')`,
+            [s.title, s.category, s.scheduled_date, s.time_window, s.location, s.in_charge_name, s.description, s.recurrence, s.reminder_lead]
+          );
+        }
+      }
+
+      console.log('[setup] Auto-setup & migrations complete.');
   } finally {
     await rootConn.end();
   }

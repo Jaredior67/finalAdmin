@@ -17,24 +17,58 @@ router.post('/', async (req, res) => {
       performanceEfficiency,
       security,
       rating, // fallback single rating if passed
-      comments
+      comments,
+      // CSM Fields (Client Satisfaction Measurement QF-HRM-15)
+      consent,
+      clientType,
+      region,
+      serviceAvailed,
+      cc1,
+      cc2,
+      cc3,
+      sqd0,
+      sqd1,
+      sqd2,
+      sqd3,
+      sqd4,
+      sqd5,
+      sqd6,
+      sqd7,
+      sqd8,
+      suggestions,
+      csmData
     } = req.body;
 
     if (!jobRequestId) {
       return res.status(400).json({ message: 'jobRequestId is required.' });
     }
 
-    const fs = Number(functionalSuitability || rating || 5);
-    const us = Number(usability || rating || 5);
-    const rel = Number(reliability || rating || 5);
-    const pe = Number(performanceEfficiency || rating || 5);
-    const sec = Number(security || rating || 5);
+    // Calculate fallback score from SQDs if ISO criteria not directly provided (0 = N/A, excluded from mean)
+    const validSqd = [sqd0, sqd1, sqd2, sqd3, sqd4, sqd5, sqd6, sqd7, sqd8]
+      .map(v => (v === undefined || v === null || v === '' ? NaN : Number(v)))
+      .filter(v => !isNaN(v) && v >= 1 && v <= 5);
+    const avgSqd = validSqd.length > 0 ? Math.round(validSqd.reduce((a, b) => a + b, 0) / validSqd.length) : 5;
 
-    if ([fs, us, rel, pe, sec].some(v => v < 1 || v > 5)) {
-      return res.status(400).json({ message: 'All ISO/IEC 25010 ratings must be between 1 and 5.' });
-    }
+    const pickScore = (primary, ratingVal, sqdVal, fallbackAvg) => {
+      for (const candidate of [primary, ratingVal, sqdVal]) {
+        if (candidate !== undefined && candidate !== null && candidate !== '') {
+          const n = Number(candidate);
+          if (!isNaN(n) && n >= 1 && n <= 5) return Math.round(n);
+        }
+      }
+      return fallbackAvg;
+    };
 
-    const [jobRows] = await pool.query('SELECT * FROM job_requests WHERE id = ?', [jobRequestId]);
+    const fs = Math.max(1, Math.min(5, pickScore(functionalSuitability, rating, sqd2, avgSqd)));
+    const us = Math.max(1, Math.min(5, pickScore(usability, rating, sqd3, avgSqd)));
+    const rel = Math.max(1, Math.min(5, pickScore(reliability, rating, sqd1, avgSqd)));
+    const pe = Math.max(1, Math.min(5, pickScore(performanceEfficiency, rating, sqd4, avgSqd)));
+    const sec = Math.max(1, Math.min(5, pickScore(security, rating, sqd6, avgSqd)));
+
+    const [jobRows] = await pool.query(
+      'SELECT * FROM job_requests WHERE id = ? OR ticket_no = ? OR official_tracking_no = ?',
+      [jobRequestId, jobRequestId, jobRequestId]
+    );
     const jobRequest = jobRows[0];
     if (!jobRequest) {
       return res.status(404).json({ message: 'Job request not found.' });
@@ -42,30 +76,69 @@ router.post('/', async (req, res) => {
     if (jobRequest.status !== 'Completed' && jobRequest.status !== 'completed') {
       return res.status(400).json({ message: 'Only completed job requests can be evaluated.' });
     }
-    // Ownership: only the requester who filed the ticket may evaluate it.
-    if (!['admin', 'campus_admin'].includes(req.user.role) && jobRequest.requester_id !== req.user.id) {
-      return res.status(403).json({ message: 'Only the requester can evaluate this job request.' });
+    // Ownership: strictly restrict to the original requester who filed the ticket.
+    const isOriginalRequester = Boolean(
+      (jobRequest.requester_id && Number(jobRequest.requester_id) === Number(req.user.id)) ||
+      (jobRequest.requester_email && req.user.email && jobRequest.requester_email.toLowerCase() === req.user.email.toLowerCase()) ||
+      (jobRequest.requester_name && req.user.name && jobRequest.requester_name.toLowerCase() === req.user.name.toLowerCase())
+    );
+    if (!isOriginalRequester) {
+      return res.status(403).json({ message: 'Only the original requester who filed this job request can submit Client Satisfaction (CSM) feedback.' });
     }
 
-    /* One evaluation per user per ticket.
-       The SELECT-then-INSERT below cannot be relied on alone: two submissions
-       in flight both read "none found" and both insert, because there is no
-       constraint behind them. The unique index added on
-       (job_request_id, evaluated_by) is the real guard, and a violation is
-       reported as the same 409 the check produces. */
+    const overallRating = Math.max(1, Math.min(5, Number(rating || Math.round((fs + us + rel + pe + sec) / 5))));
+
+    /* One evaluation per user per ticket. */
     let result;
     try {
+      const csmPayload = csmData ? (typeof csmData === 'string' ? csmData : JSON.stringify(csmData)) : JSON.stringify({
+        consent: consent ?? 1,
+        clientType: clientType || 'Government',
+        region: region || 'Region VI - Western Visayas',
+        serviceAvailed: serviceAvailed || jobRequest.ticket_no,
+        cc1, cc2, cc3,
+        sqd: { sqd0, sqd1, sqd2, sqd3, sqd4, sqd5, sqd6, sqd7, sqd8 },
+        suggestions: suggestions || comments || null
+      });
+
       [result] = await pool.query(
         `INSERT INTO evaluations
-          (job_request_id, evaluated_by, functional_suitability, usability, reliability, performance_efficiency, security, comments)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [jobRequestId, req.user.id, fs, us, rel, pe, sec, comments || null]
+          (job_request_id, evaluated_by, rating, functional_suitability, usability, reliability, performance_efficiency, security, comments,
+           consent, client_type, region, service_availed, cc1, cc2, cc3, sqd0, sqd1, sqd2, sqd3, sqd4, sqd5, sqd6, sqd7, sqd8, suggestions, csm_data)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          jobRequest.id, req.user.id, overallRating, fs, us, rel, pe, sec, comments || suggestions || null,
+          consent ?? 1, clientType || 'Government', region || 'Region VI - Western Visayas', serviceAvailed || jobRequest.ticket_no,
+          cc1 || null, cc2 || null, cc3 || null,
+          sqd0 !== undefined ? Number(sqd0) : null,
+          sqd1 !== undefined ? Number(sqd1) : null,
+          sqd2 !== undefined ? Number(sqd2) : null,
+          sqd3 !== undefined ? Number(sqd3) : null,
+          sqd4 !== undefined ? Number(sqd4) : null,
+          sqd5 !== undefined ? Number(sqd5) : null,
+          sqd6 !== undefined ? Number(sqd6) : null,
+          sqd7 !== undefined ? Number(sqd7) : null,
+          sqd8 !== undefined ? Number(sqd8) : null,
+          suggestions || comments || null,
+          csmPayload
+        ]
       );
     } catch (err) {
       if (err?.code === 'ER_DUP_ENTRY') {
         return res.status(409).json({ message: 'You have already submitted an evaluation for this job request.' });
       }
-      throw err;
+      // If table doesn't have the columns yet, fallback to original query
+      if (err?.code === 'ER_BAD_FIELD_ERROR') {
+        console.warn('Evaluations table missing CSM columns, falling back to base columns:', err.message);
+        [result] = await pool.query(
+          `INSERT INTO evaluations
+            (job_request_id, evaluated_by, rating, functional_suitability, usability, reliability, performance_efficiency, security, comments)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [jobRequest.id, req.user.id, overallRating, fs, us, rel, pe, sec, comments || suggestions || null]
+        );
+      } else {
+        throw err;
+      }
     }
 
     // Notify PDAS Admins that evaluation was submitted
@@ -77,7 +150,20 @@ router.post('/', async (req, res) => {
           admin.id,
           'Evaluation submitted',
           `Evaluation for ${jobRequest.ticket_no} submitted with an average rating of ${((fs + us + rel + pe + sec) / 5).toFixed(1)} out of 5.`,
-          `/job-requests/${jobRequestId}`
+          `/job-requests/${jobRequest.id}`
+        ]
+      );
+    }
+
+    // Notify assigned technician of the client rating
+    if (jobRequest.assigned_to) {
+      await pool.query(
+        'INSERT INTO notifications (user_id, title, message, link) VALUES (?, ?, ?, ?)',
+        [
+          jobRequest.assigned_to,
+          `Client Feedback: ${jobRequest.ticket_no}`,
+          `The client submitted feedback for ${jobRequest.ticket_no} (Rating: ${((fs + us + rel + pe + sec) / 5).toFixed(1)}/5).`,
+          `/job-requests/${jobRequest.id}`
         ]
       );
     }
@@ -90,20 +176,16 @@ router.post('/', async (req, res) => {
 });
 
 // GET /api/evaluations/job-request/:jobRequestId
-/* An evaluation carries the requester's name, the building and room, and the
-   request description. The POST handler in this same file correctly checks that
-   the caller is the requester or an administrator; these reads had no check at
-   all, so any signed-in account — including a freshly self-registered staff
-   member — could page through every evaluation in the system. */
 router.get('/job-request/:jobRequestId', async (req, res) => {
   try {
     const [jrRows] = await pool.query(
-      'SELECT id, requester_id, assigned_to, supervisor_id, status FROM job_requests WHERE id = ?',
-      [req.params.jobRequestId]
+      'SELECT id, requester_id, assigned_to, supervisor_id, status FROM job_requests WHERE id = ? OR ticket_no = ? OR official_tracking_no = ?',
+      [req.params.jobRequestId, req.params.jobRequestId, req.params.jobRequestId]
     );
     if (jrRows.length === 0) {
       return res.status(404).json({ message: 'Job request not found.' });
     }
+    const realJobRequestId = jrRows[0].id;
     if (!canViewTicket(req.user, jrRows[0]) && !isPrivileged(req.user.role)) {
       return res.status(403).json({ message: 'You do not have access to this request.' });
     }
@@ -113,7 +195,7 @@ router.get('/job-request/:jobRequestId', async (req, res) => {
        FROM evaluations e
        LEFT JOIN users u ON u.id = e.evaluated_by
        WHERE e.job_request_id = ? ORDER BY e.created_at DESC`,
-      [req.params.jobRequestId]
+      [realJobRequestId]
     );
     res.json(rows);
   } catch (err) {
@@ -122,12 +204,12 @@ router.get('/job-request/:jobRequestId', async (req, res) => {
   }
 });
 
-// GET /api/evaluations - all evaluations for analytics
-// The cross-ticket quality report is an oversight function, not a per-user view.
-router.get('/', requireRole('admin', 'campus_admin', 'supervisor'), async (req, res) => {
+// GET /api/evaluations - all evaluations for analytics (or user's own / department's evaluations)
+router.get('/', async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT e.*, 
+    const isAdminLevel = ['superadmin', 'admin', 'campus_admin'].includes(req.user.role);
+    const isSupervisorUser = req.user.role === 'supervisor' || Boolean(req.user.is_supervisor);
+    let query = `SELECT e.*, 
               jr.ticket_no, jr.category, jr.urgency_level, jr.status AS resolution_status,
               cl.building, cl.floor, cl.room,
               CONCAT(u.first_name, ' ', u.last_name) AS evaluated_by_name
@@ -135,8 +217,21 @@ router.get('/', requireRole('admin', 'campus_admin', 'supervisor'), async (req, 
        LEFT JOIN job_requests jr ON jr.id = e.job_request_id
        LEFT JOIN campus_locations cl ON cl.id = jr.location_id
        LEFT JOIN users u ON u.id = e.evaluated_by
-       ORDER BY e.created_at DESC`
-    );
+       LEFT JOIN users req_u ON req_u.id = jr.requester_id`;
+    const params = [];
+    if (isAdminLevel) {
+      // Full campus visibility
+    } else if (isSupervisorUser) {
+      // Scope supervisor to their department or tickets they supervise
+      query += ' WHERE e.evaluated_by = ? OR jr.requester_id = ? OR jr.supervisor_id = ? OR (req_u.department IS NOT NULL AND req_u.department = ?)';
+      params.push(req.user.id, req.user.id, req.user.id, req.user.department || '');
+    } else {
+      query += ' WHERE e.evaluated_by = ? OR jr.requester_id = ?';
+      params.push(req.user.id, req.user.id);
+    }
+    query += ' ORDER BY e.created_at DESC';
+
+    const [rows] = await pool.query(query, params);
     res.json(rows);
   } catch (err) {
     console.error('GET /evaluations error:', err);

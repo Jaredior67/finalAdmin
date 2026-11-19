@@ -19,10 +19,22 @@ export const PDAS_HEAD_TITLE =
   'Head, PDAS / Director, Planning Development and Auxiliary Services';
 
 /** Office held by the final approver. */
-export const APPROVER_TITLE = 'Campus Administrator (Final Approver)';
+export const APPROVER_TITLE = 'Campus Administrator';
 
 /** An unsigned line. A form with no recorded signatory must look unsigned. */
 export const UNSIGNED_LINE = '________________________';
+
+/**
+ * Institutional name of the current PDAS Head.
+ * Hardcoded as an institutional fact — changes only when the position changes.
+ */
+export const PDAS_HEAD_NAME = 'KRISTINE J. AMAR';
+
+/**
+ * Institutional name of the current Campus Administrator.
+ * Hardcoded as an institutional fact — changes only when the position changes.
+ */
+export const CAMPUS_ADMIN_NAME = 'RAMIL G. LUMAUAG, Ed.D., DIT';
 
 /**
  * First non-blank candidate, or the blank signature line.
@@ -77,3 +89,16 @@ export const formatGovTimestamp = (dateString) => {
   return `${formattedDate} at ${formattedTime}`;
 };
 
+/**
+ * Formats a date string as "Month Day, Year" — e.g. "October 24, 2026".
+ * Used for the Date of Request and received-date fields on the official form.
+ *
+ * @param {string|Date} dateString
+ * @returns {string}
+ */
+export const formatDateMDY = (dateString) => {
+  if (!dateString) return '';
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return String(dateString);
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+};

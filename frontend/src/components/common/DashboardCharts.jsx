@@ -226,7 +226,7 @@ const CardHeading = ({ title, icon, total }) => (
 );
 
 const ChartCard = ({ title, icon, total, children }) => (
-  <section style={cardStyle}>
+  <section style={cardStyle} className="kpi-card-animated">
     <CardHeading title={title} icon={icon} total={total} />
     {children}
   </section>
@@ -273,7 +273,7 @@ const Donut = ({ segments, total, unit, onClick }) => {
         }}
         onClick={onClick ? () => onClick(seg.label) : undefined}
       >
-        <title>{`${seg.label}: ${seg.value} (${seg.pct}%)`}</title>
+        <title>{`${seg.label}: ${seg.value} of ${total}`}</title>
       </circle>
     );
   });
@@ -317,7 +317,7 @@ const Legend = ({ segments, onClick }) => (
           cursor: onClick ? 'pointer' : 'default', borderRadius: '6px',
           transition: 'background 0.12s'
         }}
-        onMouseEnter={onClick ? (e) => { e.currentTarget.style.background = '#f1f5f9'; } : undefined}
+        onMouseEnter={onClick ? (e) => { e.currentTarget.style.background = 'var(--bg-hover)'; } : undefined}
         onMouseLeave={onClick ? (e) => { e.currentTarget.style.background = 'transparent'; } : undefined}
       >
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: seg.color, flexShrink: 0 }} />
@@ -341,7 +341,7 @@ const Bars = ({ items, onClick }) => (
         key={item.label}
         style={{ marginBottom: 13, cursor: onClick ? 'pointer' : 'default', borderRadius: '6px', transition: 'background 0.12s', padding: '2px 4px', margin: '0 -4px' }}
         onClick={onClick ? () => onClick(item.label) : undefined}
-        onMouseEnter={onClick ? (e) => { e.currentTarget.style.background = '#f1f5f9'; } : undefined}
+        onMouseEnter={onClick ? (e) => { e.currentTarget.style.background = 'var(--bg-hover)'; } : undefined}
         onMouseLeave={onClick ? (e) => { e.currentTarget.style.background = 'transparent'; } : undefined}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', marginBottom: 5 }}>
@@ -416,7 +416,10 @@ export const DonutCard = ({
   palette = 'auto',
   unit = 'TOTAL',
   emptyCopy,
-  onSegmentClick
+  onSegmentClick,
+  showLegend = true,
+  footer,
+  children
 }) => {
   const rows = (list || []).filter(Boolean);
   const total = rows.length;
@@ -427,10 +430,19 @@ export const DonutCard = ({
 
   return (
     <ChartCard title={title} icon={icon}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: showLegend ? 'flex-start' : 'center',
+        gap: '16px',
+        padding: showLegend ? 0 : '10px 0 6px',
+        flexWrap: 'wrap'
+      }}>
         <Donut segments={segments} total={total} unit={unit} onClick={onSegmentClick} />
-        <Legend segments={segments} onClick={onSegmentClick} />
+        {showLegend && <Legend segments={segments} onClick={onSegmentClick} />}
       </div>
+      {footer}
+      {children}
     </ChartCard>
   );
 };
@@ -453,7 +465,9 @@ export const BarCard = ({
   colorPalette = 'status',
   totalLabel = 'in total',
   emptyCopy,
-  onBarClick
+  onBarClick,
+  footer,
+  children
 }) => {
   const rows = (list || []).filter(Boolean);
   const total = rows.length;
@@ -466,6 +480,8 @@ export const BarCard = ({
     <ChartCard title={title} icon={icon} total={total}>
       <Bars items={items} onClick={onBarClick} />
       <span style={{ fontSize: '11px', color: '#768499', marginTop: '2px' }}>{totalLabel}</span>
+      {footer}
+      {children}
     </ChartCard>
   );
 };
@@ -489,7 +505,9 @@ export const ColumnCard = ({
   pick = (r) => r.status,
   palette = 'status',
   totalLabel = 'filed in this window',
-  emptyCopy
+  emptyCopy,
+  footer,
+  children
 }) => {
   const rows = (list || []).filter(Boolean);
   if (rows.length === 0) return <ChartCard title={title} icon={icon}><EmptyNote copy={emptyCopy} /></ChartCard>;
@@ -568,6 +586,8 @@ export const ColumnCard = ({
         ))}
       </div>
       <span style={{ fontSize: '11px', color: '#768499', marginTop: '6px' }}>{totalLabel}</span>
+      {footer}
+      {children}
     </ChartCard>
   );
 };

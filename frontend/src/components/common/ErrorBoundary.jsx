@@ -21,6 +21,7 @@ export class ErrorBoundary extends React.Component {
 
   render() {
     if (!this.state.hasError) return this.props.children;
+    const isDev = typeof import.meta !== 'undefined' && import.meta.env?.DEV;
     return (
       <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 16px' }}>
         <div style={{ maxWidth: '520px', width: '100%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '32px', textAlign: 'center', boxShadow: 'var(--shadow-card)' }}>
@@ -31,6 +32,11 @@ export class ErrorBoundary extends React.Component {
           <p style={{ fontSize: '14px', color: '#64748b', lineHeight: 1.5, margin: '0 0 20px 0' }}>
             This section failed to load. Your filed requests and drafts are safe — try reloading the view.
           </p>
+          {isDev && this.state.error && (
+            <pre style={{ textAlign: 'left', fontSize: '11px', color: '#dc2626', background: '#fef2f2', borderRadius: '6px', padding: '10px', overflowX: 'auto', marginBottom: '16px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {String(this.state.error?.message || this.state.error)}
+            </pre>
+          )}
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
             <button
               type="button"

@@ -71,9 +71,10 @@ export const QUEUE_VIEWS = [
   }
 ];
 
-/* Legacy tab id → queue view, so old bookmarks and deep links land in the
-   right place instead of dead-ending after the pages were merged. */
+/* Tab id → queue view mapping */
 export const LEGACY_TAB_VIEW = {
+  'tech-dashboard': 'all',
+  'tech-tasks': 'all',
   'tech-emergency': 'urgent',
   'tech-history': 'completed'
 };
@@ -91,12 +92,8 @@ export const compareBySort = (sort, a, b) => {
 
   switch (sort) {
     case 'newest':
-      if (isUrgentA && !isUrgentB) return -1;
-      if (!isUrgentA && isUrgentB) return 1;
       return String(b.date || '').localeCompare(String(a.date || ''));
     case 'oldest':
-      if (isUrgentA && !isUrgentB) return -1;
-      if (!isUrgentA && isUrgentB) return 1;
       return String(a.date || '').localeCompare(String(b.date || ''));
     case 'location':
       if (isUrgentA && !isUrgentB) return -1;
@@ -107,28 +104,63 @@ export const compareBySort = (sort, a, b) => {
       const rank = isUrgentA ? 0 : (URGENCY_RANK[a.urgency] ?? 9);
       const other = isUrgentB ? 0 : (URGENCY_RANK[b.urgency] ?? 9);
       if (rank !== other) return rank - other;
-      return String(b.date || '').localeCompare(String(a.date || ''));
+      // First-come, first-served (FCFS): earliest submitted first
+      const dateCmp = String(a.date || '').localeCompare(String(b.date || ''));
+      if (dateCmp !== 0) return dateCmp;
+      return String(a.controlNo || a.id || '').localeCompare(String(b.controlNo || b.id || ''));
     }
   }
 };
 
-/* Case/whitespace tolerant "is this ticket in my queue" check. The old code
-   hard-coded "mark"/"villanueva", which is why other technicians saw an
-   empty queue — now any ticket that matches the signed-in technician, or is
-   still open (crew work), is included. */
-export const buildMyQueue = (requisitions, currentUser) => {
-  const name = String(currentUser?.name || '').trim().toLowerCase();
-  const email = String(currentUser?.email || '').trim().toLowerCase();
-  const isOpen = (t) => t.status !== 'Completed' && t.status !== 'Rejected';
+/**
+ * Match a ticket to the signed-in user.
+ * Technicians see strictly what is assigned to them by account ID or staff name.
+ * Admin and campus administrators see the whole campus facility queue.
+ */
+export const isTicketAssignedToUser = (ticket, user) => {
+  if (!ticket || !user) return false;
+  if (ticket.isArchived) return false;
 
-  return (requisitions || []).filter((t) => {
-    if (t.isArchived) return false;
-    if (!name) return true;
-    const assignee = String(t.assignedTo || '').toLowerCase();
-    if (name && assignee.includes(name)) return true;
-    if (email && String(t.requesterEmail || '').toLowerCase() === email) return true;
-    return isOpen(t);
-  });
+  // Privileged administrative accounts see the whole facility queue
+  if (user.role === 'admin' || user.role === 'campus_admin') {
+    return true;
+  }
+
+  const userId = user.id != null ? String(user.id) : null;
+  const userName = String(user.name || `${user.firstName || user.first_name || ''} ${user.lastName || user.last_name || ''}`).trim().toLowerCase();
+  const userUsername = String(user.username || '').trim().toLowerCase();
+
+  // 1. Foreign key ID match (assignedToId or assigned_to)
+  const assigneeId = ticket.assignedToId != null
+    ? String(ticket.assignedToId)
+    : (ticket.assigned_to != null ? String(ticket.assigned_to) : null);
+
+  if (userId && assigneeId && (userId === assigneeId || Number(userId) === Number(assigneeId))) {
+    return true;
+  }
+
+  // 2. Name / username match on assignedTo text
+  const assigneeText = String(ticket.assignedTo || ticket.assignee_name || '').trim().toLowerCase();
+  if (assigneeText) {
+    const assignedTokens = assigneeText.split(/[,;/]+/).map((s) => s.trim()).filter(Boolean);
+    for (const token of assignedTokens) {
+      if (userId && token === userId) return true;
+      if (userName && (token === userName || token.includes(userName) || userName.includes(token))) return true;
+      if (userUsername && (token === userUsername || token.includes(userUsername))) return true;
+    }
+  }
+
+  return false;
+};
+
+/**
+ * Build the individual technician's relevant work queue.
+ * Returns only work orders specifically assigned to the signed-in technician,
+ * guaranteeing brand new accounts start with an empty, clean queue.
+ */
+export const buildMyQueue = (requisitions, currentUser) => {
+  if (!currentUser) return [];
+  return (requisitions || []).filter((t) => isTicketAssignedToUser(t, currentUser));
 };
 
 /* Assigned-staff options are derived from the tickets themselves so the filter

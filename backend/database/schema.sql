@@ -25,11 +25,14 @@ CREATE TABLE IF NOT EXISTS `users` (
   `first_name`     VARCHAR(100) NOT NULL,
   `middle_name`    VARCHAR(100) DEFAULT NULL,
   `last_name`      VARCHAR(100) NOT NULL,
+  `ext_name`       VARCHAR(20)  DEFAULT NULL,
+  `id_number`      VARCHAR(50)  DEFAULT NULL,
   `email`          VARCHAR(150) NOT NULL UNIQUE,
   `password_hash`  VARCHAR(255) NOT NULL,
-  `role`           ENUM('admin','campus_admin','faculty','staff','maintenance','technician') NOT NULL,
+  `role`           ENUM('superadmin','admin','campus_admin','faculty','staff','maintenance','technician') NOT NULL,
   `department`     VARCHAR(150) DEFAULT NULL,
   `office`         VARCHAR(150) DEFAULT NULL,
+  `academic_rank`  VARCHAR(150) DEFAULT NULL,
   `contact_number` VARCHAR(30)  DEFAULT NULL,
   `gender`         VARCHAR(30)  DEFAULT NULL,
   `address`        TEXT         DEFAULT NULL,
@@ -49,6 +52,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `is_supervisor`  TINYINT(1) NOT NULL DEFAULT 0,
   -- supervisor_id: the designated supervisor assigned to this Faculty/Staff member.
   `supervisor_id`  INT DEFAULT NULL,
+  `availability_status` VARCHAR(30) NOT NULL DEFAULT 'available',
+  `specialization`      VARCHAR(150) DEFAULT 'General Maintenance',
   -- consent_at: timestamp when the user accepted the data privacy notice (RA 10173).
   `consent_at`     DATETIME DEFAULT NULL,
   `created_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -66,6 +71,8 @@ CREATE TABLE IF NOT EXISTS `registration_requests` (
   `first_name`       VARCHAR(100) NOT NULL,
   `middle_name`      VARCHAR(100) DEFAULT NULL,
   `last_name`        VARCHAR(100) NOT NULL,
+  `ext_name`         VARCHAR(20)  DEFAULT NULL,
+  `id_number`        VARCHAR(50)  DEFAULT NULL,
   `email`            VARCHAR(150) NOT NULL UNIQUE,
   `password_hash`    VARCHAR(255) NOT NULL,
   `role`             ENUM('faculty','staff') NOT NULL,
@@ -78,6 +85,7 @@ CREATE TABLE IF NOT EXISTS `registration_requests` (
   `age`              INT          DEFAULT NULL,
   -- MEDIUMTEXT, not VARCHAR(500): see the note on `users`.`id_photo_url`.
   `id_photo_url`     MEDIUMTEXT   DEFAULT NULL,
+  `is_supervisor`    TINYINT(1) NOT NULL DEFAULT 0,
   `status`           ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
   `rejection_reason` VARCHAR(255) DEFAULT NULL,
   -- consent_at: timestamp when the registrant accepted the data privacy notice (RA 10173).
@@ -146,6 +154,8 @@ CREATE TABLE IF NOT EXISTS `job_requests` (
   -- endpoint strips it so a page of tickets never carries a page of images.
   `photo_url`                     MEDIUMTEXT DEFAULT NULL,
   `photo_name`                    VARCHAR(255) DEFAULT NULL,
+  `materials_used`                TEXT DEFAULT NULL,
+  `completion_photo_url`          MEDIUMTEXT DEFAULT NULL,
   -- qr_code_ref: the campus_locations tag this request was filed against —
   -- scanned at intake, or composed from the room name when it was typed by
   -- hand. It is what lets a ticket be traced back to the physical tag on the
@@ -165,9 +175,15 @@ CREATE TABLE IF NOT EXISTS `job_requests` (
   `replacement_reason`            TEXT DEFAULT NULL,
   `replacement_item_specs`        TEXT DEFAULT NULL,
   `replacement_procurement_status` VARCHAR(100) DEFAULT NULL,
+  `replacement_disposition`       VARCHAR(20) DEFAULT 'replacement',
+  `replacement_flagged_by`        VARCHAR(255) DEFAULT NULL,
+  `replacement_flagged_at`        DATETIME DEFAULT NULL,
   `signed_form_confirmed`         BOOLEAN NOT NULL DEFAULT FALSE,
   `signed_form_confirmed_by`      INT DEFAULT NULL,
   `signed_form_confirmed_at`      DATETIME DEFAULT NULL,
+  `urgent_assigned_at`            DATETIME DEFAULT NULL,
+  `urgent_overdue_notified`       BOOLEAN NOT NULL DEFAULT FALSE,
+  `idempotency_key`               VARCHAR(64) DEFAULT NULL,
   -- 4-party approval chain: requester -> Immediate Supervisor -> PDAS -> Campus Admin
   `requester_approved`            BOOLEAN NOT NULL DEFAULT FALSE,
   `requester_approved_at`         DATETIME DEFAULT NULL,
@@ -190,6 +206,9 @@ CREATE TABLE IF NOT EXISTS `job_requests` (
   `official_tracking_no`          VARCHAR(50) DEFAULT NULL,
   `rejection_stage`               VARCHAR(50) DEFAULT NULL,
   `rejection_remarks`             TEXT DEFAULT NULL,
+  -- request_details: JSON snapshot written by /:id/revise to preserve fields
+  -- (title, location, scopeOfWorks) that are not top-level UPDATE columns.
+  `request_details`               JSON DEFAULT NULL,
   CONSTRAINT `fk_jr_requester` FOREIGN KEY (`requester_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_jr_location`  FOREIGN KEY (`location_id`)  REFERENCES `campus_locations`(`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_jr_assignee`  FOREIGN KEY (`assigned_to`)  REFERENCES `users`(`id`) ON DELETE SET NULL,
@@ -197,7 +216,9 @@ CREATE TABLE IF NOT EXISTS `job_requests` (
   CONSTRAINT `fk_jr_supervisor` FOREIGN KEY (`supervisor_id`) REFERENCES `users`(`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_jr_signed_by` FOREIGN KEY (`signed_form_confirmed_by`) REFERENCES `users`(`id`) ON DELETE SET NULL,
   UNIQUE KEY `uq_jr_official_tracking_no` (`official_tracking_no`),
+  UNIQUE KEY `uq_jr_idempotency_key` (`idempotency_key`),
   INDEX `idx_jr_status` (`status`),
+  INDEX `idx_jr_archived_status` (`is_archived`, `status`),
   INDEX `idx_jr_requester` (`requester_id`),
   INDEX `idx_jr_assignee` (`assigned_to`),
   INDEX `idx_jr_supervisor` (`supervisor_id`)
@@ -227,15 +248,35 @@ CREATE TABLE IF NOT EXISTS `evaluations` (
   `id`                     INT AUTO_INCREMENT PRIMARY KEY,
   `job_request_id`         INT NOT NULL,
   `evaluated_by`           INT NOT NULL,
-  `functional_suitability` TINYINT NOT NULL,
-  `usability`              TINYINT NOT NULL,
-  `reliability`            TINYINT NOT NULL,
-  `performance_efficiency` TINYINT NOT NULL,
-  `security`               TINYINT NOT NULL,
+  `rating`                 TINYINT NOT NULL DEFAULT 5,
+  `functional_suitability` TINYINT NOT NULL DEFAULT 5,
+  `usability`              TINYINT NOT NULL DEFAULT 5,
+  `reliability`            TINYINT NOT NULL DEFAULT 5,
+  `performance_efficiency` TINYINT NOT NULL DEFAULT 5,
+  `security`               TINYINT NOT NULL DEFAULT 5,
   `comments`               TEXT DEFAULT NULL,
+  `consent`                TINYINT(1) DEFAULT 1,
+  `client_type`            VARCHAR(50) DEFAULT 'Government',
+  `region`                 VARCHAR(100) DEFAULT 'Region VI - Western Visayas',
+  `service_availed`        VARCHAR(255) DEFAULT NULL,
+  `cc1`                    VARCHAR(50) DEFAULT NULL,
+  `cc2`                    VARCHAR(50) DEFAULT NULL,
+  `cc3`                    VARCHAR(50) DEFAULT NULL,
+  `sqd0`                   TINYINT DEFAULT NULL,
+  `sqd1`                   TINYINT DEFAULT NULL,
+  `sqd2`                   TINYINT DEFAULT NULL,
+  `sqd3`                   TINYINT DEFAULT NULL,
+  `sqd4`                   TINYINT DEFAULT NULL,
+  `sqd5`                   TINYINT DEFAULT NULL,
+  `sqd6`                   TINYINT DEFAULT NULL,
+  `sqd7`                   TINYINT DEFAULT NULL,
+  `sqd8`                   TINYINT DEFAULT NULL,
+  `suggestions`            TEXT DEFAULT NULL,
+  `csm_data`               JSON DEFAULT NULL,
   `created_at`             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_eval_job`  FOREIGN KEY (`job_request_id`) REFERENCES `job_requests`(`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_eval_user` FOREIGN KEY (`evaluated_by`)   REFERENCES `users`(`id`) ON DELETE CASCADE,
+  UNIQUE KEY `uq_eval_job_user` (`job_request_id`, `evaluated_by`),
   CONSTRAINT `chk_eval_fs`  CHECK (`functional_suitability` BETWEEN 1 AND 5),
   CONSTRAINT `chk_eval_us`  CHECK (`usability` BETWEEN 1 AND 5),
   CONSTRAINT `chk_eval_rel` CHECK (`reliability` BETWEEN 1 AND 5),
@@ -255,9 +296,18 @@ CREATE TABLE IF NOT EXISTS `preventive_maintenance_schedules` (
   `location`       VARCHAR(255) NOT NULL,
   `assigned_to`    INT DEFAULT NULL,
   `in_charge_name` VARCHAR(150) DEFAULT NULL,
-  `status`         ENUM('Scheduled','In Progress','Completed','Cancelled') NOT NULL DEFAULT 'Scheduled',
-  `created_at`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT `fk_pms_assigned` FOREIGN KEY (`assigned_to`) REFERENCES `users`(`id`) ON DELETE SET NULL
+  `status`                ENUM('Scheduled','In Progress','Completed','Cancelled') NOT NULL DEFAULT 'Scheduled',
+  `description`           TEXT DEFAULT NULL,
+  `recurrence`            VARCHAR(50) DEFAULT 'Quarterly',
+  `reminder_lead`         VARCHAR(50) DEFAULT '1 day before',
+  `completed_at`          DATETIME DEFAULT NULL,
+  `completed_by`          INT DEFAULT NULL,
+  `completion_notes`      TEXT DEFAULT NULL,
+  `completion_photo`      MEDIUMTEXT DEFAULT NULL,
+  `completion_photo_name` VARCHAR(255) DEFAULT NULL,
+  `created_at`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `fk_pms_assigned` FOREIGN KEY (`assigned_to`) REFERENCES `users`(`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_pms_completed_by` FOREIGN KEY (`completed_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------
@@ -265,13 +315,15 @@ CREATE TABLE IF NOT EXISTS `preventive_maintenance_schedules` (
 -- Simple internal messaging between users.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `messages` (
-  `id`           INT AUTO_INCREMENT PRIMARY KEY,
-  `sender_id`    INT NOT NULL,
-  `recipient_id` INT DEFAULT NULL,
-  `subject`      VARCHAR(255) NOT NULL,
-  `body`         TEXT NOT NULL,
-  `is_read`      BOOLEAN NOT NULL DEFAULT FALSE,
-  `created_at`   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `id`            INT AUTO_INCREMENT PRIMARY KEY,
+  `sender_id`     INT DEFAULT NULL,
+  `recipient_id`  INT DEFAULT NULL,
+  `contact_name`  VARCHAR(150) DEFAULT NULL,
+  `contact_email` VARCHAR(150) DEFAULT NULL,
+  `subject`       VARCHAR(255) NOT NULL,
+  `body`          TEXT NOT NULL,
+  `is_read`       BOOLEAN NOT NULL DEFAULT FALSE,
+  `created_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_msg_sender`    FOREIGN KEY (`sender_id`)    REFERENCES `users`(`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_msg_recipient` FOREIGN KEY (`recipient_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -333,9 +385,12 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `message`    TEXT NOT NULL,
   `link`       VARCHAR(255) DEFAULT NULL,
   `is_read`    BOOLEAN NOT NULL DEFAULT FALSE,
+  `is_archived` BOOLEAN NOT NULL DEFAULT FALSE,
+  `archived_at` DATETIME DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `fk_notif_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
-  INDEX `idx_notif_user` (`user_id`)
+  INDEX `idx_notif_user` (`user_id`),
+  INDEX `idx_notif_archived` (`user_id`, `is_archived`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------
@@ -356,3 +411,19 @@ CREATE TABLE IF NOT EXISTS `audit_log` (
   INDEX `idx_audit_actor` (`actor_id`),
   INDEX `idx_audit_entity` (`entity`, `entity_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ------------------------------------------------------------
+-- password_resets
+-- Temporary cryptographically hashed OTP tokens for password reset verification
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `password_resets` (
+  `id`         INT AUTO_INCREMENT PRIMARY KEY,
+  `email`      VARCHAR(150) NOT NULL,
+  `otp_hash`   VARCHAR(255) NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `attempts`   INT NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_pwd_resets_email` (`email`),
+  INDEX `idx_pwd_resets_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import pool from '../config/db.js';
 import { verifyToken, requireRole } from '../middleware/auth.js';
+import { REQUEST_CATEGORIES } from '../scripts/autoSetup.js';
 
 const router = Router();
 
@@ -15,8 +16,8 @@ router.get('/campus-locations', verifyToken, async (req, res) => {
   }
 });
 
-// POST /api/lookups/campus-locations - admin only
-router.post('/campus-locations', verifyToken, requireRole('admin'), async (req, res) => {
+// POST /api/lookups/campus-locations - superadmin only
+router.post('/campus-locations', verifyToken, requireRole('superadmin'), async (req, res) => {
   try {
     const { building, floor, room, description, qrCode } = req.body;
     if (!building) {
@@ -43,8 +44,8 @@ router.post('/campus-locations', verifyToken, requireRole('admin'), async (req, 
   }
 });
 
-// PUT /api/lookups/campus-locations/:id - admin only
-router.put('/campus-locations/:id', verifyToken, requireRole('admin'), async (req, res) => {
+// PUT /api/lookups/campus-locations/:id - superadmin only
+router.put('/campus-locations/:id', verifyToken, requireRole('superadmin'), async (req, res) => {
   try {
     const { building, floor, room, description, qrCode } = req.body;
     const tag = qrCode === undefined || qrCode === null ? null : String(qrCode).trim().slice(0, 64);
@@ -77,8 +78,8 @@ router.put('/campus-locations/:id', verifyToken, requireRole('admin'), async (re
   }
 });
 
-// DELETE /api/lookups/campus-locations/:id - admin only
-router.delete('/campus-locations/:id', verifyToken, requireRole('admin'), async (req, res) => {
+// DELETE /api/lookups/campus-locations/:id - superadmin only
+router.delete('/campus-locations/:id', verifyToken, requireRole('superadmin'), async (req, res) => {
   try {
     const [result] = await pool.query('DELETE FROM campus_locations WHERE id = ?', [req.params.id]);
     if (result.affectedRows === 0) {
@@ -93,7 +94,7 @@ router.delete('/campus-locations/:id', verifyToken, requireRole('admin'), async 
 
 // GET /api/lookups/categories - static reference data used by the frontend
 router.get('/categories', verifyToken, (req, res) => {
-  res.json(['electrical', 'plumbing', 'carpentry', 'ict', 'janitorial', 'other']);
+  res.json(REQUEST_CATEGORIES);
 });
 
 // GET /api/lookups/priorities

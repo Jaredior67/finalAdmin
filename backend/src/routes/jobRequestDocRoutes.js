@@ -32,7 +32,7 @@ router.use(verifyToken);
 
 // POST /api/job-requests-doc/generate-pdf
 // Rendering an official form is an office action, not a requester action.
-router.post('/generate-pdf', requireRole('admin', 'campus_admin', 'supervisor'), renderLimiter, async (req, res) => {
+router.post('/generate-pdf', requireRole('superadmin', 'admin', 'campus_admin', 'supervisor'), renderLimiter, async (req, res) => {
   try {
     const data = req.body || {};
     const { pdfBuffer, pdfFileName } = await generateOfficialJobRequestPdf(data);
@@ -55,7 +55,7 @@ router.post('/generate-pdf', requireRole('admin', 'campus_admin', 'supervisor'),
 });
 
 // POST /api/job-requests-doc/generate-docx
-router.post('/generate-docx', requireRole('admin', 'campus_admin', 'supervisor'), renderLimiter, async (req, res) => {
+router.post('/generate-docx', requireRole('superadmin', 'admin', 'campus_admin', 'supervisor'), renderLimiter, async (req, res) => {
   try {
     const data = req.body || {};
     const { buffer, fileName } = await generateJobRequestDocx(data);
@@ -114,13 +114,21 @@ router.get('/:id/pdf', renderLimiter, async (req, res) => {
       description: row.description
     };
 
-    // Category mapping
+    // Category mapping across all 8 canonical categories
     const cat = (row.category || '').toLowerCase();
     if (cat === 'electrical') {
       docData.electrical = { selected: ['Repair'], description: row.description };
-    } else if (cat === 'plumbing') {
+    } else if (cat === 'water/sanitary' || cat === 'plumbing') {
       docData.waterSanitary = { selected: ['Repair'], description: row.description };
-    } else if (cat === 'carpentry') {
+    } else if (cat === 'air conditioning') {
+      docData.airConditioning = { selected: ['Repair/Cleaning'], description: row.description };
+    } else if (cat === 'mechanical') {
+      docData.mechanical = { selected: ['Repair'], description: row.description };
+    } else if (cat === 'drawing/design') {
+      docData.drawingDesign = { selected: ['Layout/Design'], description: row.description };
+    } else if (cat === 'safety & compliance' || cat === 'urgent hazard') {
+      docData.safetyCompliance = { selected: ['Safety Inspection/Hazard Mitigation'], description: row.description };
+    } else if (cat === 'physical structures' || cat === 'carpentry') {
       docData.physicalStructures = { selected: ['Rehabilitation/Repair'], description: row.description };
     } else {
       docData.physicalStructures = { selected: ['Other Services'], description: row.description };

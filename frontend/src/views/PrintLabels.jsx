@@ -2,10 +2,15 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Printer, QrCode, Search, Building2, MapPin, Tag,
   Plus, Edit2, Trash2, Layers, LayoutGrid, Table as TableIcon,
-  CheckSquare, Square, Copy, Check, ChevronDown
+  CheckSquare, Square, Copy, Check, ChevronDown,
+  ZoomIn, ZoomOut, RotateCcw, Download
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { Modal } from '../components/common/Modal';
+import { PrintPortal } from '../components/common/PrintPortal';
+import { QrLabelPrintSheet } from '../components/common/QrLabelPrintSheet';
+import { getSystemQrUrl } from '../utils/qrLocationResolver';
+import { printDocument } from '../utils/print';
 
 export const PrintLabels = () => {
   const { 
@@ -99,8 +104,11 @@ export const PrintLabels = () => {
         return Promise.all(
           targets.map(async (loc) => {
             try {
-              const url = await toDataURL(String(loc.qrCodeRef), {
-                width: 240,
+              const qrUrl = getSystemQrUrl(loc.qrCodeRef);
+              const url = await toDataURL(qrUrl, {
+                // 480px keeps the printed 31mm tag sharp at ~300 DPI while
+                // staying modest in memory for a full campus registry.
+                width: 480,
                 margin: 1,
                 errorCorrectionLevel: 'M'
               });
@@ -127,7 +135,7 @@ export const PrintLabels = () => {
     }
     let live = true;
     import('qrcode')
-      .then((m) => (m.default || m).toDataURL(value, { width: 200, margin: 1, errorCorrectionLevel: 'M' }))
+      .then((m) => (m.default || m).toDataURL(getSystemQrUrl(value), { width: 200, margin: 1, errorCorrectionLevel: 'M' }))
       .then((url) => { if (live) setPreviewQr(url); })
       .catch(() => { if (live) setPreviewQr(''); });
     return () => { live = false; };
@@ -218,10 +226,32 @@ export const PrintLabels = () => {
   // Auto-generate QR Tag helper
   const handleAutoGenerateQR = () => {
     const short = formData.bldgShort || (formData.building ? formData.building.split(' ')[0] : 'BLDG');
-    const cleanShort = short.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const cleanRoom = formData.room ? formData.room.replace(/[^A-Z0-9]/gi, '').slice(0, 4).toUpperCase() : 'RM';
-    const floorDigit = formData.floor.includes('2') ? '2' : formData.floor.includes('3') ? '3' : formData.floor.includes('4') ? '4' : 'G';
-    const tag = `ISATU-${cleanShort}-${floorDigit}-${cleanRoom || Math.floor(100 + Math.random() * 900)}`;
+    const cleanShort = short.toUpperCase().replace(/[^A-Z0-9]/g, '') || 'BLDG';
+    // Prefer the room number ("Room 302" -> "302") because it is what staff
+    // read on the door; fall back to the first alphanumerics of the name.
+    const roomDigits = (formData.room.match(/\d+/g) || []).join('');
+    const cleanRoom = (roomDigits || formData.room.replace(/[^A-Z0-9]/gi, '')).slice(0, 4).toUpperCase() || String(Math.floor(100 + Math.random() * 900));
+    const floorMap = [
+      [/basement/i, 'B'],
+      [/roof|penthouse/i, 'R'],
+      [/outdoor/i, 'O'],
+      [/ground/i, 'G'],
+      [/1st|first/i, '1'],
+      [/2nd|second/i, '2'],
+      [/3rd|third/i, '3'],
+      [/4th|fourth/i, '4']
+    ];
+    const floorDigit = (floorMap.find(([re]) => re.test(formData.floor)) || [null, 'G'])[1];
+    const base = `ISATU-${cleanShort}-${floorDigit}-${cleanRoom}`;
+
+    // Never hand out a tag that is already printed on another door.
+    const taken = new Set(allLocations.map((l) => String(l.qrCodeRef || '').toUpperCase()));
+    let tag = base;
+    let n = 2;
+    while (taken.has(tag)) {
+      tag = `${base}-${n}`;
+      n += 1;
+    }
     setFormData(prev => ({ ...prev, qrCodeRef: tag }));
   };
 
@@ -290,6 +320,107 @@ export const PrintLabels = () => {
     setTimeout(() => setCopiedTag(null), 1800);
   };
 
+  // Zoom & Print Preview Modal State
+  const [zoomedLoc, setZoomedLoc] = useState(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [highResQr, setHighResQr] = useState(null);
+  const [singlePrintLoc, setSinglePrintLoc] = useState(null);
+  const [batchPrintLocs, setBatchPrintLocs] = useState([]);
+
+  // Clear the print job after the browser finishes printing, so reopening the
+  // dialog (or Ctrl+P) never prints a stale tag.
+  useEffect(() => {
+    const clear = () => {
+      setSinglePrintLoc(null);
+      setBatchPrintLocs([]);
+    };
+    window.addEventListener('afterprint', clear);
+    return () => window.removeEventListener('afterprint', clear);
+  }, []);
+
+  useEffect(() => {
+    if (!zoomedLoc) {
+      setHighResQr(null);
+      setZoomLevel(1);
+      return;
+    }
+    const qrUrl = getSystemQrUrl(zoomedLoc.qrCodeRef);
+    let live = true;
+    import('qrcode')
+      .then((m) => (m.default || m).toDataURL(qrUrl, {
+        width: 600,
+        margin: 2,
+        errorCorrectionLevel: 'H'
+      }))
+      .then((url) => { if (live) setHighResQr(url); })
+      .catch(() => { if (live) setHighResQr(qrImages[zoomedLoc.qrCodeRef] || null); });
+    return () => { live = false; };
+  }, [zoomedLoc, qrImages]);
+
+  const handleOpenZoom = (loc) => {
+    setZoomedLoc(loc);
+  };
+
+  /* Make sure every label about to be printed already has its QR image.
+     Without this a fast "Print" click after page load printed tags with the
+     "QR generating…" placeholder instead of a scannable code. */
+  const ensureQrImages = async (locs) => {
+    const missing = (locs || []).filter((loc) => loc?.qrCodeRef && !qrImages[loc.qrCodeRef]);
+    if (missing.length === 0) return;
+    try {
+      const m = await import('qrcode');
+      const toDataURL = (m.default || m).toDataURL;
+      const pairs = await Promise.all(
+        missing.map(async (loc) => {
+          try {
+            const url = await toDataURL(getSystemQrUrl(loc.qrCodeRef), {
+              width: 480,
+              margin: 1,
+              errorCorrectionLevel: 'M'
+            });
+            return [loc.qrCodeRef, url];
+          } catch {
+            return [loc.qrCodeRef, null];
+          }
+        })
+      );
+      setQrImages((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
+    } catch {
+      /* qrcode module unavailable — the label prints with a placeholder */
+    }
+  };
+
+  const handlePrintSingle = async (loc) => {
+    if (!loc) return;
+    setZoomedLoc(null);
+    await ensureQrImages([loc]);
+    setBatchPrintLocs([]);
+    setSinglePrintLoc(loc);
+    printDocument();
+  };
+
+  const handlePrintBatch = async () => {
+    const jobs = selectedTags.size > 0
+      ? allLocations.filter((loc) => selectedTags.has(loc.qrCodeRef))
+      : filteredLocations;
+    if (jobs.length === 0) return;
+    await ensureQrImages(jobs);
+    setSinglePrintLoc(null);
+    setBatchPrintLocs(jobs);
+    printDocument();
+  };
+
+  const handleDownloadQr = (loc) => {
+    const dataUrl = highResQr || qrImages[loc?.qrCodeRef];
+    if (!dataUrl) return;
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `QR-${(loc.qrCodeRef || loc.room || 'facility').replace(/[^a-zA-Z0-9_-]/g, '_')}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   return (
     <div>
       {/* Header */}
@@ -337,7 +468,7 @@ export const PrintLabels = () => {
           <button 
             type="button" 
             className="btn btn-secondary" 
-            onClick={() => window.print()}
+            onClick={handlePrintBatch}
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
             <Printer size={15} /> Print {selectedTags.size > 0 ? `Selected (${selectedTags.size})` : `All (${filteredLocations.length})`}
@@ -475,7 +606,7 @@ export const PrintLabels = () => {
                         transition: 'background 0.15s ease'
                       }}
                       onMouseEnter={(e) => {
-                        if (!isActive) e.currentTarget.style.background = 'var(--bg-hover, #f8fafc)';
+                        if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)';
                       }}
                       onMouseLeave={(e) => {
                         if (!isActive) e.currentTarget.style.background = 'transparent';
@@ -634,9 +765,22 @@ export const PrintLabels = () => {
                       />
                     </td>
                     <td style={{ padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ background: '#f0f4ff', padding: '6px', borderRadius: '6px', border: '1px solid #dbeafe' }}>
-                          <QrCode size={26} color="#001f9c" />
+                      <div
+                        onClick={() => handleOpenZoom(loc)}
+                        title="Click to view, zoom and print this QR code"
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+                      >
+                        <div style={{ background: '#ffffff', padding: '4px', borderRadius: '6px', border: '1px solid #dbeafe', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {qrImages[loc.qrCodeRef] ? (
+                            <img
+                              src={qrImages[loc.qrCodeRef]}
+                              alt={`QR tag for ${loc.room}`}
+                              style={{ width: 34, height: 34, display: 'block' }}
+                            />
+                          ) : (
+                            <QrCode size={22} color="#001f9c" />
+                          )}
+                          <ZoomIn size={12} color="#001f9c" />
                         </div>
                         <span style={{ fontSize: '11px', fontWeight: '800', color: '#001f9c' }}>
                           {loc.qrCodeRef}
@@ -664,7 +808,16 @@ export const PrintLabels = () => {
                       </code>
                     </td>
                     <td style={{ padding: '12px 14px', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          title="Print this QR sticker"
+                          onClick={() => handlePrintSingle(loc)}
+                          style={{ padding: '6px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#001f9c' }}
+                        >
+                          <Printer size={14} />
+                        </button>
                         <button
                           type="button"
                           className="btn-icon"
@@ -770,23 +923,29 @@ export const PrintLabels = () => {
                     justifyContent: 'center',
                     flexShrink: 0
                   }}>
-                    {qrImages[loc.qrCodeRef] ? (
-                      <img
-                        src={qrImages[loc.qrCodeRef]}
-                        alt={`QR tag for ${loc.room}`}
-                        style={{
-                          width: labelFormat === 'sheet' ? 52 : 64,
-                          height: labelFormat === 'sheet' ? 52 : 64,
-                          display: 'block',
-                          imageRendering: 'pixelated'
-                        }}
-                      />
-                    ) : (
-                      <QrCode size={labelFormat === 'sheet' ? 52 : 64} color="#001f9c" />
-                    )}
-                    <span style={{ fontSize: '8.5px', fontWeight: '800', color: '#64748b', marginTop: '3px' }}>
-                      SCAN ME
-                    </span>
+                    <div
+                      onClick={() => handleOpenZoom(loc)}
+                      title="Click to view & zoom QR code"
+                      style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+                    >
+                      {qrImages[loc.qrCodeRef] ? (
+                        <img
+                          src={qrImages[loc.qrCodeRef]}
+                          alt={`QR tag for ${loc.room}`}
+                          style={{
+                            width: labelFormat === 'sheet' ? 52 : 64,
+                            height: labelFormat === 'sheet' ? 52 : 64,
+                            display: 'block',
+                            imageRendering: 'pixelated'
+                          }}
+                        />
+                      ) : (
+                        <QrCode size={labelFormat === 'sheet' ? 52 : 64} color="#001f9c" />
+                      )}
+                      <span style={{ fontSize: '8.5px', fontWeight: '800', color: '#001f9c', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        <ZoomIn size={9} /> VIEW
+                      </span>
+                    </div>
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -828,6 +987,22 @@ export const PrintLabels = () => {
                   
                   {/* Admin Quick Buttons */}
                   <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      title="View & Zoom QR Code"
+                      onClick={() => handleOpenZoom(loc)}
+                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '3px', color: '#001f9c' }}
+                    >
+                      <ZoomIn size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      title="Print this QR sticker"
+                      onClick={() => handlePrintSingle(loc)}
+                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '3px', color: '#0369a1' }}
+                    >
+                      <Printer size={13} />
+                    </button>
                     <button
                       type="button"
                       title="Copy QR Tag"
@@ -1064,6 +1239,139 @@ export const PrintLabels = () => {
         </form>
       </Modal>
 
+      {/* MODAL: QR Zoom / View & Print Preview */}
+      <Modal
+        isOpen={!!zoomedLoc}
+        onClose={() => setZoomedLoc(null)}
+        title="QR Code Preview"
+        maxWidth="480px"
+      >
+        {zoomedLoc && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px' }}>
+            {/* Location Info */}
+            <div style={{ width: '100%', background: 'var(--bg-sunken)', borderRadius: '10px', padding: '12px 16px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', marginBottom: '4px' }}>{zoomedLoc.room}</div>
+              <div style={{ fontSize: '12.5px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Building2 size={13} color="#f59e0b" />
+                {zoomedLoc.building}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <MapPin size={12} color="#3b82f6" />
+                {zoomedLoc.floor}
+              </div>
+              <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Tag size={12} color="#001f9c" />
+                <code style={{ fontSize: '12px', background: '#eff6ff', color: '#001f9c', padding: '2px 8px', borderRadius: '5px', fontWeight: '700' }}>
+                  {zoomedLoc.qrCodeRef}
+                </code>
+              </div>
+            </div>
+
+            {/* QR Code Display */}
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <div
+                style={{
+                  border: '3px solid #001f9c',
+                  borderRadius: '16px',
+                  padding: '16px',
+                  background: '#ffffff',
+                  boxShadow: '0 8px 32px rgba(0,31,156,0.12)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transform: `scale(${zoomLevel})`,
+                  transformOrigin: 'top center',
+                  transition: 'transform 0.18s ease'
+                }}
+              >
+                {(highResQr || qrImages[zoomedLoc.qrCodeRef]) ? (
+                  <img
+                    src={highResQr || qrImages[zoomedLoc.qrCodeRef]}
+                    alt={`QR Code - ${zoomedLoc.room}`}
+                    style={{ width: 220, height: 220, display: 'block', imageRendering: 'pixelated' }}
+                  />
+                ) : (
+                  <div style={{ width: 220, height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-sunken)', borderRadius: '8px' }}>
+                    <QrCode size={80} color="#001f9c" />
+                  </div>
+                )}
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '10px', fontWeight: '800', color: '#64748b', letterSpacing: '0.08em' }}>ISAT U DUMANGAS CAMPUS</div>
+                  <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#0f172a', marginTop: '2px' }}>{zoomedLoc.room}</div>
+                  <div style={{ fontSize: '9.5px', color: '#64748b' }}>{zoomedLoc.building} · {zoomedLoc.floor}</div>
+                  <div style={{ fontSize: '9px', fontWeight: '800', color: '#001f9c', marginTop: '3px', letterSpacing: '0.1em' }}>{zoomedLoc.qrCodeRef}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Zoom Controls */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'var(--bg-sunken)', padding: '8px 14px', borderRadius: '99px', border: '1px solid #e2e8f0' }}>
+              <button
+                type="button"
+                onClick={() => setZoomLevel(z => Math.max(0.5, +(z - 0.25).toFixed(2)))}
+                disabled={zoomLevel <= 0.5}
+                style={{ border: 'none', background: 'transparent', cursor: zoomLevel <= 0.5 ? 'not-allowed' : 'pointer', padding: '4px', opacity: zoomLevel <= 0.5 ? 0.4 : 1 }}
+                title="Zoom Out"
+              >
+                <ZoomOut size={18} color="#334155" />
+              </button>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', minWidth: '44px', textAlign: 'center' }}>
+                {Math.round(zoomLevel * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={() => setZoomLevel(z => Math.min(2, +(z + 0.25).toFixed(2)))}
+                disabled={zoomLevel >= 2}
+                style={{ border: 'none', background: 'transparent', cursor: zoomLevel >= 2 ? 'not-allowed' : 'pointer', padding: '4px', opacity: zoomLevel >= 2 ? 0.4 : 1 }}
+                title="Zoom In"
+              >
+                <ZoomIn size={18} color="#334155" />
+              </button>
+              <div style={{ width: '1px', height: '20px', background: '#cbd5e1', margin: '0 4px' }} />
+              <button
+                type="button"
+                onClick={() => setZoomLevel(1)}
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', color: '#64748b' }}
+                title="Reset Zoom"
+              >
+                <RotateCcw size={15} />
+              </button>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: '10px', width: '100%', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => handlePrintSingle(zoomedLoc)}
+                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+              >
+                <Printer size={15} /> Print QR Sticker
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => handleDownloadQr(zoomedLoc)}
+                disabled={!highResQr && !qrImages[zoomedLoc.qrCodeRef]}
+                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+              >
+                <Download size={15} /> Download PNG
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setZoomedLoc(null)}
+              style={{ width: '100%' }}
+            >
+              Close
+            </button>
+          </div>
+        )}
+      </Modal>
+
       {/* MODAL: Delete Confirmation */}
       <Modal
         isOpen={!!deletingLoc}
@@ -1096,6 +1404,15 @@ export const PrintLabels = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Print jobs (single tag or the whole selected/filtered batch) are
+          rendered into a body-level portal so the app chrome never prints. */}
+      <PrintPortal active={Boolean(singlePrintLoc) || batchPrintLocs.length > 0}>
+        <QrLabelPrintSheet
+          locations={singlePrintLoc ? [singlePrintLoc] : batchPrintLocs}
+          qrImages={qrImages}
+        />
+      </PrintPortal>
     </div>
   );
 };

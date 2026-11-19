@@ -60,7 +60,7 @@ export const ConfirmDialog = ({
               borderRadius: '8px',
               fontSize: '13.5px',
               fontWeight: '700',
-              background: isDanger ? '#dc2626' : '#001f9c',
+              background: isDanger ? '#dc2626' : '#071746',
               color: '#ffffff',
               border: 'none',
               cursor: 'pointer'

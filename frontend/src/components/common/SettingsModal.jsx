@@ -118,8 +118,8 @@ export const SettingsModal = ({ isOpen, onClose }) => {
             padding: '8px 14px',
             border: 'none',
             background: 'none',
-            color: modalTab === 'profile' ? '#001f9c' : '#64748b',
-            borderBottom: modalTab === 'profile' ? '2.5px solid #001f9c' : '2.5px solid transparent',
+            color: modalTab === 'profile' ? '#071746' : '#64748b',
+            borderBottom: modalTab === 'profile' ? '2.5px solid #071746' : '2.5px solid transparent',
             fontWeight: '700',
             fontSize: '13px',
             cursor: 'pointer'
@@ -137,8 +137,8 @@ export const SettingsModal = ({ isOpen, onClose }) => {
             padding: '8px 14px',
             border: 'none',
             background: 'none',
-            color: modalTab === 'security' ? '#001f9c' : '#64748b',
-            borderBottom: modalTab === 'security' ? '2.5px solid #001f9c' : '2.5px solid transparent',
+            color: modalTab === 'security' ? '#071746' : '#64748b',
+            borderBottom: modalTab === 'security' ? '2.5px solid #071746' : '2.5px solid transparent',
             fontWeight: '700',
             fontSize: '13px',
             cursor: 'pointer'
@@ -159,7 +159,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                 </div>
                 <div>
                   <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '14px' }}>{name || 'FixIT User'}</div>
-                  <div style={{ fontSize: '12px', color: '#64748b' }}>{currentUser?.email || 'user@isatu.edu.ph'}</div>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>{currentUser?.email || 'user@gmail.com'}</div>
                 </div>
               </div>
 
@@ -260,11 +260,11 @@ export const SettingsModal = ({ isOpen, onClose }) => {
             <div className="toggle-switch-container" style={{ marginBottom: '16px' }}>
               <div>
                 <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Shield size={15} color="#001f9c" />
+                  <Shield size={15} color="#071746" />
                   Two-Factor Authentication (2FA)
                 </div>
                 <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
-                  Institutional email passcodes for high-security actions.
+                  Email passcodes for high-security actions.
                 </div>
               </div>
               <label className="toggle-switch">

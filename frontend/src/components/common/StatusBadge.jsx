@@ -17,6 +17,11 @@ export const StatusBadge = ({ status }) => {
   
   const getBadgeConfig = () => {
     switch (normalized) {
+      case 'draft':
+        return { cls: 'status-draft', icon: Clock, label: 'Draft' };
+      case 'pending-immediate-supervisor-approval':
+      case 'pending-supervisor-approval':
+        return { cls: 'status-pending', icon: Clock, label: 'Pending Immediate Supervisor Approval' };
       case 'pending':
         return { cls: 'status-pending', icon: Clock, label: 'Pending' };
       case 'under-review':
@@ -69,20 +74,20 @@ export const StatusBadge = ({ status }) => {
 export const UrgencyBadge = ({ urgency }) => {
   const str = String(urgency || '').toLowerCase();
   
-  let label = 'Medium Risk';
+  let label = 'Medium';
   let cls = 'urgency-medium';
   let Icon = Minus;
 
   if (str.includes('high') || str.includes('urgent') || str.includes('emergency')) {
-    label = 'High Risk';
+    label = 'High';
     cls = 'urgency-emergency';
     Icon = AlertCircle;
   } else if (str.includes('low')) {
-    label = 'Low Risk';
+    label = 'Low';
     cls = 'urgency-low';
     Icon = CheckCircle2;
   } else {
-    label = 'Medium Risk';
+    label = 'Medium';
     cls = 'urgency-medium';
     Icon = ArrowUpRight;
   }

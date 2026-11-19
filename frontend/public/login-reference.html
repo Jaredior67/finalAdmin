@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FixIT · Log in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#0b1f8f;--ink:#0d1b4c;--gold:#f6b800;--muted:#41507f;--ease:cubic-bezier(.16,1,.3,1);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100%;font:400 15px/1.5 Figtree,system-ui,sans-serif;color:var(--ink);background:#0b2a8a;overflow-x:hidden}
+.par{position:fixed;inset:-4%;transform:translate(var(--px,0),var(--py,0));transition:transform .9s var(--ease)}
+.bg{position:absolute;inset:0;background:url(assets/isatu-bg.jpg) center 43%/cover;animation:drift 30s ease-in-out infinite alternate}
+@keyframes drift{from{transform:scale(1.03)}to{transform:scale(1.14) translate(-1.2%,.8%)}}
+.veil{position:fixed;inset:0;background:linear-gradient(180deg,rgba(5,15,80,.55) 0,rgba(10,36,140,.06) 22%,rgba(10,36,140,.06) 60%,rgba(5,15,80,.45) 100%)}
+.light{position:fixed;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.16) 50%,transparent 65%);transform:translateX(-120%);animation:beam 9s 2.6s ease-in-out infinite}
+@keyframes beam{0%{transform:translateX(-120%)}35%,100%{transform:translateX(120%)}}
+header{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;padding:18px clamp(20px,6vw,88px);animation:down 1s 1.1s var(--ease) backwards}
+@keyframes down{from{opacity:0;transform:translateY(-24px)}}
+.logo{display:grid;place-items:center;padding:6px 14px;border-radius:16px;background:rgba(255,255,255,.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 10px 28px rgba(3,10,60,.28)}
+.logo img{height:50px;display:block}
+nav{display:flex;align-items:center;gap:clamp(18px,3vw,38px)}
+nav a{position:relative;color:#fff;font:500 15px Figtree;text-decoration:none;padding:4px 0;text-shadow:0 2px 12px rgba(0,0,30,.4)}
+nav a:not(.btn)::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:2px;border-radius:2px;background:var(--gold);transform:scaleX(0);transform-origin:left;transition:transform .4s var(--ease)}
+nav a:not(.btn):hover::after{transform:scaleX(1)}
+nav .btn{padding:9px 28px;border:1.5px solid #fff;border-radius:10px;font-weight:600;transition:background .3s,color .3s;cursor:pointer;background:rgba(255,255,255,.06)}
+nav .btn:hover{background:#fff;color:var(--navy);text-shadow:none}
+main{position:relative;z-index:2;min-height:calc(100vh - 86px);display:grid;place-items:center;padding:0 20px 60px}
+.card{position:relative;width:100%;max-width:390px;padding:34px 36px 28px;border-radius:26px;background:rgba(255,255,255,.4);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid rgba(255,255,255,.65);box-shadow:0 40px 80px -24px rgba(2,8,70,.6),inset 0 1px 0 rgba(255,255,255,.8);overflow:hidden;transform:perspective(900px) rotateX(var(--ry,0deg)) rotateY(var(--rx,0deg));transition:transform .5s var(--ease),opacity .5s var(--ease),filter .5s var(--ease),visibility .5s;animation:rise 1.2s 1.15s var(--ease) backwards}
+.card::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,transparent 40%,rgba(255,255,255,.45) 50%,transparent 60%);transform:translateX(-130%);animation:glint 8s 3.4s ease-in-out infinite}
+@keyframes glint{0%{transform:translateX(-130%)}30%,100%{transform:translateX(130%)}}
+@keyframes rise{from{opacity:0;transform:perspective(900px) translateY(60px) rotateX(10deg) scale(.92);filter:blur(12px)}}
+.card.closed{position:absolute;pointer-events:none;opacity:0;visibility:hidden;filter:blur(10px);transform:perspective(900px) translateY(30px) scale(.94)}
+.card>*,.card form>*{animation:item .9s var(--ease) backwards;animation-delay:calc(1.45s + var(--i)*.08s)}
+@keyframes item{from{opacity:0;transform:translateY(18px)}}
+.x{position:absolute;top:0;right:0;width:46px;height:46px;border:0;background:#15294f;border-radius:0 26px 0 22px;cursor:pointer;display:grid;place-items:center;transition:background .25s}
+.x:hover{background:var(--navy)}.x svg{width:18px;height:18px;stroke:#fff;stroke-width:2.4;fill:none;transition:rotate .4s var(--ease)}.x:hover svg{rotate:90deg}
+h1{margin:0;text-align:center;font:700 30px/1.2 Sora,sans-serif;color:#0d1b4c;letter-spacing:-.01em}
+.campus{margin:2px 0 26px;text-align:center;font:600 13px Figtree;color:#a35f00}
+.f{position:relative;margin-bottom:18px}
+.f input{width:100%;height:54px;padding:20px 38px 4px 34px;border:0;border-bottom:2px solid rgba(13,27,76,.7);background:transparent;font:500 15px Figtree;color:var(--ink);outline:none;border-radius:0}
+.f label{position:absolute;left:34px;top:50%;translate:0 -50%;color:var(--muted);pointer-events:none;transition:all .22s ease}
+.f input:focus+label,.f input:not(:placeholder-shown)+label{top:13px;font-size:12px;font-weight:600;color:var(--navy)}
+.f::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,var(--gold),#f28c00);transform:scaleX(0);transform-origin:left;transition:transform .5s var(--ease)}
+.f:focus-within::after{transform:scaleX(1)}
+.f .i{position:absolute;left:4px;top:50%;translate:0 -50%;width:19px;height:19px;stroke:#0d1b4c;fill:none;stroke-width:1.8}
+.eye{position:absolute;right:-6px;top:50%;translate:0 -50%;width:36px;height:36px;border:0;background:none;border-radius:10px;cursor:pointer;display:grid;place-items:center}
+.eye svg{width:19px;height:19px;stroke:#0d1b4c;fill:none;stroke-width:1.8}
+.f.err::after{transform:scaleX(1);background:#d92d20}
+.msg{max-height:0;overflow:hidden;color:#b42318;font-size:13px;font-weight:500;transition:max-height .3s,margin .3s}
+.msg.show{max-height:40px;margin:-6px 0 10px}
+.row{display:flex;justify-content:space-between;align-items:center;margin:4px 0 22px;font-size:13.5px}
+.chk{display:flex;align-items:center;gap:8px;color:var(--ink);cursor:pointer}
+.chk input{appearance:none;margin:0;width:17px;height:17px;border-radius:4px;border:1.5px solid #0d1b4c;background:rgba(255,255,255,.6);display:grid;place-items:center;cursor:pointer;transition:background .2s}
+.chk input:checked{background:#0d1b4c}
+.chk input:checked::after{content:"";width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;rotate:45deg;translate:0 -1px}
+a{color:var(--ink)}.row a{text-decoration:none}.row a:hover,.reg a:hover{text-decoration:underline}
+.go{position:relative;width:100%;height:48px;border:0;border-radius:10px;color:#fff;font:600 15.5px Sora,sans-serif;cursor:pointer;overflow:hidden;background:linear-gradient(135deg,#16295c,#0b1f8f);box-shadow:0 14px 26px -10px rgba(11,31,143,.8);transition:transform .25s var(--ease),box-shadow .25s}
+.go::after{content:"";position:absolute;top:0;bottom:0;width:50%;left:-70%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-20deg);transition:left .7s}
+.go:hover::after{left:130%}.go:hover{transform:translateY(-2px)}.go:active{transform:scale(.99)}
+.go .sp{display:none;width:20px;height:20px;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;margin:auto;animation:r .7s linear infinite}
+@keyframes r{to{rotate:360deg}}
+.go.load .t{display:none}.go.load .sp{display:block}
+.reg{margin:20px 0 0;text-align:center;font-size:13.5px}.reg a{font-weight:700;text-decoration:none}
+.curtain{position:fixed;inset:0;z-index:10;pointer-events:none}
+.curtain i{position:absolute;inset:0;animation:wipe 1.15s cubic-bezier(.77,0,.18,1) forwards}
+.curtain .c1{background:var(--gold);animation-delay:.12s}
+.curtain .c2{background:linear-gradient(135deg,#0b1f8f,#071670);animation-delay:.28s}
+@keyframes wipe{to{clip-path:polygon(0 0,100% 0,100% 0,0 0)}}
+.curtain i{clip-path:polygon(0 0,100% 0,100% 100%,0 100%)}
+.curtain .c2::after{content:"";position:absolute;inset:0;background:url(assets/fixit-logo.png) center/auto 120px no-repeat;animation:fade .5s .35s forwards}
+@keyframes fade{to{opacity:0}}
+.shake{animation:shake .45s!important}
+@keyframes shake{20%,60%{translate:-8px 0}40%,80%{translate:8px 0}}
+button:focus-visible,a:focus-visible,.chk input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+@media(max-width:760px){.bg{background-size:auto 135%;background-position:50% 85%}main[data-v=login]{align-items:end;padding-bottom:40px}.card{padding:30px 24px 24px}.logo img{height:42px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+nav a.on:not(.btn)::after{transform:scaleX(1)}
+.burger{display:none;width:44px;height:44px;border:1.5px solid #fff;border-radius:12px;background:rgba(255,255,255,.08);cursor:pointer;place-items:center}
+.burger svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none}
+.view{width:min(940px,100%);animation:vin .8s var(--ease) backwards}
+.view[hidden]{display:none}
+.view.leave{animation:vout .22s ease forwards}
+@keyframes vin{from{opacity:0;transform:translateY(34px) scale(.97);filter:blur(10px)}}
+@keyframes vout{to{opacity:0;transform:translateY(-14px);filter:blur(6px)}}
+.glass{padding:36px clamp(22px,4vw,44px);border-radius:26px;background:rgba(255,255,255,.6);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:1px solid rgba(255,255,255,.7);box-shadow:0 40px 80px -24px rgba(2,8,70,.55),inset 0 1px 0 rgba(255,255,255,.8)}
+.glass h2{margin:0 0 6px;font:700 30px/1.15 Sora,sans-serif;color:var(--navy)}
+.lead{margin:0 0 24px;color:var(--muted);max-width:64ch}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.item{padding:16px 18px;border-radius:16px;background:rgba(255,255,255,.65);border-left:4px solid var(--gold)}
+.item b{display:block;font:600 15.5px Sora,sans-serif;color:var(--ink);margin-bottom:2px}.item span{font-size:14px;color:var(--muted)}
+.glass h3{margin:26px 0 12px;font:600 16px Sora,sans-serif;color:var(--ink)}
+.hero{text-align:center;color:#fff}
+.hero h2{font:700 clamp(32px,5vw,58px)/1.06 Sora,sans-serif;margin:0 0 16px;letter-spacing:-.02em;text-shadow:0 4px 30px rgba(0,0,30,.4)}
+.hero p{margin:0 auto 28px;max-width:56ch;font-size:17px;color:rgba(255,255,255,.94);text-shadow:0 2px 14px rgba(0,0,30,.45)}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:38px}
+.cta a{padding:13px 28px;border-radius:12px;font:600 15px Sora,sans-serif;text-decoration:none;transition:transform .3s var(--ease)}.cta a:hover{transform:translateY(-3px)}
+.b1{background:#fff;color:var(--navy)!important;box-shadow:0 14px 28px -10px rgba(2,8,70,.6)}
+.b2{border:1.5px solid #fff;color:#fff!important}
+.flow{list-style:none;margin:0;padding:0;counter-reset:s;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;text-align:left}
+.flow li{padding:16px 18px;border-radius:16px;background:rgba(255,255,255,.16);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.35);color:#fff;font-size:14px;counter-increment:s}
+.flow li::before{content:counter(s);display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--gold);color:#0d1b4c;font:700 13px Sora,sans-serif;margin-bottom:8px}
+.flow b{display:block;font:600 16px Sora,sans-serif}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:30px;align-items:start}
+.chs{display:grid;gap:10px}
+.ch{display:flex;align-items:center;gap:14px;width:100%;padding:12px 14px;border:0;border-radius:14px;background:rgba(255,255,255,.65);color:var(--ink);text-decoration:none;text-align:left;font:inherit;transition:transform .3s var(--ease),background .3s}
+a.ch,button.ch{cursor:pointer}a.ch:hover,button.ch:hover{transform:translateX(5px);background:#fff}
+.ch .ic{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--navy);flex:none}
+.ch .ic svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:1.8}
+.ch small{display:block;color:var(--muted);font-size:12px;line-height:1.3}.ch b{font:600 14.5px Figtree,sans-serif;line-height:1.35}
+.cf input,.cf textarea{width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid rgba(13,27,76,.2);background:rgba(255,255,255,.78);font:inherit;color:var(--ink);margin-bottom:10px;outline:none;resize:vertical;transition:border-color .25s,box-shadow .25s}
+.cf input:focus,.cf textarea:focus{border-color:var(--navy);box-shadow:0 0 0 4px rgba(11,31,143,.13)}
+.cf textarea{min-height:110px}
+.ok{display:none;text-align:center;padding:30px 10px}.ok b{display:block;font:600 18px Sora,sans-serif;color:var(--navy);margin-bottom:4px}
+.cf.sent form{display:none}.cf.sent .ok{display:block;animation:vin .6s var(--ease)}
+.toast{position:fixed;left:50%;bottom:28px;translate:-50% 20px;opacity:0;padding:10px 18px;border-radius:12px;background:#0d1b4c;color:#fff;font-size:14px;z-index:20;pointer-events:none;transition:opacity .3s,translate .4s var(--ease)}.toast.show{opacity:1;translate:-50% 0}
+@media(max-width:760px){.burger{display:grid}.cols{grid-template-columns:1fr}.glass{padding:28px 20px}
+nav{position:absolute;top:calc(100% - 6px);left:20px;right:20px;flex-direction:column;align-items:stretch;gap:2px;padding:10px;border-radius:18px;background:rgba(8,20,90,.86);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);opacity:0;visibility:hidden;translate:0 -10px;transition:opacity .3s,translate .4s var(--ease),visibility .3s}
+nav.open{opacity:1;visibility:visible;translate:0 0}nav a{padding:11px 14px}nav .btn{text-align:center;margin-top:6px}}
+</style></head><body>
+<div class="par" id="par"><div class="bg"></div></div><div class="veil"></div><div class="light"></div>
+<div class="curtain" aria-hidden="true"><i class="c1"></i><i class="c2"></i></div>
+<header>
+ <a class="logo" href="#" data-go="home" aria-label="FixIT home"><img alt="FixIT" src="assets/fixit-logo.png"></a>
+ <nav id="nav"><a href="#" data-go="home">Home</a><a href="#" data-go="about">About</a><a href="#" data-go="services">Services</a><a href="#" data-go="contact">Contact</a><a class="btn" id="open" href="#" data-go="login">Login</a></nav>
+ <button class="burger" id="burger" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+</header>
+<main id="main" data-v="login">
+ <section class="view hero" id="v-home" hidden>
+  <h2>Report it. Track it. Get it fixed.</h2>
+  <p>FixIT is the facility issue tracker of ISAT U Dumangas Campus. Log a concern, follow its approval, and see when maintenance closes it.</p>
+  <div class="cta"><a class="b1" href="#" data-go="login">Log in</a><a class="b2" href="#" data-go="services">See what FixIT does</a></div>
+  <ol class="flow"><li><b>Report</b>Faculty and staff file a facility concern.</li><li><b>Approve</b>An approver reviews and prioritizes it.</li><li><b>Repair</b>Maintenance gets the job and updates progress.</li><li><b>Close</b>Everyone sees the result in the history.</li></ol>
+ </section>
+ <section class="view glass" id="v-about" hidden>
+  <h2>About FixIT</h2>
+  <p class="lead">FixIT (Facility Issue eXpress and Integrated Tracking System) replaces scattered messages and paper slips with one tracked request for every facility concern on campus. It is run with the Planning, Development, and Auxiliary Services office of ISAT U Dumangas Campus.</p>
+  <h3>Who uses it</h3>
+  <div class="grid"><div class="item"><b>Faculty and staff</b><span>Report broken, unsafe or missing facilities and follow the status.</span></div><div class="item"><b>Approvers</b><span>Review requests, set priority and release them for repair.</span></div><div class="item"><b>Maintenance</b><span>Receive assigned jobs, update progress and mark work done.</span></div><div class="item"><b>Administrators</b><span>Manage accounts, facilities and campus-wide reports.</span></div></div>
+ </section>
+ <section class="view glass" id="v-services" hidden>
+  <h2>Services</h2>
+  <p class="lead">Everything a facility request needs, from the first report to the final record.</p>
+  <div class="grid"><div class="item"><b>Issue reporting</b><span>File a concern with location, details and a photo in a minute.</span></div><div class="item"><b>Live status tracking</b><span>See whether a request is pending, approved, assigned or done.</span></div><div class="item"><b>Approval workflow</b><span>Requests reach the right approver before work begins.</span></div><div class="item"><b>Job assignment</b><span>Maintenance staff are assigned and can report progress.</span></div><div class="item"><b>Notifications</b><span>Get alerts when your request changes status.</span></div><div class="item"><b>Reports and history</b><span>Review past repairs by building, room or date.</span></div></div>
+ </section>
+ <section class="view glass" id="v-contact" hidden>
+  <h2>Contact us</h2>
+  <p class="lead">Questions about your account or a request? Reach the FixIT team through any channel below.</p>
+  <div class="cols">
+   <div class="chs">
+    <a class="ch" href="#" target="_blank" rel="noopener"><span class="ic"><svg viewBox="0 0 24 24"><path d="M14 8h3V4.5h-3A4.5 4.5 0 0 0 9.5 9v2H7v3.5h2.5V21H13v-6.5h3l.5-3.5H13V9a1 1 0 0 1 1-1Z"/></svg></span><span><small>Facebook</small><b>FixIT ISAT U DC</b></span></a>
+    <a class="ch" href="#" target="_blank" rel="noopener"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6"/></svg></span><span><small>Instagram</small><b>@fixitdc</b></span></a>
+    <button class="ch" data-copy="fixit@isatu.edu.ph"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span><span><small>Email (tap to copy)</small><b>fixit@isatu.edu.ph</b></span></button>
+    <button class="ch" data-copy="(033) 000-0000"><span class="ic"><svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2Z"/></svg></span><span><small>Phone (tap to copy)</small><b>(033) 000-0000</b></span></button>
+    <div class="ch"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 21s7-6 7-11a7 7 0 0 0-14 0c0 5 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg></span><span><small>Office</small><b>Planning, Development, and Auxiliary Services, ISAT U Dumangas Campus</b></span></div>
+    <div class="ch"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span><small>Office hours</small><b>Monday to Friday, 8:00 AM to 5:00 PM</b></span></div>
+   </div>
+   <div class="cf" id="cf">
+    <form id="cform" novalidate><h3 style="margin-top:0">Send a message</h3><input id="cn" placeholder="Your name" autocomplete="name"><input id="ce" type="email" placeholder="Institutional email" autocomplete="email"><textarea id="cm" placeholder="How can we help?"></textarea><button class="go" type="submit">Send message</button></form>
+    <div class="ok"><b>Message sent</b>The FixIT team will reply to your email within two working days.</div>
+   </div>
+  </div>
+ </section>
+ <section class="card" id="card" aria-labelledby="t">
+  <button class="x" id="x" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+  <h1 id="t" style="--i:0">Login</h1>
+  <p class="campus" style="--i:1">ISAT U Dumangas Campus</p>
+  <form id="f" novalidate style="display:contents">
+   <div class="f" id="fe" style="--i:2"><input id="em" type="email" placeholder=" " autocomplete="username" required><label for="em">Institutional email</label><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></div>
+   <div class="f" id="fp" style="--i:3"><input id="pw" type="password" placeholder=" " autocomplete="current-password" required><label for="pw">Password</label>
+    <svg class="i" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+    <button type="button" class="eye" id="eye" aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+   <div class="msg" id="msg" role="alert" style="--i:4"></div>
+   <div class="row" style="--i:4"><label class="chk"><input type="checkbox" checked>Remember me</label><a href="#">Forgot Password?</a></div>
+   <button class="go" id="go" type="submit" style="--i:5"><span class="t">Login</span><span class="sp"></span></button>
+  </form>
+  <p class="reg" style="--i:6">Don't have an account? <a href="#">Register</a></p>
+ </section>
+</main>
+<script>
+const card=document.getElementById('card'),par=document.getElementById('par');
+const main=document.getElementById('main'),nav=document.getElementById('nav'),toast=document.createElement('div');toast.className='toast';document.body.appendChild(toast);
+const views={};['home','about','services','contact'].forEach(n=>views[n]=document.getElementById('v-'+n));
+let cur='login';
+function go(n){if(n===cur)return;const old=views[cur];cur=n;nav.classList.remove('open');
+ document.querySelectorAll('nav a[data-go]').forEach(a=>a.classList.toggle('on',a.dataset.go===n));
+ card.classList.toggle('closed',n!=='login');main.dataset.v=n;
+ for(const k in views){const v=views[k];if(k===n){v.classList.remove('leave');v.hidden=false}else if(v===old){v.classList.add('leave');setTimeout(()=>{if(cur!==k)v.hidden=true},220)}else v.hidden=true}
+ scrollTo({top:0,behavior:'smooth'})}
+document.addEventListener('click',e=>{const a=e.target.closest('[data-go]');if(a){e.preventDefault();go(a.dataset.go);return}
+ const c=e.target.closest('[data-copy]');if(c){try{navigator.clipboard.writeText(c.dataset.copy)}catch(_){}toast.textContent='Copied '+c.dataset.copy;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1800);return}
+ if(e.target.closest('a[href="#"]'))e.preventDefault()});
+document.getElementById('x').onclick=()=>go('home');
+document.getElementById('burger').onclick=()=>nav.classList.toggle('open');
+addEventListener('keydown',e=>{if(e.key==='Escape'&&cur==='login')go('home')});
+document.getElementById('cform').onsubmit=e=>{e.preventDefault();const ok=document.getElementById('cn').value.trim()&&/^\S+@\S+\.\S+$/.test(document.getElementById('ce').value)&&document.getElementById('cm').value.trim();
+ if(!ok){toast.textContent='Fill in your name, a valid email and a message.';toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2200);return}
+ document.getElementById('cf').classList.add('sent')};
+{const h=location.hash.slice(1);if(views[h])go(h)}
+if(matchMedia('(hover:hover)').matches&&!matchMedia('(prefers-reduced-motion:reduce)').matches){
+ addEventListener('mousemove',e=>{const x=e.clientX/innerWidth-.5,y=e.clientY/innerHeight-.5;
+  par.style.setProperty('--px',-x*28+'px');par.style.setProperty('--py',-y*20+'px');
+  card.style.setProperty('--rx',x*5+'deg');card.style.setProperty('--ry',-y*5+'deg')})}
+const pw=document.getElementById('pw');
+const ON='<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',OFF='<path d="M3 3l18 18M10.6 6.2A9.6 9.6 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.9M6.6 7.6A16.6 16.6 0 0 0 2 12s3.5 7 10 7a9.5 9.5 0 0 0 4-.9M9.9 9.9a3 3 0 0 0 4.2 4.2"/>';
+document.getElementById('eye').onclick=e=>{const s=pw.type==='password';e.currentTarget.querySelector('svg').innerHTML=s?OFF:ON;pw.type=s?'text':'password';e.currentTarget.setAttribute('aria-label',s?'Hide password':'Show password')};
+const em=document.getElementById('em'),msg=document.getElementById('msg');
+document.getElementById('f').onsubmit=e=>{e.preventDefault();
+ const bad=!/^\S+@\S+\.\S+$/.test(em.value),short=pw.value.length<6;
+ document.getElementById('fe').classList.toggle('err',bad);document.getElementById('fp').classList.toggle('err',!bad&&short);
+ if(bad||short){msg.textContent=bad?'Enter your institutional email address.':'Password must be at least 6 characters.';msg.classList.add('show');card.classList.remove('shake');void card.offsetWidth;card.classList.add('shake');return}
+ msg.classList.remove('show');const b=document.getElementById('go');b.classList.add('load');setTimeout(()=>b.classList.remove('load'),1800)};
+</script></body></html>

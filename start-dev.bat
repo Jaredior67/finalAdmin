@@ -32,25 +32,33 @@ if errorlevel 1 (
     echo  [OK] MySQL is running on port 3306.
 )
 
-:: ─── 2. Kill any stale backend on port 5000 ──────────────────
+:: ─── 2. Kill stale processes on port 5000 and 5173 ────────────
 echo.
-echo  [2/4] Checking port 5000 (Backend API)...
+echo  [2/4] Checking ports 5000 (Backend) and 5173 (Frontend)...
 netstat -ano | findstr ":5000" | findstr "LISTENING" >nul
 if not errorlevel 1 (
-    echo  [~] Port 5000 is already in use - killing old process...
+    echo  [~] Port 5000 is in use - stopping previous backend...
     for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5000" ^| findstr "LISTENING"') do (
         taskkill /PID %%a /F >nul 2>&1
     )
     timeout /t 1 /nobreak >nul
 )
-echo  [OK] Port 5000 is free.
+netstat -ano | findstr ":5173" | findstr "LISTENING" >nul
+if not errorlevel 1 (
+    echo  [~] Port 5173 is in use - stopping previous frontend...
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5173" ^| findstr "LISTENING"') do (
+        taskkill /PID %%a /F >nul 2>&1
+    )
+    timeout /t 1 /nobreak >nul
+)
+echo  [OK] Ports 5000 and 5173 are ready.
 
 :: ─── 3. Start Backend ─────────────────────────────────────────
 echo.
 echo  [3/4] Starting Backend API server (port 5000)...
 start "FixIT Backend" cmd /k "color 0B && echo  [FixIT BACKEND] Starting... && cd /d "%~dp0backend" && node src/server.js"
 echo  [OK] Backend window opened. Waiting for it to be ready...
-timeout /t 4 /nobreak >nul
+timeout /t 2 /nobreak >nul
 
 :: Wait for backend to actually be listening
 set /a tries=0
@@ -60,7 +68,7 @@ if not errorlevel 1 goto backend_ready
 set /a tries+=1
 if !tries! geq 15 (
     echo  [!] Backend is taking a long time to start.
-    echo      Check the Backend window for errors.
+    echo      Check the FixIT Backend window for errors.
     goto open_frontend
 )
 timeout /t 1 /nobreak >nul
@@ -72,10 +80,26 @@ echo  [OK] Backend is live on http://localhost:5000/api
 :open_frontend
 echo.
 echo  [4/4] Starting Frontend dev server (Vite, port 5173)...
-start "FixIT Frontend" cmd /k "color 0E && echo  [FixIT FRONTEND] Starting Vite... && cd /d "%~dp0" && npm run dev:frontend"
+start "FixIT Frontend" cmd /k "color 0E && echo  [FixIT FRONTEND] Starting Vite... && cd /d "%~dp0frontend" && npm run dev"
 echo  [OK] Vite window opened. Waiting for it to be ready...
-timeout /t 4 /nobreak >nul
+timeout /t 2 /nobreak >nul
 
+:: Wait for Vite to actually be listening
+set /a v_tries=0
+:wait_frontend
+netstat -ano | findstr ":5173" | findstr "LISTENING" >nul
+if not errorlevel 1 goto frontend_ready
+set /a v_tries+=1
+if !v_tries! geq 15 (
+    echo  [!] Frontend is taking longer to start. Opening browser anyway...
+    goto launch_browser
+)
+timeout /t 1 /nobreak >nul
+goto wait_frontend
+:frontend_ready
+echo  [OK] Frontend is live on http://localhost:5173
+
+:launch_browser
 :: Open the browser
 start "" "http://localhost:5173"
 

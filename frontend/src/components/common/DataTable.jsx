@@ -14,7 +14,7 @@ export const DataTable = ({
 }) => {
   if (isLoading) {
     return (
-      <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+      <div style={{ background: '#ffffff', borderRadius: 'var(--radius-md)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
         <TableSkeleton rows={5} cols={columns.length || 5} />
       </div>
     );
@@ -35,7 +35,7 @@ export const DataTable = ({
       width: '100%',
       overflowX: 'auto',
       maxHeight: maxHeight || 'auto',
-      borderRadius: '12px',
+      borderRadius: 'var(--radius-md)',
       border: '1px solid #e2e8f0',
       background: '#ffffff',
       boxShadow: 'var(--shadow-subtle)'
@@ -48,8 +48,8 @@ export const DataTable = ({
                 key={idx}
                 style={{
                   padding: '12px 16px',
-                  fontWeight: '700',
-                  color: '#475569',
+                  fontWeight: '600',
+                  color: 'var(--text-secondary, #475569)',
                   fontSize: '12px',
                   textTransform: 'uppercase',
                   letterSpacing: '0.04em',
@@ -68,7 +68,7 @@ export const DataTable = ({
               key={row.id || rIdx}
               onClick={() => onRowClick && onRowClick(row)}
               style={{
-                borderBottom: rIdx === data.length - 1 ? 'none' : '1px solid #f1f5f9',
+                borderBottom: rIdx === data.length - 1 ? 'none' : '1px solid var(--border-light, #edf1f7)',
                 cursor: onRowClick ? 'pointer' : 'default',
                 transition: 'background 0.15s'
               }}
@@ -80,7 +80,7 @@ export const DataTable = ({
                   key={cIdx}
                   style={{
                     padding: '14px 16px',
-                    color: '#0f172a',
+                    color: 'var(--text-primary, #0f172a)',
                     whiteSpace: col.nowrap !== false ? 'nowrap' : 'normal',
                     verticalAlign: 'middle'
                   }}

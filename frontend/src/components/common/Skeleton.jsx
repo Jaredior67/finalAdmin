@@ -94,3 +94,37 @@ export const SkeletonStat = ({ count = 4 }) => {
     </div>
   );
 };
+
+export const DashboardSkeleton = () => {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingTop: '16px', width: '100%' }}>
+      {/* Header Skeleton */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+        <div>
+          <Skeleton width="180px" height="16px" style={{ marginBottom: '8px' }} />
+          <Skeleton width="320px" height="28px" style={{ marginBottom: '6px' }} />
+          <Skeleton width="480px" height="14px" />
+        </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <Skeleton width="130px" height="38px" borderRadius="8px" />
+          <Skeleton width="130px" height="38px" borderRadius="8px" />
+        </div>
+      </div>
+
+      {/* KPI Stats Skeleton */}
+      <SkeletonStat count={5} />
+
+      {/* Two Column Grid Skeleton */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '18px' }}>
+        <SkeletonCard height="240px" />
+        <SkeletonCard height="240px" />
+      </div>
+
+      {/* Table Skeleton */}
+      <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '16px' }}>
+        <Skeleton width="220px" height="20px" style={{ marginBottom: '14px' }} />
+        <TableSkeleton rows={5} cols={6} />
+      </div>
+    </div>
+  );
+};

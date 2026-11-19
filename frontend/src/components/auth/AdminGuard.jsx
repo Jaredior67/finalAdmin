@@ -1,12 +1,10 @@
-import React, { useState } from 'react';
-import { UserCheck, LogIn, UserPlus } from 'lucide-react';
+import React from 'react';
+import { UserCheck, LogIn } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { RegisterModal } from './RegisterModal';
-import fixitLogo from '../../assets/fixit-official-logo.png';
+import fixitLogo from '../../assets/fixit-logo.png';
 
 export const AdminGuard = ({ children }) => {
   const { currentUser, isAdmin, loginAsAdmin, setIsLoginModalOpen } = useAuth();
-  const [isRegisterOpen, setIsRegisterOpen] = useState(false);
 
   if (isAdmin) {
     return <>{children}</>;
@@ -82,16 +80,6 @@ export const AdminGuard = ({ children }) => {
               <LogIn size={18} />
               Sign In with Other Admin Credentials
             </button>
-
-            <button 
-              type="button" 
-              className="btn btn-outline-primary" 
-              style={{ width: '100%', padding: '12px', background: '#fffbeb', borderColor: '#fde68a', color: '#b45309' }}
-              onClick={() => setIsRegisterOpen(true)}
-            >
-              <UserPlus size={18} />
-              Register Account (Submit Campus ID)
-            </button>
           </div>
 
           <div style={{ marginTop: '24px', fontSize: '12px', color: '#94a3b8', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
@@ -99,15 +87,6 @@ export const AdminGuard = ({ children }) => {
           </div>
         </div>
       </div>
-
-      <RegisterModal
-        isOpen={isRegisterOpen}
-        onClose={() => setIsRegisterOpen(false)}
-        onSwitchToLogin={() => {
-          setIsRegisterOpen(false);
-          setIsLoginModalOpen(true);
-        }}
-      />
     </>
   );
 };

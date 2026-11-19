@@ -7,7 +7,12 @@ import {
   CheckCheck,
   Users,
   Hash,
-  Pencil
+  Pencil,
+  Trash2,
+  X,
+  Check,
+  MoreHorizontal,
+  ArrowLeft
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +27,7 @@ const getRoleColor = (senderStr) => {
   if (s.includes('maintenance') || s.includes('tech') || s.includes('mark') || s.includes('ronaldo') || s.includes('arthur')) return { bg: '#0f766e', text: '#fff', label: 'Tech' };
   if (s.includes('faculty') || s.includes('dean') || s.includes('dr.') || s.includes('prof.')) return { bg: '#7c3aed', text: '#fff', label: 'Faculty' };
   if (s.includes('staff') || s.includes('engr.') || s.includes('ms.') || s.includes('mr.')) return { bg: '#d97706', text: '#fff', label: 'Staff' };
+  if (s.includes('visitor') || s.includes('public') || s.includes('@')) return { bg: '#0284c7', text: '#fff', label: 'Visitor' };
   return { bg: '#475569', text: '#fff', label: 'User' };
 };
 
@@ -33,10 +39,11 @@ const getInitials = (name = '') => {
 
 /* ── Main Component ──────────────────────────────────────────────────────── */
 export const CommunicationBox = () => {
-  const { messages, sendMessage, createMessageThread, requisitions, messageParticipants = [] } = useData();
+  const { messages, sendMessage, markThreadRead, editMessage, deleteMessage, createMessageThread, requisitions, messageParticipants = [] } = useData();
   const { currentUser, isAdmin } = useAuth();
 
   const [activeThreadId, setActiveThreadId] = useState(messages[0]?.id || null);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [searchMsg, setSearchMsg] = useState('');
   const [filterTab, setFilterTab] = useState('all');
@@ -47,6 +54,10 @@ export const CommunicationBox = () => {
   const [newInitialMsg, setNewInitialMsg] = useState('');
 
   const messagesEndRef = useRef(null);
+  const [hoveredMsg, setHoveredMsg] = useState(null);   // `${threadId}-${idx}`
+  const [msgMenuOpen, setMsgMenuOpen] = useState(null);  // same key
+  const [editingMsg, setEditingMsg] = useState(null);    // { threadId, idx }
+  const [editText, setEditText] = useState('');
 
   // Scroll to bottom on thread change or new message
   useEffect(() => {
@@ -71,9 +82,9 @@ export const CommunicationBox = () => {
     const role = String(user.role || user.userType || '').toLowerCase();
     const status = String(user.status || '').toLowerCase();
     return (
-      ['admin', 'faculty', 'staff', 'maintenance', 'technician'].includes(role) &&
+      ['admin', 'campus_admin', 'supervisor', 'faculty', 'staff', 'maintenance', 'technician'].includes(role) &&
       (!status || ['active', 'approved'].includes(status)) &&
-      user.id !== currentUser?.id
+      String(user.id) !== String(currentUser?.id)
     );
   });
 
@@ -81,7 +92,7 @@ export const CommunicationBox = () => {
     u.name || `${u.firstName || u.first_name || ''} ${u.lastName || u.last_name || ''}`.trim() || u.email;
 
   const senderName = currentUser?.name
-    ? `${currentUser.name} (${currentUser.roleTitle || currentUser.title || 'PDAS'})`
+    ? `${currentUser.name} (${currentUser.roleTitle || currentUser.title || (currentUser.role === 'admin' ? 'PDAS Admin' : currentUser.role || 'PDAS')})`
     : 'PDAS Director (Engr. Reynaldo Bautista)';
 
   const handleSend = (e) => {
@@ -91,17 +102,32 @@ export const CommunicationBox = () => {
     setReplyText('');
   };
 
-  const handleCreateThread = (e) => {
+  const handleCreateThread = async (e) => {
     e.preventDefault();
     if (!newRecipient.trim() || !newSubject.trim() || !newInitialMsg.trim()) return;
-    const thread = createMessageThread({
+
+    const cleanRecip = newRecipient.trim();
+    const matchedUser = approvedParticipants.find(u =>
+      String(u.id) === cleanRecip ||
+      getParticipantName(u).toLowerCase() === cleanRecip.toLowerCase() ||
+      (u.email && u.email.toLowerCase() === cleanRecip.toLowerCase()) ||
+      cleanRecip.toLowerCase().includes(String(u.email || '').toLowerCase())
+    );
+    const recipientId = matchedUser?.id || null;
+    const recipientDisplayName = matchedUser ? getParticipantName(matchedUser) : cleanRecip;
+
+    const thread = await createMessageThread({
       subject: newSubject.trim(),
-      recipient: newRecipient.trim(),
+      recipient: recipientDisplayName,
+      recipientId,
       controlNo: newControlNo.trim() || 'CAMPUS-DISPATCH',
       initialMessage: newInitialMsg.trim(),
       senderName
     });
-    if (thread) setActiveThreadId(thread.id);
+    if (thread) {
+      setActiveThreadId(thread.id);
+      setMobileChatOpen(true);
+    }
     clearComposeDraft();
     setIsComposeOpen(false);
     setNewRecipient(''); setNewSubject(''); setNewControlNo(''); setNewInitialMsg('');
@@ -122,10 +148,10 @@ export const CommunicationBox = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* ── Page Header ────────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+      <div className="comm-page-header">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h1 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
               PDAS Communication &amp; Dispatch Desk
             </h1>
             <span style={{ background: '#eff6ff', color: '#001f9c', fontSize: '10.5px', fontWeight: '700', padding: '2px 8px', borderRadius: '20px', border: '1px solid #bfdbfe' }}>
@@ -137,40 +163,32 @@ export const CommunicationBox = () => {
               </span>
             )}
           </div>
-          <p style={{ fontSize: '12.5px', color: '#64748b', margin: '3px 0 0 0' }}>
+          <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0 0' }}>
             Direct communication between requesters, technicians &amp; PDAS administration
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsComposeOpen(true)}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: '7px',
-            padding: '9px 18px', background: 'linear-gradient(135deg, #001f9c, #0a2ebf)',
-            color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '700',
-            fontSize: '13px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,31,156,0.3)',
-            transition: 'all 0.15s ease'
-          }}
-        >
-          <Pencil size={14} /> Compose
-        </button>
+        <div className="comm-header-actions">
+          <button
+            type="button"
+            onClick={() => setIsComposeOpen(true)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '7px',
+              padding: '8px 16px', background: 'linear-gradient(135deg, #001f9c, #0a2ebf)',
+              color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '700',
+              fontSize: '12.5px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,31,156,0.3)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Pencil size={14} /> Compose
+          </button>
+        </div>
       </div>
 
       {/* ── Two-Panel Chat Shell ───────────────────────────────────────────── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '300px 1fr',
-        flex: 1,
-        minHeight: '580px',
-        background: '#ffffff',
-        border: '1px solid #e2e8f0',
-        borderRadius: '16px',
-        overflow: 'hidden',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.06)'
-      }}>
+      <div className="comm-shell">
 
         {/* ── LEFT: Thread List ───────────────────────────────────────────── */}
-        <div style={{ borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', background: 'var(--bg-sunken)' }}>
+        <div className={`comm-thread-list-pane ${mobileChatOpen ? 'is-hidden-mobile' : ''}`}>
 
           {/* Search bar */}
           <div style={{ padding: '12px 12px 10px 12px', borderBottom: '1px solid #e2e8f0' }}>
@@ -221,7 +239,11 @@ export const CommunicationBox = () => {
               return (
                 <div
                   key={thread.id}
-                  onClick={() => setActiveThreadId(thread.id)}
+                  onClick={() => {
+                    setActiveThreadId(thread.id);
+                    if (thread.unread && markThreadRead) markThreadRead(thread.id);
+                    setMobileChatOpen(true);
+                  }}
                   style={{
                     padding: '13px 14px',
                     borderBottom: '1px solid #f1f5f9',
@@ -286,38 +308,48 @@ export const CommunicationBox = () => {
         </div>
 
         {/* ── RIGHT: Chat Detail ──────────────────────────────────────────── */}
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div className={`comm-chat-detail-pane ${!mobileChatOpen ? 'is-hidden-mobile' : ''}`}>
           {activeThread ? (
             <>
               {/* Thread header */}
               <div style={{
-                padding: '14px 20px', borderBottom: '1px solid #e2e8f0',
-                background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                padding: '12px 16px', borderBottom: '1px solid #e2e8f0',
+                background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                  <button
+                    type="button"
+                    className="comm-mobile-back-btn"
+                    onClick={() => setMobileChatOpen(false)}
+                    aria-label="Back to conversations list"
+                    title="Back to conversations"
+                  >
+                    <ArrowLeft size={16} />
+                    <span>Back</span>
+                  </button>
                   {(() => {
                     const { bg } = getRoleColor(activeThread.sender);
                     return (
                       <div style={{
-                        width: '40px', height: '40px', borderRadius: '50%', background: bg,
+                        width: '38px', height: '38px', borderRadius: '50%', background: bg,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '13px', fontWeight: '800', color: '#fff', flexShrink: 0
+                        fontSize: '12.5px', fontWeight: '800', color: '#fff', flexShrink: 0
                       }}>
                         {getInitials(activeThread.sender)}
                       </div>
                     );
                   })()}
-                  <div>
-                    <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {activeThread.subject}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-                      <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>
                         With <strong style={{ color: '#001f9c' }}>{activeThread.sender.split('(')[0].trim()}</strong>
                       </span>
-                      <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>•</span>
+                      <span style={{ fontSize: '10px', color: '#94a3b8' }}>•</span>
                       <span style={{
-                        fontSize: '10px', fontWeight: '700', padding: '1px 7px',
+                        fontSize: '9.5px', fontWeight: '700', padding: '1px 6px',
                         borderRadius: '4px', background: 'var(--bg-muted)', color: '#475569',
                         fontFamily: 'monospace'
                       }}>
@@ -326,13 +358,13 @@ export const CommunicationBox = () => {
                     </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                   <span style={{
                     fontSize: '11px', color: '#059669', fontWeight: '600',
                     display: 'flex', alignItems: 'center', gap: '4px'
                   }}>
                     <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#059669', display: 'inline-block' }} />
-                    Active Thread
+                    <span className="comm-active-thread-text">Active Thread</span>
                   </span>
                 </div>
               </div>
@@ -347,6 +379,11 @@ export const CommunicationBox = () => {
                   const isMine = (isAdmin && item.sender.includes('Director')) ||
                     (currentUser?.name && item.sender.includes(currentUser.name));
                   const { bg, text, label } = getRoleColor(item.sender);
+                  const msgKey = `${activeThread.id}-${idx}`;
+                  const isHovered = hoveredMsg === msgKey;
+                  const isMenuOpen = msgMenuOpen === msgKey;
+                  const isEditing = editingMsg?.threadId === activeThread.id && editingMsg?.idx === idx;
+
                   return (
                     <div
                       key={idx}
@@ -356,8 +393,11 @@ export const CommunicationBox = () => {
                         alignItems: 'flex-end',
                         gap: '10px',
                         maxWidth: '80%',
-                        alignSelf: isMine ? 'flex-end' : 'flex-start'
+                        alignSelf: isMine ? 'flex-end' : 'flex-start',
+                        position: 'relative'
                       }}
+                      onMouseEnter={() => setHoveredMsg(msgKey)}
+                      onMouseLeave={() => { setHoveredMsg(null); if (!isMenuOpen) setMsgMenuOpen(null); }}
                     >
                       {/* Avatar */}
                       <div style={{
@@ -368,7 +408,7 @@ export const CommunicationBox = () => {
                         {getInitials(item.sender)}
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: '3px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: '3px', position: 'relative' }}>
                         {/* Sender + time */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           {!isMine && (
@@ -382,30 +422,156 @@ export const CommunicationBox = () => {
                           </span>
                           <span style={{ fontSize: '10.5px', color: '#9ca3af' }}>•</span>
                           <span style={{ fontSize: '10.5px', color: '#9ca3af' }}>{item.time}</span>
+                          {item.edited && (
+                            <span style={{ fontSize: '10px', color: '#9ca3af', fontStyle: 'italic' }}>(edited)</span>
+                          )}
                         </div>
 
-                        {/* Bubble */}
-                        <div style={{
-                          padding: '10px 14px',
-                          borderRadius: isMine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                          background: isMine
-                            ? 'linear-gradient(135deg, #001f9c, #0a2ebf)'
-                            : '#ffffff',
-                          color: isMine ? '#ffffff' : '#1e293b',
-                          fontSize: '13px',
-                          lineHeight: 1.55,
-                          boxShadow: isMine
-                            ? '0 4px 12px rgba(0,31,156,0.25)'
-                            : '0 2px 8px rgba(0,0,0,0.08)',
-                          border: isMine ? 'none' : '1px solid #f1f5f9',
-                          maxWidth: '100%',
-                          wordBreak: 'break-word'
-                        }}>
-                          {item.text}
+                        {/* Bubble wrapper with action button */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexDirection: isMine ? 'row-reverse' : 'row' }}>
+
+                          {/* ••• action button — only on own messages on hover */}
+                          {isMine && isHovered && !isEditing && (
+                            <div style={{ position: 'relative' }}>
+                              <button
+                                type="button"
+                                onClick={() => setMsgMenuOpen(isMenuOpen ? null : msgKey)}
+                                style={{
+                                  background: 'var(--bg-sunken)', border: '1px solid #e2e8f0',
+                                  borderRadius: '50%', width: '26px', height: '26px',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  cursor: 'pointer', color: '#475569', flexShrink: 0
+                                }}
+                              >
+                                <MoreHorizontal size={13} />
+                              </button>
+
+                              {/* Dropdown menu */}
+                              {isMenuOpen && (
+                                <div style={{
+                                  position: 'absolute', bottom: '32px', right: 0,
+                                  background: '#ffffff', border: '1px solid #e2e8f0',
+                                  borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                  zIndex: 50, minWidth: '130px', overflow: 'hidden'
+                                }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingMsg({ threadId: activeThread.id, idx });
+                                      setEditText(item.text);
+                                      setMsgMenuOpen(null);
+                                    }}
+                                    style={{
+                                      width: '100%', padding: '9px 14px', border: 'none',
+                                      background: 'transparent', cursor: 'pointer',
+                                      display: 'flex', alignItems: 'center', gap: '8px',
+                                      fontSize: '12.5px', fontWeight: '600', color: '#374151',
+                                      textAlign: 'left'
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                  >
+                                    <Pencil size={13} style={{ color: '#001f9c' }} /> Edit
+                                  </button>
+                                  <div style={{ height: '1px', background: 'var(--border-light)' }} />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (window.confirm('Delete this message?')) {
+                                        deleteMessage(activeThread.id, idx);
+                                      }
+                                      setMsgMenuOpen(null);
+                                    }}
+                                    style={{
+                                      width: '100%', padding: '9px 14px', border: 'none',
+                                      background: 'transparent', cursor: 'pointer',
+                                      display: 'flex', alignItems: 'center', gap: '8px',
+                                      fontSize: '12.5px', fontWeight: '600', color: '#dc2626',
+                                      textAlign: 'left'
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                  >
+                                    <Trash2 size={13} /> Delete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Bubble or inline edit */}
+                          {isEditing ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '200px', maxWidth: '320px' }}>
+                              <textarea
+                                autoFocus
+                                value={editText}
+                                onChange={e => setEditText(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    if (editText.trim()) { editMessage(activeThread.id, idx, editText.trim()); setEditingMsg(null); }
+                                  }
+                                  if (e.key === 'Escape') setEditingMsg(null);
+                                }}
+                                style={{
+                                  width: '100%', padding: '9px 12px', borderRadius: '10px',
+                                  border: '2px solid #001f9c', outline: 'none',
+                                  fontSize: '13px', lineHeight: 1.5, resize: 'none',
+                                  background: '#eff6ff', color: '#0f172a', boxSizing: 'border-box'
+                                }}
+                                rows={2}
+                              />
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingMsg(null)}
+                                  style={{
+                                    padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0',
+                                    background: '#fff', color: '#64748b', fontSize: '11.5px',
+                                    fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                  }}
+                                >
+                                  <X size={11} /> Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (editText.trim()) { editMessage(activeThread.id, idx, editText.trim()); setEditingMsg(null); }
+                                  }}
+                                  style={{
+                                    padding: '4px 10px', borderRadius: '6px', border: 'none',
+                                    background: '#001f9c', color: '#fff', fontSize: '11.5px',
+                                    fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                  }}
+                                >
+                                  <Check size={11} /> Save
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{
+                              padding: '10px 14px',
+                              borderRadius: isMine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                              background: isMine
+                                ? 'linear-gradient(135deg, #001f9c, #0a2ebf)'
+                                : '#ffffff',
+                              color: isMine ? '#ffffff' : '#1e293b',
+                              fontSize: '13px',
+                              lineHeight: 1.55,
+                              boxShadow: isMine
+                                ? '0 4px 12px rgba(0,31,156,0.25)'
+                                : '0 2px 8px rgba(0,0,0,0.08)',
+                              border: isMine ? 'none' : '1px solid #f1f5f9',
+                              maxWidth: '100%',
+                              wordBreak: 'break-word'
+                            }}>
+                              {item.text}
+                            </div>
+                          )}
                         </div>
 
                         {/* Read receipt for own messages */}
-                        {isMine && (
+                        {isMine && !isEditing && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#60a5fa' }}>
                             <CheckCheck size={12} />
                             <span style={{ fontSize: '10px', color: '#94a3b8' }}>Delivered</span>
@@ -546,7 +712,7 @@ export const CommunicationBox = () => {
               <datalist id="approved-message-participants">
                 {approvedParticipants.map(u => (
                   <option key={u.id} value={getParticipantName(u)}>
-                    {u.role || u.userType || 'Participant'}
+                    {u.role ? `${u.role.toUpperCase()} — ${u.department || u.email || ''}` : u.email}
                   </option>
                 ))}
               </datalist>

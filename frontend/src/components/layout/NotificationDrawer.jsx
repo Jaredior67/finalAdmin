@@ -10,14 +10,34 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 const extractTicketRef = (n) => {
   if (!n) return null;
   if (n.ticketRef || n.controlNo || n.ticket_no || n.reqId) {
-    return n.ticketRef || n.controlNo || n.ticket_no || n.reqId;
+    return String(n.ticketRef || n.controlNo || n.ticket_no || n.reqId).trim();
   }
   const haystack = `${n.title || ''} ${n.text || ''} ${n.message || ''}`;
-  const tracked = haystack.match(/[A-Z]{2,4}-\d{4}-\d+/);
-  if (tracked) return tracked[0];
-  const linkMatch = String(n.link || '').match(/job-requests\/([^/?#]+)/);
-  if (linkMatch) return decodeURIComponent(linkMatch[1]);
+  const tracked = haystack.match(/([A-Z]{2,4}-\d{4}-\d+|REQ-[A-Z0-9-]+|JR-[A-Z0-9-]+|TKT-[A-Z0-9-]+|TRK-[A-Z0-9-]+)/i);
+  if (tracked) return tracked[0].replace(/[.,:;)]+$/, '').trim();
+  const linkMatch = String(n.link || '').match(/(?:job-requests|job_requests|requests)\/([^/?#]+)/);
+  if (linkMatch) return decodeURIComponent(linkMatch[1]).replace(/[.,:;)]+$/, '').trim();
   return null;
+};
+
+// Clean relative timestamp formatter
+const formatNotificationDate = (dateVal) => {
+  if (!dateVal) return '';
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return String(dateVal);
+
+  const now = new Date();
+  const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
+
+  if (diffSec < 60) return 'Just now';
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  if (diffSec < 172800) return 'Yesterday';
+
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric'
+  });
 };
 
 export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
@@ -49,18 +69,65 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
   // for the destination view to open, then switch to the role's ticket tab.
   const handleOpenNotification = (n) => {
     if (n.unread) markNotificationRead(n.id);
+    const link = String(n.link || '').toLowerCase();
+    const title = String(n.title || '').toLowerCase();
+    const text = String(n.text || n.message || '').toLowerCase();
+
+    // 1. Job request tickets (highest priority: if notification is about a ticket)
     const ref = extractTicketRef(n);
-    if (ref) setFocusedTicketRef(ref);
-    const tab = isCampusAdmin
-      ? 'campus-admin-dashboard'
-      : isMaintenance
-        ? 'tech-tasks'
-        : isSupervisor
-          ? 'supervisor-queue'
-          : isFacultyOrStaff
-            ? 'faculty-tickets'
-            : 'job-requests';
-    if (onNavigateTab) onNavigateTab(tab);
+    if (ref) {
+      setFocusedTicketRef(ref);
+
+      let tab = 'job-requests';
+      if (isCampusAdmin) {
+        tab = 'campus-admin-dashboard';
+      } else if (isMaintenance) {
+        tab = 'tech-tasks';
+      } else if (isSupervisor && (title.includes('supervisor') || text.includes('endorse') || text.includes('supervisee'))) {
+        tab = 'supervisor-queue';
+      } else if (isFacultyOrStaff) {
+        tab = 'faculty-history';
+      }
+
+      if (onNavigateTab) onNavigateTab(tab);
+      if (onClose) onClose();
+      return;
+    }
+
+    // 2. Messages / Chat
+    if (link.includes('/messages') || title.startsWith('new message') || title.startsWith('reply:') || text.includes('sent a direct message')) {
+      const msgTab = isFacultyOrStaff ? 'faculty-messages' : isMaintenance ? 'tech-messages' : 'communication-box';
+      if (onNavigateTab) onNavigateTab(msgTab);
+      if (onClose) onClose();
+      return;
+    }
+
+    // 3. Supervisor Assignment
+    if (title.includes('supervisor assigned') || title.includes('supervisee assigned') || title.includes('supervision assigned') || (title.includes('supervisor') && (text.includes('assigned as your') || text.includes('assigned under your')))) {
+      const supTab = isSupervisor ? 'supervisor-queue' : 'settings';
+      if (onNavigateTab) onNavigateTab(supTab);
+      if (onClose) onClose();
+      return;
+    }
+
+    // 4. User registration approval
+    if (link.includes('/users') || link.includes('registration') || title.includes('registration')) {
+      if (onNavigateTab) onNavigateTab('user-management');
+      if (onClose) onClose();
+      return;
+    }
+
+    // 5. Preventive maintenance schedule
+    if (link.includes('preventive') || title.includes('preventive') || title.includes('schedule')) {
+      const calTab = isMaintenance ? 'tech-calendar' : 'preventive-calendar';
+      if (onNavigateTab) onNavigateTab(calTab);
+      if (onClose) onClose();
+      return;
+    }
+
+    // Fallback: switch to default role tab
+    const defaultTab = isCampusAdmin ? 'campus-admin-dashboard' : isMaintenance ? 'tech-tasks' : isFacultyOrStaff ? 'faculty-history' : 'job-requests';
+    if (onNavigateTab) onNavigateTab(defaultTab);
     if (onClose) onClose();
   };
 
@@ -89,6 +156,7 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
       />
 
       <div
+        className="notification-drawer-card"
         style={{
           position: 'absolute',
           top: '60px',
@@ -193,7 +261,7 @@ export const NotificationDrawer = ({ isOpen, onClose, onNavigateTab }) => {
                       {n.unread && <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#2563eb', flexShrink: 0 }} />}
                       {getTitle(n)}
                     </span>
-                    <span style={{ fontSize: '11px', color: '#94a3b8', flexShrink: 0 }}>{n.time || ''}</span>
+                    <span style={{ fontSize: '11px', color: '#94a3b8', flexShrink: 0 }}>{formatNotificationDate(n.time || n.created_at)}</span>
                   </div>
                   <p style={{ fontSize: '12px', color: '#475569', lineHeight: 1.4, margin: 0 }}>
                     {getBody(n)}

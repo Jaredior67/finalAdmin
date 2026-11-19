@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { UserPlus, Upload, CheckCircle2, AlertCircle, Briefcase, GraduationCap, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { UserPlus, CheckCircle2, AlertCircle, Eye, EyeOff, ShieldCheck, Search, Building2, ChevronDown, Check, X } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { ProfilePhotoPicker } from '../common/ProfilePhotoPicker';
 import { useData } from '../../context/DataContext';
-import { apiGetRegistrationStatus } from '../../backend/api';
+import { apiGetRegistrationStatus, apiCreateUser } from '../../backend/api';
 import { Spinner } from '../ui/Spinner';
 
 /**
@@ -54,18 +55,385 @@ function RegistrationStatusNotice({ result }) {
   );
 }
 
-export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
+/**
+ * SearchableOfficeSelect
+ * Allows applicants to search through campus offices via typing / autocomplete,
+ * select one from suggestions, or type a custom office name directly if not listed.
+ */
+function SearchableOfficeSelect({
+  value,
+  onChange,
+  options = [],
+  placeholder = "Search office or type office name...",
+  required = true,
+  disabled = false,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const containerRef = useRef(null);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  const query = (value || '').trim().toLowerCase();
+
+  const filteredOptions = useMemo(() => {
+    if (!query) return options;
+    return options.filter((opt) => opt.toLowerCase().includes(query));
+  }, [options, query]);
+
+  const exactMatch = options.some(
+    (opt) => opt.toLowerCase() === (value || '').trim().toLowerCase()
+  );
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+        setHighlightedIndex(0);
+      } else {
+        setHighlightedIndex((prev) =>
+          prev < filteredOptions.length - 1 ? prev + 1 : 0
+        );
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+        setHighlightedIndex(filteredOptions.length - 1);
+      } else {
+        setHighlightedIndex((prev) =>
+          prev > 0 ? prev - 1 : filteredOptions.length - 1
+        );
+      }
+    } else if (e.key === 'Enter') {
+      if (isOpen) {
+        e.preventDefault();
+        if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
+          onChange(filteredOptions[highlightedIndex]);
+          setIsOpen(false);
+          setHighlightedIndex(-1);
+        } else if (value && value.trim()) {
+          setIsOpen(false);
+          setHighlightedIndex(-1);
+        }
+      }
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+      setHighlightedIndex(-1);
+    }
+  };
+
+  useEffect(() => {
+    if (highlightedIndex >= 0 && listRef.current) {
+      const items = listRef.current.querySelectorAll('[data-combobox-item]');
+      if (items[highlightedIndex]) {
+        items[highlightedIndex].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [highlightedIndex]);
+
+  const handleSelect = (officeName) => {
+    onChange(officeName);
+    setIsOpen(false);
+    setHighlightedIndex(-1);
+    inputRef.current?.focus();
+  };
+
+  const handleClear = (e) => {
+    e.stopPropagation();
+    onChange('');
+    setIsOpen(true);
+    setHighlightedIndex(-1);
+    inputRef.current?.focus();
+  };
+
+  const highlightMatch = (text, q) => {
+    if (!q) return text;
+    const idx = text.toLowerCase().indexOf(q);
+    if (idx === -1) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <span style={{ fontWeight: '800', color: '#001f9c', textDecoration: 'underline' }}>
+          {text.slice(idx, idx + q.length)}
+        </span>
+        {text.slice(idx + q.length)}
+      </>
+    );
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        <div style={{
+          position: 'absolute',
+          left: '11px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          color: '#64748b',
+          display: 'flex',
+          alignItems: 'center',
+          pointerEvents: 'none',
+          zIndex: 2
+        }}>
+          <Search size={16} />
+        </div>
+
+        <input
+          ref={inputRef}
+          type="text"
+          className="form-input"
+          placeholder={placeholder}
+          value={value}
+          disabled={disabled}
+          required={required}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setIsOpen(true);
+            setHighlightedIndex(-1);
+          }}
+          onFocus={() => setIsOpen(true)}
+          onKeyDown={handleKeyDown}
+          style={{
+            paddingLeft: '34px',
+            paddingRight: value ? '56px' : '32px',
+            borderColor: isOpen ? '#001f9c' : undefined,
+            boxShadow: isOpen ? '0 0 0 3px rgba(0, 31, 156, 0.12)' : undefined
+          }}
+          autoComplete="off"
+        />
+
+        <div style={{
+          position: 'absolute',
+          right: '8px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '2px',
+          zIndex: 2
+        }}>
+          {value && (
+            <button
+              type="button"
+              onClick={handleClear}
+              aria-label="Clear office"
+              title="Clear office"
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                padding: '4px',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'color 0.15s ease'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
+            >
+              <X size={14} />
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsOpen((prev) => !prev);
+              inputRef.current?.focus();
+            }}
+            aria-label={isOpen ? "Close office suggestions" : "Open office suggestions"}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: '#64748b',
+              cursor: 'pointer',
+              padding: '4px',
+              borderRadius: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transform: isOpen ? 'rotate(180deg)' : 'none',
+              transition: 'transform 0.2s ease, color 0.15s ease'
+            }}
+          >
+            <ChevronDown size={16} />
+          </button>
+        </div>
+      </div>
+
+      {isOpen && (
+        <div
+          ref={listRef}
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            zIndex: 100,
+            background: '#ffffff',
+            border: '1.5px solid #cbd5e1',
+            borderRadius: '10px',
+            boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.15), 0 8px 10px -6px rgba(15, 23, 42, 0.1)',
+            maxHeight: '230px',
+            overflowY: 'auto',
+            padding: '4px'
+          }}
+        >
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '6px 10px',
+            fontSize: '11px',
+            fontWeight: '700',
+            color: '#64748b',
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            borderBottom: '1px solid #f1f5f9'
+          }}>
+            <span>
+              {query
+                ? `Matching Offices (${filteredOptions.length})`
+                : `Campus Offices (${options.length})`}
+            </span>
+            <span style={{ fontSize: '10.5px', fontWeight: '500', color: '#94a3b8', textTransform: 'none' }}>
+              Type to filter or enter custom
+            </span>
+          </div>
+
+          {value && value.trim() && !exactMatch && (
+            <div
+              onClick={() => {
+                setIsOpen(false);
+                inputRef.current?.focus();
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 10px',
+                margin: '3px 0',
+                borderRadius: '6px',
+                background: 'var(--bg-sunken)',
+                border: '1px dashed #cbd5e1',
+                cursor: 'pointer',
+                fontSize: '12.5px',
+                color: '#0f172a'
+              }}
+              title="Click to use what you typed"
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  background: '#e0f2fe',
+                  color: '#0369a1',
+                  flexShrink: 0
+                }}>
+                  Custom
+                </span>
+                <span style={{ fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Use: "{value.trim()}"
+                </span>
+              </div>
+              <span style={{ fontSize: '11px', color: '#64748b', flexShrink: 0 }}>
+                Press Enter / Click to use
+              </span>
+            </div>
+          )}
+
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map((opt, idx) => {
+              const isSelected = (value || '').trim().toLowerCase() === opt.toLowerCase();
+              const isHighlighted = idx === highlightedIndex;
+
+              return (
+                <div
+                  key={opt}
+                  data-combobox-item
+                  onClick={() => handleSelect(opt)}
+                  onMouseEnter={() => setHighlightedIndex(idx)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    fontSize: '12.5px',
+                    color: isSelected ? '#001f9c' : '#1e293b',
+                    background: isSelected
+                      ? '#eff6ff'
+                      : isHighlighted
+                        ? 'var(--bg-sunken)'
+                        : 'transparent',
+                    cursor: 'pointer',
+                    transition: 'background 0.12s ease',
+                    fontWeight: isSelected ? '700' : '500'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    <Building2 size={14} style={{ color: isSelected ? '#001f9c' : '#94a3b8', flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'normal', lineHeight: 1.35 }}>
+                      {highlightMatch(opt, query)}
+                    </span>
+                  </div>
+                  {isSelected && (
+                    <Check size={14} style={{ color: '#001f9c', flexShrink: 0, marginLeft: '6px' }} />
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div style={{ padding: '12px 10px', textAlign: 'center', fontSize: '12px', color: '#64748b' }}>
+              <div>No predefined office found matching "<strong>{value}</strong>"</div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
+                Your custom office "{value.trim()}" will be registered.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '5px' }}>
+        💡 Choose from the campus list or type your specific office if not listed.
+      </div>
+    </div>
+  );
+}
+
+export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin, isAdmin = false, onUserCreated }) => {
   const { registerUser, offices, departments } = useData();
 
   const [formData, setFormData] = useState({
     firstName: '',
     middleName: '',
     lastName: '',
-    userType: 'Faculty', // 'Faculty' | 'Staff'
+    extName: '',
+    idNumber: '',
+    userType: 'Faculty', // 'Faculty' | 'Administrative Staff' | 'Maintenance' | 'Campus Admin'
     department: 'BSIT',
-    office: 'Office of the Campus Administrator',
+    office: '',
+    specialization: 'Electrical & HVAC',
     gender: 'Male',
     gmail: '',
+    contactNumber: '',
     password: ''
   });
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -76,10 +444,9 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  // RA 10173 (Data Privacy Act) consent. The server refuses a registration with
-  // no consent timestamp, so this must be an explicit opt-in rather than a
-  // default-on box.
-  const [consentGiven, setConsentGiven] = useState(false);
+  // RA 10173 (Data Privacy Act) consent. For self-registration it requires explicit opt-in;
+  // for Super Admin account provisioning, administrator authorization is active.
+  const [consentGiven, setConsentGiven] = useState(Boolean(isAdmin));
   // Applicant-facing outcome lookup. Before this existed an applicant had no
   // way to learn that their application was rejected — they could not sign in
   // (no account yet) and no notification could be addressed to them.
@@ -101,52 +468,40 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
 
   const readAndDownscale = (file) =>
     new Promise((resolve, reject) => {
-      const objectUrl = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(img.width, img.height));
-          const width = Math.max(1, Math.round(img.width * scale));
-          const height = Math.max(1, Math.round(img.height * scale));
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('The image could not be read.'));
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(img.width, img.height));
+            const width = Math.max(1, Math.round(img.width * scale));
+            const height = Math.max(1, Math.round(img.height * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
 
-          let quality = 0.82;
-          let dataUrl = canvas.toDataURL('image/jpeg', quality);
-          while (dataUrl.length > MAX_IMAGE_DATA_URL_CHARS && quality > 0.4) {
-            quality -= 0.15;
-            dataUrl = canvas.toDataURL('image/jpeg', quality);
+            let quality = 0.82;
+            let dataUrl = canvas.toDataURL('image/jpeg', quality);
+            while (dataUrl.length > MAX_IMAGE_DATA_URL_CHARS && quality > 0.4) {
+              quality -= 0.15;
+              dataUrl = canvas.toDataURL('image/jpeg', quality);
+            }
+            resolve(dataUrl);
+          } catch (err) {
+            reject(err);
           }
-          resolve(dataUrl);
-        } catch (err) {
-          reject(err);
-        } finally {
-          URL.revokeObjectURL(objectUrl);
-        }
+        };
+        img.onerror = () => reject(new Error('Image could not be decoded.'));
+        img.src = event.target.result;
       };
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        reject(new Error('Image could not be decoded.'));
-      };
-      img.src = objectUrl;
+      reader.readAsDataURL(file);
     });
 
-  const handleFileChange = async (e) => {
-    const input = e.target;
-    const file = input.files[0];
-    input.value = '';
+  const handlePhotoFile = async (file) => {
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setError('Please attach an image file (PNG, JPG, or JPEG).');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setError('That photo is over 10MB. Please attach a smaller image.');
-      return;
-    }
     setError('');
     try {
       const dataUrl = await readAndDownscale(file);
@@ -163,12 +518,16 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
       setError('First name and Last name are required.');
       return;
     }
-    if (!formData.gmail.trim() || !formData.gmail.includes('@')) {
-      setError('Please provide a valid institutional or Gmail address.');
+    if (!formData.idNumber.trim()) {
+      setError('ID number is required.');
       return;
     }
-    if (formData.userType === 'Staff' && !formData.office.trim()) {
-      setError('Please select your administrative office.');
+    if (!formData.gmail.trim() || !formData.gmail.includes('@')) {
+      setError('Please provide a valid email address.');
+      return;
+    }
+    if (formData.userType === 'Administrative Staff' && !formData.office.trim()) {
+      setError('Please select or type your administrative office.');
       return;
     }
     // Must mirror passwordError() in backend/src/routes/authRoutes.js. The server
@@ -188,10 +547,10 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
       return;
     }
     if (!idPreview && !idFile) {
-      setError('Please attach a clear photo of your ISAT U ID for PDAS verification.');
+      setError('Please attach a photo to be used as your profile.');
       return;
     }
-    if (!consentGiven) {
+    if (!consentGiven && !isAdmin) {
       setError('Please accept the Data Privacy notice before submitting your application.');
       return;
     }
@@ -199,19 +558,58 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
     setError('');
     setIsSubmitting(true);
     try {
-      await registerUser({
-        ...formData,
-        role: formData.userType.toLowerCase(),
-        idFileName: idFile ? idFile.name : 'Attached_Photo_of_ID.jpg',
-        idPreviewUrl: idPreview,
-        idPhotoUrl: idPreview,
-        // Timestamped at the moment the applicant ticks the box; the server
-        // records it on registration_requests and copies it to users on approval.
-        consentAt: consentGiven ? new Date().toISOString() : null
-      });
-      setSubmitted(true);
+      if (isAdmin) {
+        let backendRole = 'faculty';
+        if (formData.userType === 'Administrative Staff' || formData.userType === 'Staff') {
+          backendRole = 'staff';
+        } else if (formData.userType === 'Maintenance' || formData.userType === 'Technician') {
+          backendRole = 'maintenance';
+        } else if (formData.userType === 'Campus Admin') {
+          backendRole = 'campus_admin';
+        }
+
+        await apiCreateUser({
+          firstName: formData.firstName.trim(),
+          middleName: formData.middleName.trim() || null,
+          lastName: formData.lastName.trim(),
+          extName: formData.extName.trim() || null,
+          idNumber: formData.idNumber.trim(),
+          email: formData.gmail.trim(),
+          password: formData.password,
+          role: backendRole,
+          department: (backendRole === 'faculty' || backendRole === 'campus_admin') ? (formData.department?.trim() || null) : null,
+          office: (backendRole === 'staff' || backendRole === 'campus_admin') ? (formData.office?.trim() || null) : null,
+          contactNumber: formData.contactNumber?.trim() || null,
+          gender: formData.gender || null,
+          idPhotoUrl: idPreview,
+          specialization: backendRole === 'maintenance' ? (formData.specialization || 'General Campus Facility') : null,
+        });
+
+        if (onUserCreated) {
+          await onUserCreated();
+        }
+        setSubmitted(true);
+      } else {
+        // Map display label to backend role string.
+        // Supervisor status is granted by the PDAS Admin after approval — it is
+        // never self-declared during registration.
+        const backendRole = formData.userType === 'Administrative Staff' ? 'staff' : 'faculty';
+        await registerUser({
+          ...formData,
+          role: backendRole,
+          isSupervisor: false,
+          is_supervisor: 0,
+          idFileName: idFile ? idFile.name : 'Attached_Photo_of_ID.jpg',
+          idPreviewUrl: idPreview,
+          idPhotoUrl: idPreview,
+          // Timestamped at the moment the applicant ticks the box; the server
+          // records it on registration_requests and copies it to users on approval.
+          consentAt: consentGiven ? new Date().toISOString() : null
+        });
+        setSubmitted(true);
+      }
     } catch (requestError) {
-      setError(requestError.message || 'Registration could not be submitted.');
+      setError(requestError.message || (isAdmin ? 'User could not be created.' : 'Registration could not be submitted.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -249,16 +647,20 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
       firstName: '',
       middleName: '',
       lastName: '',
+      extName: '',
+      idNumber: '',
       userType: 'Faculty',
-      department: 'BSIT',
-      office: 'Office of the Campus Administrator',
+      department: departments[0] || 'BSIT',
+      office: '',
+      specialization: 'Electrical & HVAC',
       gender: 'Male',
       gmail: '',
+      contactNumber: '',
       password: ''
     });
     setIdFile(null);
     setIdPreview(null);
-    setConsentGiven(false);
+    setConsentGiven(Boolean(isAdmin));
     onClose();
   };
 
@@ -267,160 +669,229 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
       isOpen={isOpen}
       onClose={handleResetAndClose}
       onBack={handleResetAndClose}
-      title="ISAT U Dumangas Account Registration"
+      title={isAdmin ? "Super Admin — Register User Account" : "ISAT U Dumangas Account Registration"}
       maxWidth="680px"
     >
       {submitted ? (
-        <div style={{ textAlign: 'center', padding: '16px 8px' }}>
-          <div style={{
-            width: '60px',
-            height: '60px',
-            borderRadius: '50%',
-            background: '#ecfdf5',
-            color: '#059669',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: '14px'
-          }}>
-            <CheckCircle2 size={34} />
-          </div>
-
-          <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', marginBottom: '6px' }}>
-            Account Application Submitted!
-          </h3>
-          <p style={{ fontSize: '13.5px', color: '#64748b', margin: '0 auto 18px auto', maxWidth: '480px' }}>
-            Thank you for registering with the FixIT Campus Facility Management System.
-          </p>
-
-          <div style={{
-            background: '#fffbeb',
-            border: '1.5px solid #fde68a',
-            borderRadius: '12px',
-            padding: '16px 18px',
-            textAlign: 'left',
-            marginBottom: '18px',
-            display: 'flex',
-            gap: '12px',
-            alignItems: 'flex-start'
-          }}>
+        isAdmin ? (
+          <div style={{ textAlign: 'center', padding: '16px 8px' }}>
             <div style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '8px',
-              background: '#fef3c7',
-              color: '#b45309',
-              display: 'flex',
+              width: '60px',
+              height: '60px',
+              borderRadius: '50%',
+              background: '#ecfdf5',
+              color: '#059669',
+              display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              flexShrink: 0,
-              marginTop: '2px'
+              marginBottom: '14px'
             }}>
-              <ShieldCheck size={18} />
+              <CheckCircle2 size={34} />
             </div>
-            <div>
-              <div style={{ fontSize: '13.5px', fontWeight: '700', color: '#92400e', marginBottom: '4px' }}>
-                Pending Administrator Confirmation
-              </div>
-              <p style={{ fontSize: '12.5px', color: '#78350f', lineHeight: '1.5', margin: 0 }}>
-                The PDAS Administrator reviews every account before it can be used. They will check your institutional ID and activate it.
-              </p>
-              <div style={{ fontSize: '11.5px', color: '#b45309', marginTop: '6px', fontWeight: '600' }}>
-                Once approved you can sign in with {formData.gmail}.
-              </div>
-            </div>
-          </div>
 
-          <div style={{
-            background: 'var(--bg-sunken)',
-            border: '1px solid #e2e8f0',
-            borderRadius: '10px',
-            padding: '14px 16px',
-            fontSize: '12.5px',
-            color: '#334155',
-            marginBottom: '22px',
-            textAlign: 'left'
-          }}>
-            <div style={{ fontWeight: '700', color: '#001f9c', marginBottom: '8px', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.04em' }}>
-              Registration Details Submitted:
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
-              <div>• Name: <strong>{formData.firstName} {formData.middleName ? formData.middleName + ' ' : ''}{formData.lastName}</strong></div>
-              <div>• Role: <strong>{formData.userType}</strong></div>
-              <div style={{ gridColumn: '1 / -1' }}>• Email: <strong>{formData.gmail}</strong></div>
-              <div>• Gender: <strong>{formData.gender}</strong></div>
-              {formData.userType === 'Faculty' ? (
-                <div>• Department: <strong>{formData.department}</strong></div>
-              ) : (
-                <div>• Office: <strong>{formData.office}</strong></div>
-              )}
-              <div style={{ gridColumn: '1 / -1' }}>• Institutional ID: <strong style={{ color: '#059669' }}>Photo attached for review</strong></div>
-            </div>
-          </div>
-
-          {/* Outcome lookup — the only route by which the decision reaches the
-              applicant, who cannot sign in until it is made. */}
-          <div style={{
-            background: 'var(--bg-sunken)',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '16px 18px',
-            textAlign: 'left',
-            marginBottom: '22px'
-          }}>
-            <div style={{
-              fontWeight: '700', color: '#001f9c', marginBottom: '4px',
-              textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.04em'
-            }}>
-              Check application status
-            </div>
-            <p style={{ fontSize: '12.5px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>
-              Come back any time with the address you registered here and you will see whether the
-              account has been approved, is still under review, or was not approved and why.
+            <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', marginBottom: '6px' }}>
+              User Account Registered &amp; Activated!
+            </h3>
+            <p style={{ fontSize: '13.5px', color: '#64748b', margin: '0 auto 18px auto', maxWidth: '480px' }}>
+              The account for <strong>{formData.firstName} {formData.lastName}</strong> ({formData.gmail}) has been registered and activated. The user can sign in immediately with their credentials.
             </p>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="email"
-                className="form-input"
-                placeholder="you@isatu.edu.ph"
-                value={statusEmail || formData.gmail}
-                onChange={(e) => setStatusEmail(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCheckStatus(); } }}
-                aria-label="Registered email address"
-              />
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleCheckStatus}
-                disabled={statusBusy}
-                style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
-              >
-                {statusBusy ? 'Checking…' : 'Check'}
-              </button>
+
+            <div style={{
+              background: 'var(--bg-sunken)',
+              border: '1px solid #e2e8f0',
+              borderRadius: '10px',
+              padding: '14px 16px',
+              fontSize: '12.5px',
+              color: '#334155',
+              marginBottom: '22px',
+              textAlign: 'left'
+            }}>
+              <div style={{ fontWeight: '700', color: '#001f9c', marginBottom: '8px', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.04em' }}>
+                Account Information:
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+                <div>• Name: <strong>{formData.firstName} {formData.middleName ? formData.middleName + ' ' : ''}{formData.lastName}{formData.extName ? ' ' + formData.extName : ''}</strong></div>
+                <div>• ID Number: <strong>{formData.idNumber}</strong></div>
+                <div>• Role: <strong>{formData.userType}</strong></div>
+                <div>• Email: <strong>{formData.gmail}</strong></div>
+                {formData.contactNumber && <div>• Contact: <strong>{formData.contactNumber}</strong></div>}
+                <div>• Gender: <strong>{formData.gender}</strong></div>
+                {formData.userType === 'Faculty' ? (
+                  <div>• Department: <strong>{formData.department}</strong></div>
+                ) : formData.userType === 'Administrative Staff' ? (
+                  <div>• Office: <strong>{formData.office}</strong></div>
+                ) : formData.userType === 'Maintenance' ? (
+                  <div>• Specialization: <strong>{formData.specialization || 'General Campus Facility'}</strong></div>
+                ) : null}
+                <div style={{ gridColumn: '1 / -1' }}>• Profile Photo: <strong style={{ color: '#059669' }}>Saved as User Avatar</strong></div>
+              </div>
             </div>
 
-            {statusError && (
-              <div style={{ fontSize: '12.5px', color: '#b91c1c', marginTop: '9px' }}>
-                {statusError}
-              </div>
-            )}
-
-            {statusResult && <RegistrationStatusNotice result={statusResult} />}
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleResetAndClose}
+              style={{ minWidth: '220px', padding: '10px 24px', fontSize: '13.5px', fontWeight: '700' }}
+            >
+              Done — Return to User Management
+            </button>
           </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '16px 8px' }}>
+            <div style={{
+              width: '60px',
+              height: '60px',
+              borderRadius: '50%',
+              background: '#ecfdf5',
+              color: '#059669',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '14px'
+            }}>
+              <CheckCircle2 size={34} />
+            </div>
 
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleResetAndClose}
-            style={{ minWidth: '220px', padding: '10px 24px', fontSize: '13.5px', fontWeight: '700' }}
-          >
-            Understood — Return to Sign In
-          </button>
-        </div>
+            <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', marginBottom: '6px' }}>
+              Account Application Submitted!
+            </h3>
+            <p style={{ fontSize: '13.5px', color: '#64748b', margin: '0 auto 18px auto', maxWidth: '480px' }}>
+              Thank you for registering with the FixIT Campus Facility Management System.
+            </p>
+
+            <div style={{
+              background: '#fffbeb',
+              border: '1.5px solid #fde68a',
+              borderRadius: '12px',
+              padding: '16px 18px',
+              textAlign: 'left',
+              marginBottom: '18px',
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'flex-start'
+            }}>
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                background: '#fef3c7',
+                color: '#b45309',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                marginTop: '2px'
+              }}>
+                <ShieldCheck size={18} />
+              </div>
+              <div>
+                <div style={{ fontSize: '13.5px', fontWeight: '700', color: '#92400e', marginBottom: '4px' }}>
+                  Pending Administrator Confirmation
+                </div>
+                <p style={{ fontSize: '12.5px', color: '#78350f', lineHeight: '1.5', margin: 0 }}>
+                  The PDAS Administrator reviews every account before it can be used. They will check your institutional ID and activate it.
+                </p>
+                <div style={{ fontSize: '11.5px', color: '#b45309', marginTop: '6px', fontWeight: '600' }}>
+                  Once approved you can sign in with {formData.gmail}.
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              background: 'var(--bg-sunken)',
+              border: '1px solid #e2e8f0',
+              borderRadius: '10px',
+              padding: '14px 16px',
+              fontSize: '12.5px',
+              color: '#334155',
+              marginBottom: '22px',
+              textAlign: 'left'
+            }}>
+              <div style={{ fontWeight: '700', color: '#001f9c', marginBottom: '8px', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.04em' }}>
+                Registration Details Submitted:
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+                <div>• Name: <strong>{formData.firstName} {formData.middleName ? formData.middleName + ' ' : ''}{formData.lastName}{formData.extName ? ' ' + formData.extName : ''}</strong></div>
+                <div>• ID Number: <strong>{formData.idNumber}</strong></div>
+                <div>• Role: <strong>{formData.userType}</strong></div>
+                <div>• Email: <strong>{formData.gmail}</strong></div>
+                {formData.contactNumber && <div>• Contact: <strong>{formData.contactNumber}</strong></div>}
+                <div>• Gender: <strong>{formData.gender}</strong></div>
+                {formData.userType === 'Faculty' ? (
+                  <div>• Department: <strong>{formData.department}</strong></div>
+                ) : (
+                  <div>• Office: <strong>{formData.office}</strong></div>
+                )}
+                <div style={{ gridColumn: '1 / -1' }}>• Profile Photo: <strong style={{ color: '#059669' }}>Uploaded for user profile</strong></div>
+              </div>
+            </div>
+
+            {/* Outcome lookup — the only route by which the decision reaches the
+                applicant, who cannot sign in until it is made. */}
+            <div style={{
+              background: 'var(--bg-sunken)',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '16px 18px',
+              textAlign: 'left',
+              marginBottom: '22px'
+            }}>
+              <div style={{
+                fontWeight: '700', color: '#001f9c', marginBottom: '4px',
+                textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.04em'
+              }}>
+                Check application status
+              </div>
+              <p style={{ fontSize: '12.5px', color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>
+                Come back any time with the address you registered here and you will see whether the
+                account has been approved, is still under review, or was not approved and why.
+              </p>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="email"
+                  className="form-input"
+                  placeholder="you@gmail.com"
+                  value={statusEmail || formData.gmail}
+                  onChange={(e) => setStatusEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCheckStatus(); } }}
+                  aria-label="Registered email address"
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleCheckStatus}
+                  disabled={statusBusy}
+                  style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                >
+                  {statusBusy ? 'Checking…' : 'Check'}
+                </button>
+              </div>
+
+              {statusError && (
+                <div style={{ fontSize: '12.5px', color: '#b91c1c', marginTop: '9px' }}>
+                  {statusError}
+                </div>
+              )}
+
+              {statusResult && <RegistrationStatusNotice result={statusResult} />}
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleResetAndClose}
+              style={{ minWidth: '220px', padding: '10px 24px', fontSize: '13.5px', fontWeight: '700' }}
+            >
+              Understood — Return to Sign In
+            </button>
+          </div>
+        )
       ) : (
         <form onSubmit={handleSubmit}>
           <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
-            Register to file facility requests. PDAS reviews each submission.
+            {isAdmin
+              ? 'Super Administrator Provisioning: Register and immediately activate campus user accounts.'
+              : 'Register to file facility requests. PDAS reviews each submission.'}
           </p>
 
           {error && (
@@ -442,7 +913,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
           )}
 
           {/* 1. Name Row */}
-          <div className="form-grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+          <div className="form-grid-names" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
             <div className="form-group">
               <label className="form-label">First Name *</label>
               <input
@@ -477,67 +948,42 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
                 required
               />
             </div>
+
+            <div className="form-group">
+              <label className="form-label">Ext. Name</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. Jr., Sr., III"
+                value={formData.extName}
+                onChange={(e) => setFormData({ ...formData, extName: e.target.value })}
+              />
+            </div>
           </div>
 
           {/* 2. Classification & Gender */}
           <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '14px' }}>
             <div className="form-group">
               <label className="form-label">Account Classification *</label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <label style={{
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  padding: '9px 10px',
-                  borderRadius: '8px',
-                  border: formData.userType === 'Faculty' ? '2px solid #001f9c' : '1px solid #cbd5e1',
-                  background: formData.userType === 'Faculty' ? '#eff6ff' : '#ffffff',
-                  cursor: 'pointer',
-                  fontWeight: formData.userType === 'Faculty' ? '700' : '500',
-                  color: formData.userType === 'Faculty' ? '#001f9c' : '#475569',
-                  fontSize: '13px'
-                }}>
-                  <input
-                    type="radio"
-                    name="userType"
-                    value="Faculty"
-                    checked={formData.userType === 'Faculty'}
-                    onChange={() => setFormData({ ...formData, userType: 'Faculty', department: departments[0] || 'BSIT' })}
-                    style={{ display: 'none' }}
-                  />
-                  <GraduationCap size={16} />
-                  Faculty Member
-                </label>
-
-                <label style={{
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  padding: '9px 10px',
-                  borderRadius: '8px',
-                  border: formData.userType === 'Staff' ? '2px solid #001f9c' : '1px solid #cbd5e1',
-                  background: formData.userType === 'Staff' ? '#eff6ff' : '#ffffff',
-                  cursor: 'pointer',
-                  fontWeight: formData.userType === 'Staff' ? '700' : '500',
-                  color: formData.userType === 'Staff' ? '#001f9c' : '#475569',
-                  fontSize: '13px'
-                }}>
-                  <input
-                    type="radio"
-                    name="userType"
-                    value="Staff"
-                    checked={formData.userType === 'Staff'}
-                    onChange={() => setFormData({ ...formData, userType: 'Staff', office: offices[0] || 'Office of the Campus Administrator' })}
-                    style={{ display: 'none' }}
-                  />
-                  <Briefcase size={16} />
-                  Administrative Staff
-                </label>
-              </div>
+              <select
+                className="form-select"
+                value={formData.userType}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFormData({
+                    ...formData,
+                    userType: val,
+                    department: (val === 'Faculty' || val === 'Campus Admin') ? (departments[0] || 'BSIT') : '',
+                    office: val === 'Administrative Staff' ? (formData.office || '') : ''
+                  });
+                }}
+                required
+              >
+                <option value="Faculty">Faculty Member</option>
+                <option value="Administrative Staff">Administrative Staff</option>
+                {isAdmin && <option value="Maintenance">Maintenance Personnel / Technician</option>}
+                {isAdmin && <option value="Campus Admin">Campus Admin / Executive Approver</option>}
+              </select>
             </div>
 
             <div className="form-group">
@@ -555,9 +1001,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
             </div>
           </div>
 
-
-
-          {/* 4. Department (Faculty) / Office (Staff) Dropdown */}
+          {/* 4. Department (Faculty) / Office (Staff) / Specialization (Maintenance) */}
           {formData.userType === 'Faculty' ? (
             <div className="form-group">
               <label className="form-label">
@@ -574,33 +1018,86 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
                 ))}
               </select>
             </div>
-          ) : (
+          ) : formData.userType === 'Administrative Staff' ? (
             <div className="form-group">
               <label className="form-label">
-                Office *
+                Administrative Office *
+              </label>
+              <SearchableOfficeSelect
+                value={formData.office}
+                onChange={(newOffice) => setFormData({ ...formData, office: newOffice })}
+                options={offices}
+                placeholder="Search office or type office name..."
+                required
+              />
+            </div>
+          ) : formData.userType === 'Maintenance' ? (
+            <div className="form-group">
+              <label className="form-label">
+                Trade Specialization *
               </label>
               <select
                 className="form-select"
-                value={formData.office}
-                onChange={(e) => setFormData({ ...formData, office: e.target.value })}
+                value={formData.specialization || 'General Campus Facility'}
+                onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
                 required
               >
-                {offices.map((office) => (
-                  <option key={office} value={office}>{office}</option>
-                ))}
+                <option value="Electrical & HVAC">Electrical &amp; HVAC Systems</option>
+                <option value="Plumbing & Drainage">Plumbing &amp; Water Systems</option>
+                <option value="Carpentry & Masonry">Carpentry &amp; Structural Masonry</option>
+                <option value="Network & IT Infrastructure">Network &amp; IT Hardware</option>
+                <option value="General Campus Facility">General Campus Maintenance</option>
               </select>
+            </div>
+          ) : (
+            <div className="form-group">
+              <label className="form-label">
+                Office / Assignment
+              </label>
+              <SearchableOfficeSelect
+                value={formData.office}
+                onChange={(newOffice) => setFormData({ ...formData, office: newOffice })}
+                options={offices}
+                placeholder="e.g. Office of the Campus Administrator"
+              />
             </div>
           )}
 
-          {/* 5. Email */}
+          {/* 5. ID Number & Email */}
+          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '14px' }}>
+            <div className="form-group">
+              <label className="form-label">ID Number *</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. 2026-0012"
+                value={formData.idNumber}
+                onChange={(e) => setFormData({ ...formData, idNumber: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Email *</label>
+              <input
+                type="email"
+                className="form-input"
+                placeholder="e.g. username@gmail.com"
+                value={formData.gmail}
+                onChange={(e) => setFormData({ ...formData, gmail: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+
           <div className="form-group">
-            <label className="form-label">Institutional Email / Gmail *</label>
+            <label className="form-label">Contact Number *</label>
             <input
-              type="email"
+              type="tel"
               className="form-input"
-              placeholder="e.g. username@isatu.edu.ph"
-              value={formData.gmail}
-              onChange={(e) => setFormData({ ...formData, gmail: e.target.value })}
+              placeholder="e.g. 09123456789"
+              value={formData.contactNumber}
+              onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
               required
             />
           </div>
@@ -688,64 +1185,24 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
             </div>
           </div>
 
-          {/* 6. Attach photo of ID */}
+          {/* 6. Profile Photo */}
           <div className="form-group">
             <label className="form-label">
-              Attach Clear Photo of Valid ISAT U ID *
+              Profile Photo *
             </label>
-            <div style={{
-              border: '2px dashed #cbd5e1',
-              borderRadius: '12px',
-              padding: '16px',
-              textAlign: 'center',
-              background: 'var(--bg-sunken)',
-              position: 'relative',
-              cursor: 'pointer'
-            }}>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  opacity: 0,
-                  cursor: 'pointer',
-                  width: '100%',
-                  height: '100%'
-                }}
-              />
-
-              {idPreview ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px' }}>
-                  <img
-                    src={idPreview}
-                    alt="ID preview"
-                    style={{ width: '80px', height: '52px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                  />
-                  <div style={{ textAlign: 'left' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
-                      {idFile ? idFile.name : 'Attached_Photo_of_ID.jpg'}
-                    </div>
-                    <div style={{ fontSize: '11.5px', color: '#059669', fontWeight: '600' }}>
-                      Photo attached. Click to replace.
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#eff6ff', color: '#001f9c', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '6px' }}>
-                    <Upload size={18} />
-                  </div>
-                  <div style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>
-                    Click or drag & drop to attach ID photo
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '2px' }}>
-                    Accepts PNG, JPG, JPEG (Max 10MB). Photos are resized automatically.
-                  </div>
-                </div>
-              )}
-            </div>
+            <ProfilePhotoPicker
+              value={idPreview || ''}
+              fileName={idFile?.name || ''}
+              onSelect={handlePhotoFile}
+              onRemove={() => {
+                setIdFile(null);
+                setIdPreview(null);
+                setError('');
+              }}
+              onError={setError}
+              disabled={isSubmitting}
+              hint="PNG, JPG or JPEG (max 10MB). You can take a photo with your camera or upload one from this device."
+            />
           </div>
 
           {/* 7. Data Privacy Act consent (RA 10173) */}
@@ -768,13 +1225,11 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
             />
             <label htmlFor="reg-consent" style={{ fontSize: '12.5px', color: '#334155', lineHeight: '1.55', cursor: 'pointer' }}>
               <span style={{ fontWeight: '700', display: 'block', marginBottom: '3px', color: '#0f172a' }}>
-                Data Privacy Notice (RA 10173) *
+                {isAdmin ? 'Super Administrator Provisioning Authorization *' : 'Data Privacy Notice (RA 10173) *'}
               </span>
-              I consent to the collection and processing of the personal information in
-              this application — my name, contact details, and ID photo — for identity
-              verification and account administration by the PDAS Administrator of ISAT U
-              Dumangas. The information is used only for those purposes and is not shared
-              outside the institution.
+              {isAdmin
+                ? 'I certify as Super Administrator that this user profile, ID number, and profile photo are verified and authorized for immediate account activation in FixIT.'
+                : 'I consent to the collection and processing of the personal information in this application — my name, ID number, contact details, and profile photo — for identity verification and account administration by the PDAS Administrator of ISAT U Dumangas. The information is used only for those purposes and is not shared outside the institution.'}
             </label>
           </div>
 
@@ -803,7 +1258,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
                 disabled={isSubmitting}
               >
                 {isSubmitting ? <Spinner size={16} color="#ffffff" /> : <UserPlus size={16} />}
-                {isSubmitting ? 'Submitting…' : 'Submit Application'}
+                {isSubmitting ? (isAdmin ? 'Registering User…' : 'Submitting…') : (isAdmin ? 'Register & Activate User' : 'Submit Application')}
               </button>
             </div>
           </div>

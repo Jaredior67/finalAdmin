@@ -4,9 +4,9 @@
  * Safe to re-run — uses INSERT IGNORE / checks before inserting.
  *
  * Accounts created:
- *   maintenance@isatu.edu.ph  / tech123      (Maintenance)
- *   faculty@isatu.edu.ph      / faculty123   (Faculty)
- *   staff@isatu.edu.ph        / staff123     (Staff)
+ *   maintenance@gmail.com  / tech123      (Maintenance)
+ *   faculty@gmail.com      / faculty123   (Faculty)
+ *   staff@gmail.com        / staff123     (Staff)
  *
  * Run with:
  *   cd backend
@@ -23,21 +23,21 @@ const TEST_ACCOUNTS = [
   {
     firstName: 'Mark',
     lastName: 'Villanueva',
-    email: 'maintenance@isatu.edu.ph',
+    email: 'maintenance@gmail.com',
     password: 'tech123',
     role: 'maintenance',
   },
   {
     firstName: 'Elena',
     lastName: 'Ramos',
-    email: 'faculty@isatu.edu.ph',
+    email: 'faculty@gmail.com',
     password: 'faculty123',
     role: 'faculty',
   },
   {
     firstName: 'Juan',
     lastName: 'Santos',
-    email: 'staff@isatu.edu.ph',
+    email: 'staff@gmail.com',
     password: 'staff123',
     role: 'staff',
   },

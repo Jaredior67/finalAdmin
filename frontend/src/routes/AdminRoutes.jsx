@@ -5,11 +5,10 @@ import { OfficialDocuments } from '../views/OfficialDocuments';
 import { PreventiveCalendar } from '../views/PreventiveCalendar';
 import { ArchivedRequests } from '../views/admin/ArchivedRequests';
 import { AuditTrail } from '../views/admin/AuditTrail';
-import { UserManagement } from '../views/admin/UserManagement';
 import { CommunicationBox } from '../views/CommunicationBox';
+import { NotificationsCenter } from '../views/NotificationsCenter';
 import { AnalyticsReports } from '../views/admin/AnalyticsReports';
 import { ReplacementRequests } from '../views/ReplacementRequests';
-import { PrintLabels } from '../views/PrintLabels';
 import { SettingsPage } from '../views/SettingsPage';
 
 export const AdminRoutes = ({ activeTab, onTabChange, jobRequestStatus, setJobRequestStatus }) => {
@@ -22,18 +21,17 @@ export const AdminRoutes = ({ activeTab, onTabChange, jobRequestStatus, setJobRe
       return <PreventiveCalendar />;
     case 'archived-requests':
       return <ArchivedRequests />;
+    case 'audit-log':
     case 'audit-trail':
       return <AuditTrail />;
-    case 'user-management':
-      return <UserManagement />;
     case 'communication-box':
       return <CommunicationBox />;
+    case 'notifications':
+      return <NotificationsCenter onNavigateTab={onTabChange} />;
     case 'analytics-reports':
       return <AnalyticsReports />;
     case 'replacement-requests':
       return <ReplacementRequests />;
-    case 'print-labels':
-      return <PrintLabels />;
     case 'settings':
       return <SettingsPage onClose={() => onTabChange('executive-dashboard')} />;
     case 'executive-dashboard':

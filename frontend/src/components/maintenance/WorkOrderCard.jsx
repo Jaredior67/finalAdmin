@@ -8,7 +8,8 @@ import {
   Star,
   Eye,
   AlertTriangle,
-  Wrench
+  Wrench,
+  Printer
 } from 'lucide-react';
 import { StatusBadge, UrgencyBadge, CategoryPill } from '../common/StatusBadge';
 
@@ -23,7 +24,8 @@ export const WorkOrderCard = ({
   onStartWork,
   onUpdateStatus,
   onFlagOutcome,
-  onViewTicket
+  onViewTicket,
+  onPrintFlagReport
 }) => {
   const isCompleted = task.status === 'Completed';
   const isFlagged = Boolean(task.replacementFlag?.isFlagged || task.maintenanceFlag?.type);
@@ -169,6 +171,16 @@ export const WorkOrderCard = ({
             <AlertTriangle size={14} aria-hidden="true" />
             {isFlagged ? 'Update Status Flag' : 'Flag Outcome'}
           </button>
+          {isFlagged && onPrintFlagReport && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => onPrintFlagReport(task)}
+              title="View or print PDF Maintenance Technical Assessment & Flag Report"
+            >
+              <Printer size={13} aria-hidden="true" /> Print Flag Report (PDF)
+            </button>
+          )}
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => onViewTicket(task)}>
             <Eye size={13} aria-hidden="true" /> View Ticket &amp; Photo
           </button>

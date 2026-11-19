@@ -1,0 +1,966 @@
+/* FixIT Institutional Landing & Login Styles
+   Source of truth: login-reference.html
+   Cleanly scoped under .fixit-landing-page to avoid leaking styles into the rest of the application
+*/
+
+.fixit-landing-page {
+  --navy: #0b1f8f;
+  --ink: #0d1b4c;
+  --gold: #f6b800;
+  --muted: #41507f;
+  --ease: cubic-bezier(.16, 1, .3, 1);
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  box-sizing: border-box;
+  font: 400 15px/1.5 Figtree, system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+  background: #0b2a8a;
+  overflow-x: hidden;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.fixit-landing-page *,
+.fixit-landing-page *::before,
+.fixit-landing-page *::after {
+  box-sizing: inherit;
+}
+
+/* Background & Effects */
+.fixit-landing-page .par {
+  position: fixed;
+  inset: -2%;
+  transform: translate(var(--px, 0), var(--py, 0));
+  transition: transform .9s var(--ease);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.fixit-landing-page .bg {
+  position: absolute;
+  inset: 0;
+  background: url(/isatu-bg.jpg) center 43%/cover no-repeat;
+}
+
+.fixit-landing-page .veil {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(5,15,80,.55) 0%, rgba(10,36,140,.06) 22%, rgba(10,36,140,.06) 60%, rgba(5,15,80,.45) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.fixit-landing-page .light {
+  display: none;
+}
+
+/* Header */
+.fixit-landing-page header {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px clamp(20px, 6vw, 88px);
+  animation: fixit-down 0.4s var(--ease) backwards;
+}
+
+@keyframes fixit-down {
+  from { opacity: 0; transform: translateY(-14px); }
+}
+
+.fixit-landing-page .logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  border: none;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform .25s var(--ease);
+}
+.fixit-landing-page .logo:hover {
+  transform: translateY(-2px) scale(1.03);
+}
+
+.fixit-landing-page .logo img {
+  height: 58px;
+  width: auto;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 16px rgba(0, 15, 70, 0.45));
+}
+
+.fixit-landing-page nav {
+  display: flex;
+  align-items: center;
+  gap: clamp(18px, 3vw, 38px);
+}
+
+.fixit-landing-page nav a {
+  position: relative;
+  color: #fff;
+  font: 500 15px Figtree, system-ui, sans-serif;
+  text-decoration: none;
+  padding: 4px 0;
+  text-shadow: 0 2px 12px rgba(0,0,30,.4);
+  cursor: pointer;
+}
+
+.fixit-landing-page nav a:not(.btn)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--gold);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .4s var(--ease);
+}
+
+.fixit-landing-page nav a:not(.btn):hover::after,
+.fixit-landing-page nav a.on:not(.btn)::after {
+  transform: scaleX(1);
+}
+
+.fixit-landing-page nav .btn {
+  padding: 9px 28px;
+  border: 1.5px solid #fff;
+  border-radius: 10px;
+  font-weight: 600;
+  transition: background .3s, color .3s;
+  cursor: pointer;
+  background: rgba(255,255,255,.06);
+  color: #fff;
+}
+
+.fixit-landing-page nav .btn:hover,
+.fixit-landing-page nav .btn.on {
+  background: #fff;
+  color: var(--navy);
+  text-shadow: none;
+}
+
+.fixit-landing-page .burger {
+  display: none;
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid #fff;
+  border-radius: 12px;
+  background: rgba(255,255,255,.08);
+  cursor: pointer;
+  place-items: center;
+}
+
+.fixit-landing-page .burger svg {
+  width: 22px;
+  height: 22px;
+  stroke: #fff;
+  stroke-width: 2;
+  fill: none;
+}
+
+/* Main Area */
+.fixit-landing-page main {
+  position: relative;
+  z-index: 2;
+  min-height: calc(100vh - 86px);
+  min-height: calc(100dvh - 86px);
+  display: grid;
+  place-items: center;
+  padding: 0 20px 60px;
+}
+
+/* Card */
+.fixit-landing-page .card {
+  position: relative;
+  width: 100%;
+  max-width: 390px;
+  padding: 34px 36px 28px;
+  border-radius: 26px;
+  background: rgba(255,255,255,.45);
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,.65);
+  box-shadow: 0 40px 80px -24px rgba(2,8,70,.6), inset 0 1px 0 rgba(255,255,255,.8);
+  overflow: hidden;
+  transform: none;
+  transition: opacity .35s var(--ease), filter .35s var(--ease), visibility .35s;
+  animation: fixit-rise 0.4s var(--ease) backwards;
+}
+
+.fixit-landing-page .card::after {
+  display: none;
+}
+
+@keyframes fixit-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+.fixit-landing-page .card.closed {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  filter: blur(10px);
+  transform: translateY(20px);
+  /* Remove the login card immediately so it can never overlap the
+     Services / About / Contact view that is fading in underneath it. */
+  transition: none;
+}
+
+.fixit-landing-page .card > *,
+.fixit-landing-page .card form > * {
+  animation: none;
+}
+
+.fixit-landing-page .x {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 46px;
+  height: 46px;
+  border: 0;
+  background: #15294f;
+  border-radius: 0 26px 0 22px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background .25s;
+  z-index: 5;
+}
+
+.fixit-landing-page .x:hover {
+  background: var(--navy);
+}
+
+.fixit-landing-page .x svg {
+  width: 18px;
+  height: 18px;
+  stroke: #fff;
+  stroke-width: 2.4;
+  fill: none;
+  transition: transform .4s var(--ease);
+}
+
+.fixit-landing-page .x:hover svg {
+  transform: rotate(90deg);
+}
+
+.fixit-landing-page h1 {
+  margin: 0;
+  text-align: center;
+  font: 700 30px/1.2 Sora, sans-serif;
+  color: #0d1b4c;
+  letter-spacing: -.01em;
+}
+
+.fixit-landing-page .campus {
+  margin: 2px 0 26px;
+  text-align: center;
+  font: 600 13px Figtree, sans-serif;
+  color: #a35f00;
+}
+
+/* Input Fields */
+.fixit-landing-page .f {
+  position: relative;
+  margin-bottom: 18px;
+}
+
+.fixit-landing-page .f input {
+  width: 100%;
+  height: 54px;
+  padding: 20px 38px 4px 34px;
+  border: 0;
+  border-bottom: 2px solid rgba(13,27,76,.7);
+  background: transparent;
+  font: 500 15px Figtree, system-ui, sans-serif;
+  color: var(--ink);
+  outline: none;
+  border-radius: 0;
+}
+
+.fixit-landing-page .f label {
+  position: absolute;
+  left: 34px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+  transition: all .22s ease;
+  font-size: 15px;
+}
+
+.fixit-landing-page .f input:focus + label,
+.fixit-landing-page .f input:not(:placeholder-shown) + label,
+.fixit-landing-page .f.active label {
+  top: 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--navy);
+  transform: translateY(0);
+}
+
+.fixit-landing-page .f::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold), #f28c00);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .5s var(--ease);
+}
+
+.fixit-landing-page .f:focus-within::after {
+  transform: scaleX(1);
+}
+
+.fixit-landing-page .f .i {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 19px;
+  height: 19px;
+  stroke: #0d1b4c;
+  fill: none;
+  stroke-width: 1.8;
+  pointer-events: none;
+}
+
+.fixit-landing-page .eye {
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: none;
+  border-radius: 10px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.fixit-landing-page .eye svg {
+  width: 19px;
+  height: 19px;
+  stroke: #0d1b4c;
+  fill: none;
+  stroke-width: 1.8;
+}
+
+.fixit-landing-page .f.err::after {
+  transform: scaleX(1);
+  background: #d92d20;
+}
+
+/* Error message slot */
+.fixit-landing-page .msg {
+  max-height: 0;
+  overflow: hidden;
+  color: #b42318;
+  font-size: 13px;
+  font-weight: 500;
+  transition: max-height .3s, margin .3s;
+}
+
+.fixit-landing-page .msg.show {
+  max-height: 48px;
+  margin: -6px 0 10px;
+}
+
+/* Caps lock warn */
+.fixit-landing-page .caps-warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 500;
+  margin: -10px 0 12px;
+}
+
+/* Options Row */
+.fixit-landing-page .row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 4px 0 22px;
+  font-size: 13.5px;
+}
+
+.fixit-landing-page .chk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.fixit-landing-page .chk input {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  width: 17px;
+  height: 17px;
+  border-radius: 4px;
+  border: 1.5px solid #0d1b4c;
+  background: rgba(255,255,255,.6);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background .2s;
+  position: relative;
+}
+
+.fixit-landing-page .chk input:checked {
+  background: #0d1b4c;
+}
+
+.fixit-landing-page .chk input:checked::after {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  margin-top: -2px;
+}
+
+.fixit-landing-page a,
+.fixit-landing-page button.link-btn {
+  color: var(--ink);
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.fixit-landing-page .row a:hover,
+.fixit-landing-page .row button.link-btn:hover,
+.fixit-landing-page .reg a:hover,
+.fixit-landing-page .reg button.link-btn:hover {
+  text-decoration: underline;
+}
+
+/* Sign-in help note */
+.fixit-landing-page .support-hint {
+  margin: 16px 0 0;
+  text-align: center;
+  color: var(--muted);
+  font: 500 12.5px/1.5 Figtree, system-ui, sans-serif;
+}
+
+.fixit-landing-page .support-hint button.link-btn {
+  color: var(--navy);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color .2s;
+}
+
+.fixit-landing-page .support-hint button.link-btn:hover {
+  color: #071360;
+}
+
+/* Submit Button */
+.fixit-landing-page .go {
+  position: relative;
+  width: 100%;
+  height: 48px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  font: 600 15.5px Sora, sans-serif;
+  cursor: pointer;
+  overflow: hidden;
+  background: linear-gradient(135deg, #16295c, #0b1f8f);
+  box-shadow: 0 14px 26px -10px rgba(11,31,143,.8);
+  transition: transform .25s var(--ease), box-shadow .25s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fixit-landing-page .go::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  left: -70%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.35), transparent);
+  transform: skewX(-20deg);
+  transition: left .7s;
+}
+
+.fixit-landing-page .go:hover::after {
+  left: 130%;
+}
+
+.fixit-landing-page .go:hover {
+  transform: translateY(-2px);
+}
+
+.fixit-landing-page .go:active {
+  transform: scale(.99);
+}
+
+.fixit-landing-page .go:disabled {
+  opacity: 0.85;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.fixit-landing-page .go .sp {
+  display: none;
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid rgba(255,255,255,.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  margin: auto;
+  animation: fixit-spin .7s linear infinite;
+}
+
+@keyframes fixit-spin {
+  to { transform: rotate(360deg); }
+}
+
+.fixit-landing-page .go.load .t {
+  display: none;
+}
+
+.fixit-landing-page .go.load .sp {
+  display: block;
+}
+
+.fixit-landing-page .reg {
+  margin: 20px 0 0;
+  text-align: center;
+  font-size: 13.5px;
+}
+
+.fixit-landing-page .reg a,
+.fixit-landing-page .reg button.link-btn {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* Shake Animation */
+.fixit-landing-page .shake {
+  animation: fixit-shake .45s !important;
+}
+
+@keyframes fixit-shake {
+  20%, 60% { transform: translate(-8px, 0); }
+  40%, 80% { transform: translate(8px, 0); }
+}
+
+.fixit-landing-page button:focus-visible,
+.fixit-landing-page a:focus-visible,
+.fixit-landing-page .chk input:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Views & Glass Panels */
+.fixit-landing-page .view {
+  width: min(940px, 100%);
+  /* The old 0.8s blur/rise entrance made navigation feel delayed and let the
+     outgoing login card overlap the incoming panel. Views now swap instantly. */
+  animation: none;
+}
+
+.fixit-landing-page .view[hidden] {
+  display: none !important;
+}
+
+@keyframes fixit-vin {
+  from { opacity: 0; transform: translateY(34px) scale(.97); filter: blur(10px); }
+}
+
+.fixit-landing-page .glass {
+  padding: 36px clamp(22px, 4vw, 44px);
+  border-radius: 26px;
+  background: rgba(255,255,255,.6);
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,.7);
+  box-shadow: 0 40px 80px -24px rgba(2,8,70,.55), inset 0 1px 0 rgba(255,255,255,.8);
+}
+
+.fixit-landing-page .glass h2 {
+  margin: 0 0 6px;
+  font: 700 30px/1.15 Sora, sans-serif;
+  color: var(--navy);
+}
+
+.fixit-landing-page .lead {
+  margin: 0 0 24px;
+  color: var(--muted);
+  max-width: 64ch;
+}
+
+.fixit-landing-page .grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.fixit-landing-page .item {
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(255,255,255,.65);
+  border-left: 4px solid var(--gold);
+}
+
+.fixit-landing-page .item b {
+  display: block;
+  font: 600 15.5px Sora, sans-serif;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+
+.fixit-landing-page .item span {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.fixit-landing-page .glass h3 {
+  margin: 26px 0 12px;
+  font: 600 16px Sora, sans-serif;
+  color: var(--ink);
+}
+
+/* Hero Section */
+.fixit-landing-page .hero {
+  text-align: center;
+  color: #fff;
+}
+
+.fixit-landing-page .hero h2 {
+  font: 700 clamp(32px, 5vw, 58px)/1.06 Sora, sans-serif;
+  margin: 0 0 16px;
+  letter-spacing: -.02em;
+  text-shadow: 0 4px 30px rgba(0,0,30,.4);
+}
+
+.fixit-landing-page .hero p {
+  margin: 0 auto 28px;
+  max-width: 56ch;
+  font-size: 17px;
+  color: rgba(255,255,255,.94);
+  text-shadow: 0 2px 14px rgba(0,0,30,.45);
+}
+
+.fixit-landing-page .cta {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 38px;
+}
+
+.fixit-landing-page .cta a {
+  padding: 13px 28px;
+  border-radius: 12px;
+  font: 600 15px Sora, sans-serif;
+  text-decoration: none;
+  transition: transform .3s var(--ease);
+  cursor: pointer;
+}
+
+.fixit-landing-page .cta a:hover {
+  transform: translateY(-3px);
+}
+
+.fixit-landing-page .b1 {
+  background: #fff;
+  color: var(--navy) !important;
+  box-shadow: 0 14px 28px -10px rgba(2,8,70,.6);
+}
+
+.fixit-landing-page .b2 {
+  border: 1.5px solid #fff;
+  color: #fff !important;
+}
+
+.fixit-landing-page .flow {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: s;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  text-align: left;
+}
+
+.fixit-landing-page .flow li {
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(255,255,255,.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,.35);
+  color: #fff;
+  font-size: 14px;
+  counter-increment: s;
+}
+
+.fixit-landing-page .flow li::before {
+  content: counter(s);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: #0d1b4c;
+  font: 700 13px Sora, sans-serif;
+  margin-bottom: 8px;
+}
+
+.fixit-landing-page .flow b {
+  display: block;
+  font: 600 16px Sora, sans-serif;
+}
+
+/* Contact Cols */
+.fixit-landing-page .cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  align-items: start;
+}
+
+.fixit-landing-page .chs {
+  display: grid;
+  gap: 10px;
+}
+
+.fixit-landing-page .ch {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255,255,255,.65);
+  color: var(--ink);
+  text-decoration: none;
+  text-align: left;
+  font: inherit;
+  transition: transform .3s var(--ease), background .3s;
+}
+
+.fixit-landing-page a.ch,
+.fixit-landing-page button.ch {
+  cursor: pointer;
+}
+
+.fixit-landing-page a.ch:hover,
+.fixit-landing-page button.ch:hover {
+  transform: translateX(5px);
+  background: #fff;
+}
+
+.fixit-landing-page .ch .ic {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--navy);
+  flex: none;
+}
+
+.fixit-landing-page .ch .ic svg {
+  width: 20px;
+  height: 20px;
+  stroke: #fff;
+  fill: none;
+  stroke-width: 1.8;
+}
+
+.fixit-landing-page .ch small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.fixit-landing-page .ch b {
+  font: 600 14.5px Figtree, sans-serif;
+  line-height: 1.35;
+}
+
+.fixit-landing-page .cf input,
+.fixit-landing-page .cf textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(13,27,76,.2);
+  background: rgba(255,255,255,.78);
+  font: inherit;
+  color: var(--ink);
+  margin-bottom: 10px;
+  outline: none;
+  resize: vertical;
+  transition: border-color .25s, box-shadow .25s;
+}
+
+.fixit-landing-page .cf input:focus,
+.fixit-landing-page .cf textarea:focus {
+  border-color: var(--navy);
+  box-shadow: 0 0 0 4px rgba(11,31,143,.13);
+}
+
+.fixit-landing-page .cf textarea {
+  min-height: 110px;
+}
+
+.fixit-landing-page .ok {
+  display: none;
+  text-align: center;
+  padding: 30px 10px;
+}
+
+.fixit-landing-page .ok b {
+  display: block;
+  font: 600 18px Sora, sans-serif;
+  color: var(--navy);
+  margin-bottom: 4px;
+}
+
+.fixit-landing-page .cf.sent form {
+  display: none;
+}
+
+.fixit-landing-page .cf.sent .ok {
+  display: block;
+  animation: fixit-vin .6s var(--ease);
+}
+
+/* Toast */
+.fixit-landing-page .landing-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 20px);
+  opacity: 0;
+  padding: 10px 18px;
+  border-radius: 12px;
+  background: #0d1b4c;
+  color: #fff;
+  font-size: 14px;
+  z-index: 200;
+  pointer-events: none;
+  transition: opacity .3s, transform .4s var(--ease);
+}
+
+.fixit-landing-page .landing-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Responsive Media Queries */
+@media (max-width: 760px) {
+  .fixit-landing-page .bg {
+    background-size: auto 135%;
+    background-position: 50% 85%;
+  }
+
+  .fixit-landing-page main[data-v="login"] {
+    align-items: end;
+    padding-bottom: 40px;
+  }
+
+  .fixit-landing-page .card {
+    padding: 30px 24px 24px;
+  }
+
+  .fixit-landing-page .logo img {
+    height: 42px;
+  }
+
+  .fixit-landing-page .burger {
+    display: grid;
+  }
+
+  .fixit-landing-page .cols {
+    grid-template-columns: 1fr;
+  }
+
+  .fixit-landing-page .glass {
+    padding: 28px 20px;
+  }
+
+  .fixit-landing-page nav {
+    position: absolute;
+    top: calc(100% - 6px);
+    left: 20px;
+    right: 20px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 10px;
+    border-radius: 18px;
+    background: rgba(8,20,90,.86);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: opacity .3s, transform .4s var(--ease), visibility .3s;
+  }
+
+  .fixit-landing-page nav.open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+
+  .fixit-landing-page nav a {
+    padding: 11px 14px;
+  }
+
+  .fixit-landing-page nav .btn {
+    text-align: center;
+    margin-top: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fixit-landing-page *,
+  .fixit-landing-page *::before,
+  .fixit-landing-page *::after {
+    animation-duration: .01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

@@ -1,36 +1,36 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  User, 
-  Lock, 
-  Bell, 
-  Shield, 
-  Sliders, 
-  Camera, 
-  Trash2, 
-  CheckCircle2, 
-  AlertCircle, 
-  Save, 
-  Mail, 
-  Building, 
-  IdCard, 
-  Key, 
-  Smartphone, 
-  Laptop, 
-  Clock, 
-  Check, 
-  Eye, 
-  EyeOff, 
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  User,
+  Lock,
+  Bell,
+  Shield,
+  Sliders,
+  Camera,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  Save,
+  Mail,
+  Building,
+  IdCard,
+  Key,
+  Smartphone,
+  Laptop,
+  Clock,
+  Check,
+  Eye,
+  EyeOff,
   LogOut,
   FileText,
   Wrench,
   Calendar,
   AlertTriangle,
   Layout,
-  RefreshCw,
-  ChevronDown
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData, toLocalISODate } from '../context/DataContext';
+import { apiUpdateUser, apiChangePassword } from '../backend/api';
 import { JobRequestPrintSheet } from '../components/common/JobRequestPrintSheet';
 
 export const SettingsPage = () => {
@@ -50,32 +50,15 @@ export const SettingsPage = () => {
   });
   const setActiveTab = (tab) => {
     setActiveTabState(tab);
-    try { sessionStorage.setItem('fixit_settings_tab', tab); } catch {}
+    try { sessionStorage.setItem('fixit_settings_tab', tab); } catch { }
   };
-
-  // Section Dropdown Switcher State
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setDropdownOpen(false);
-      }
-    };
-    if (dropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [dropdownOpen]);
 
   // Form State
   const [photo, setPhoto] = useState(currentUser?.avatarUrl || '');
-  const [avatarColor, setAvatarColor] = useState(currentUser?.avatarColor || '#001f9c');
+  const [avatarColor, setAvatarColor] = useState(currentUser?.avatarColor || '#071746');
   const [name, setName] = useState(currentUser?.name || '');
   const [title, setTitle] = useState(currentUser?.roleTitle || currentUser?.title || '');
+  const [academicRank, setAcademicRank] = useState(currentUser?.academicRank || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [department, setDepartment] = useState(currentUser?.department || '');
   const [officeRoom, setOfficeRoom] = useState(currentUser?.officeRoom || 'CEA Building Room 204');
@@ -159,9 +142,10 @@ export const SettingsPage = () => {
   useEffect(() => {
     if (currentUser) {
       setPhoto(currentUser.avatarUrl || '');
-      setAvatarColor(currentUser.avatarColor || '#001f9c');
+      setAvatarColor(currentUser.avatarColor || '#071746');
       setName(currentUser.name || '');
       setTitle(currentUser.roleTitle || currentUser.title || '');
+      setAcademicRank(currentUser.academicRank || '');
       setPhone(currentUser.phone || '');
       setDepartment(currentUser.department || '');
       setOfficeRoom(currentUser.officeRoom || 'CEA Building Room 204');
@@ -217,32 +201,52 @@ export const SettingsPage = () => {
   const strengthColors = ['#ef4444', '#f97316', '#f59e0b', '#10b981', '#059669'];
 
   // Save Profile
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e?.preventDefault();
     if (!name.trim()) {
       showMessage('Full Name is required.', 'error');
       return;
     }
 
-    updateCurrentUser({
+    const profileUpdates = {
       name: name.trim(),
       roleTitle: title.trim(),
+      academicRank: academicRank.trim(),
       phone: phone.trim(),
+      contactNumber: phone.trim(),
       department: department.trim(),
       officeRoom: officeRoom.trim(),
       altEmail: altEmail.trim(),
       emergencyContact: emergencyContact.trim(),
       bio: bio.trim(),
       avatarUrl: photo,
+      idPhotoUrl: photo,
       avatarColor: avatarColor,
       initial: name.trim().charAt(0).toUpperCase()
-    });
+    };
+
+    updateCurrentUser(profileUpdates);
+
+    // Persist to backend (non-blocking — local state is already updated)
+    if (currentUser?.id) {
+      try {
+        await apiUpdateUser(currentUser.id, {
+          academicRank: academicRank.trim(),
+          contactNumber: phone.trim(),
+          idPhotoUrl: photo,
+          department: department.trim(),
+          office: officeRoom.trim(),
+        });
+      } catch (err) {
+        console.warn('Profile backend sync failed (local state saved):', err.message);
+      }
+    }
 
     showMessage('Profile information updated successfully!', 'success');
   };
 
   // Save Security
-  const handleSaveSecurity = (e) => {
+  const handleSaveSecurity = async (e) => {
     e?.preventDefault();
     if (!newPassword && !currentPassword) {
       updateCurrentUser({ twoFactorEnabled });
@@ -250,8 +254,18 @@ export const SettingsPage = () => {
       return;
     }
 
-    if (newPassword && newPassword.length < 6) {
-      showMessage('New password must contain at least 6 characters.', 'error');
+    if (!currentPassword) {
+      showMessage('Please enter your current password.', 'error');
+      return;
+    }
+
+    if (newPassword && newPassword.length < 8) {
+      showMessage('New password must contain at least 8 characters.', 'error');
+      return;
+    }
+
+    if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      showMessage('New password must include both letters and numbers.', 'error');
       return;
     }
 
@@ -260,15 +274,16 @@ export const SettingsPage = () => {
       return;
     }
 
-    updateCurrentUser({
-      password: newPassword,
-      twoFactorEnabled
-    });
-
-    setNewPassword('');
-    setConfirmPassword('');
-    setCurrentPassword('');
-    showMessage('Password and security settings updated successfully!', 'success');
+    try {
+      await apiChangePassword(currentPassword, newPassword);
+      updateCurrentUser({ twoFactorEnabled });
+      setNewPassword('');
+      setConfirmPassword('');
+      setCurrentPassword('');
+      showMessage('Password updated successfully! Please keep your new password safe.', 'success');
+    } catch (err) {
+      showMessage(err.message || 'Failed to update password. Please check your current password.', 'error');
+    }
   };
 
   // Save Notifications
@@ -290,7 +305,82 @@ export const SettingsPage = () => {
   };
 
   // Pre-set avatar colors
-  const avatarColors = ['#001f9c', '#059669', '#d97706', '#7c3aed', '#dc2626', '#0284c7', '#475569'];
+  const avatarColors = ['#071746', '#059669', '#d97706', '#7c3aed', '#dc2626', '#0284c7', '#475569'];
+
+  // Unsaved Changes Tracking (for Floating Sticky Bar)
+  const isProfileDirty = useMemo(() => {
+    return name !== (currentUser?.name || '') ||
+      academicRank !== (currentUser?.academicRank || '') ||
+      phone !== (currentUser?.phone || '') ||
+      department !== (currentUser?.department || '') ||
+      officeRoom !== (currentUser?.officeRoom || 'CEA Building Room 204') ||
+      photo !== (currentUser?.avatarUrl || '');
+  }, [name, academicRank, phone, department, officeRoom, photo, currentUser]);
+
+  const isSecurityDirty = useMemo(() => {
+    return Boolean(currentPassword || newPassword || confirmPassword || twoFactorEnabled !== (currentUser?.twoFactorEnabled ?? true));
+  }, [currentPassword, newPassword, confirmPassword, twoFactorEnabled, currentUser]);
+
+  const isNotifDirty = useMemo(() => {
+    const orig = currentUser?.notifPrefs || {};
+    return Object.keys(notifPrefs).some(k => notifPrefs[k] !== (orig[k] ?? true));
+  }, [notifPrefs, currentUser]);
+
+  const isDisplayDirty = useMemo(() => {
+    const orig = currentUser?.displayPrefs || {};
+    return displayPrefs.tableDensity !== (orig.tableDensity || 'comfortable') ||
+      displayPrefs.defaultView !== (orig.defaultView || 'default') ||
+      displayPrefs.autoSaveDrafts !== (orig.autoSaveDrafts ?? true) ||
+      displayPrefs.highContrastBadges !== (orig.highContrastBadges ?? false);
+  }, [displayPrefs, currentUser]);
+
+  const isCurrentTabDirty = (
+    (activeTab === 'profile' && isProfileDirty) ||
+    (activeTab === 'security' && isSecurityDirty) ||
+    (activeTab === 'notifications' && isNotifDirty) ||
+    (activeTab === 'preferences' && isDisplayDirty)
+  );
+
+  const handleResetActiveTab = () => {
+    if (activeTab === 'profile') {
+      setName(currentUser?.name || '');
+      setAcademicRank(currentUser?.academicRank || '');
+      setPhone(currentUser?.phone || '');
+      setDepartment(currentUser?.department || '');
+      setOfficeRoom(currentUser?.officeRoom || 'CEA Building Room 204');
+      setPhoto(currentUser?.avatarUrl || '');
+    } else if (activeTab === 'security') {
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTwoFactorEnabled(currentUser?.twoFactorEnabled ?? true);
+    } else if (activeTab === 'notifications') {
+      setNotifPrefs({
+        statusUpdates: currentUser?.notifPrefs?.statusUpdates ?? true,
+        urgentAlerts: currentUser?.notifPrefs?.urgentAlerts ?? true,
+        signatureGate: currentUser?.notifPrefs?.signatureGate ?? true,
+        evaluationReminders: currentUser?.notifPrefs?.evaluationReminders ?? true,
+        preventiveCalendar: currentUser?.notifPrefs?.preventiveCalendar ?? true,
+        systemAnnouncements: currentUser?.notifPrefs?.systemAnnouncements ?? true,
+        soundEffects: currentUser?.notifPrefs?.soundEffects ?? true
+      });
+    } else if (activeTab === 'preferences') {
+      setDisplayPrefs({
+        tableDensity: currentUser?.displayPrefs?.tableDensity || 'comfortable',
+        defaultView: currentUser?.displayPrefs?.defaultView || 'default',
+        autoSaveDrafts: currentUser?.displayPrefs?.autoSaveDrafts ?? true,
+        highContrastBadges: currentUser?.displayPrefs?.highContrastBadges ?? false
+      });
+    }
+    showMessage('Changes reset to last saved state.', 'info');
+  };
+
+  const handleSaveActiveTab = () => {
+    if (activeTab === 'profile') handleSaveProfile();
+    else if (activeTab === 'security') handleSaveSecurity();
+    else if (activeTab === 'notifications') handleSaveNotifications();
+    else if (activeTab === 'preferences') handleSaveDisplay();
+  };
 
   return (
     <div style={{ maxWidth: '1080px', margin: '0 auto' }}>
@@ -298,16 +388,19 @@ export const SettingsPage = () => {
       <div className="page-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h1 className="page-title">Account Settings & Profile</h1>
+            <h1 className="page-title" style={{ fontSize: '26px', fontWeight: '800', color: '#071746', margin: 0 }}>
+              Account Settings &amp; Profile
+            </h1>
             <span style={{
               background: '#eff6ff',
-              color: '#001f9c',
+              color: '#071746',
+              border: '1px solid #bfdbfe',
               fontSize: '11px',
               fontWeight: '700',
               padding: '2px 8px',
               borderRadius: '6px'
             }}>
-              ISAT U Identity & Security
+              ISAT U Identity &amp; Security
             </span>
           </div>
           <p className="page-subtitle">
@@ -320,27 +413,27 @@ export const SettingsPage = () => {
       <div className="settings-hero-card">
         <div className="settings-hero-content">
           <div style={{ display: 'flex', alignItems: 'center', gap: '22px', flexWrap: 'wrap' }}>
-            <div className="settings-avatar-wrapper" style={{ backgroundColor: avatarColor }}>
+            <div className="settings-avatar-wrapper" style={{ backgroundColor: avatarColor || '#071746' }}>
               {photo ? (
                 <img src={photo} alt="Avatar" className="settings-avatar-img" />
               ) : (
                 currentUser?.initial || name?.charAt(0) || 'U'
               )}
               <label className="settings-avatar-edit-btn" title="Upload new photo">
-                <Camera size={15} />
+                <Camera size={14} />
                 <input type="file" accept="image/*" onChange={handlePhotoUpload} hidden />
               </label>
             </div>
 
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                <h2 style={{ fontSize: '22px', fontWeight: '800', margin: 0, letterSpacing: '-0.01em' }}>
+                <h2 style={{ fontSize: '22px', fontWeight: '800', margin: 0, letterSpacing: '-0.01em', color: '#071746' }}>
                   {name || 'FixIT User'}
                 </h2>
                 <span style={{
-                  background: 'rgba(16, 185, 129, 0.2)',
-                  color: '#34d399',
-                  border: '1px solid rgba(52, 211, 153, 0.4)',
+                  background: '#ecfdf5',
+                  color: '#047857',
+                  border: '1px solid #a7f3d0',
                   fontSize: '11px',
                   fontWeight: '700',
                   padding: '2px 8px',
@@ -353,35 +446,35 @@ export const SettingsPage = () => {
                 </span>
               </div>
 
-              <div style={{ color: '#cbd5e1', fontSize: '13.5px', marginTop: '4px', fontWeight: '500' }}>
+              <div style={{ color: '#475569', fontSize: '13.5px', marginTop: '4px', fontWeight: '600' }}>
                 {title || (isMaintenance ? 'Maintenance Specialist' : isFacultyOrStaff ? 'Faculty Requester' : 'Physical Plant Administrator')}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '10px', fontSize: '12.5px', color: '#94a3b8', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '10px', fontSize: '12.5px', color: '#64748b', flexWrap: 'wrap' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <Building size={14} color="#f59e0b" /> {department || 'Physical Development & Auxiliary Services'}
+                  <Building size={14} color="#071746" /> {department || 'Physical Development & Auxiliary Services'}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <IdCard size={14} color="#38bdf8" /> ID: {currentUser?.idNumber || 'ISATU-EMP-2026'}
+                  <IdCard size={14} color="#071746" /> ID: {currentUser?.idNumber || 'ISATU-EMP-2026'}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <Mail size={14} color="#a78bfa" /> {currentUser?.email || currentUser?.gmail || 'user@isatu.edu.ph'}
+                  <Mail size={14} color="#071746" /> {currentUser?.email || currentUser?.gmail || 'user@gmail.com'}
                 </span>
               </div>
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <label className="btn btn-secondary btn-sm" style={{ background: 'rgba(255, 255, 255, 0.15)', color: '#ffffff', border: '1px solid rgba(255, 255, 255, 0.25)', cursor: 'pointer' }}>
+            <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
               <Camera size={14} /> Upload Photo
               <input type="file" accept="image/*" onChange={handlePhotoUpload} hidden />
             </label>
             {photo && (
-              <button 
-                type="button" 
-                className="btn btn-secondary btn-sm" 
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
                 onClick={handleRemovePhoto}
-                style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.4)' }}
+                style={{ color: '#dc2626', borderColor: '#fca5a5', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
                 <Trash2 size={14} /> Remove Photo
               </button>
@@ -411,229 +504,77 @@ export const SettingsPage = () => {
         </div>
       )}
 
-      {/* Settings Navigation Dropdown Selector */}
+      {/* Settings Navigation Tabs Bar */}
       {(() => {
         const settingsTabs = [
-          {
-            group: 'Account & Preferences',
-            items: [
-              { id: 'profile', label: 'Profile & Identity', icon: User, desc: 'Personal details, department, avatar, and contact information' },
-              { id: 'security', label: 'Security & Password', icon: Lock, desc: 'Account credentials, password change, and security settings' },
-              { id: 'notifications', label: 'Notifications & Alerts', icon: Bell, desc: 'Urgent alerts, email notifications, and audible sound effects' },
-              { id: 'permissions', label: 'Role & Permissions', icon: Shield, desc: 'Institutional role clearance and access gates' },
-              { id: 'preferences', label: 'System & Display', icon: Sliders, desc: 'Interface density, themes, and autosave preferences' },
-            ]
-          },
-          ...(isAdmin ? [{
-            group: 'Administration & Document Formatting',
-            items: [
-              { id: 'form-template', label: 'Form Template (QF-PDAS-DC-01)', icon: Layout, desc: 'Configure official header, body layout, logo, and footer signatories', badge: 'Admin' },
-              { id: 'tracking', label: 'Tracking Numbers', icon: FileText, desc: 'Manage sequence numbering rules for approved requests', badge: 'Admin' },
-            ]
-          }] : [])
+          { id: 'profile', label: 'Profile & Identity', icon: User },
+          { id: 'security', label: 'Security & Password', icon: Lock },
+          { id: 'notifications', label: 'Notifications & Alerts', icon: Bell },
+          { id: 'permissions', label: 'Role & Permissions', icon: Shield },
+          { id: 'preferences', label: 'System & Display', icon: Sliders },
+          ...(isAdmin ? [
+            { id: 'form-template', label: 'Form Template (QF-PDAS-DC-01)', icon: Layout, badge: 'Admin' },
+            { id: 'tracking', label: 'Tracking Numbers', icon: FileText, badge: 'Admin' },
+          ] : [])
         ];
 
-        const allTabs = settingsTabs.flatMap(g => g.items);
-        const currentTab = allTabs.find(t => t.id === activeTab) || allTabs[0];
-        const CurrentIcon = currentTab?.icon || User;
-
         return (
-          <div ref={dropdownRef} style={{ position: 'relative', marginBottom: '24px' }}>
-            <div
-              onClick={() => setDropdownOpen(prev => !prev)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                background: 'var(--bg-card, #ffffff)',
-                border: `1px solid ${dropdownOpen ? 'var(--primary, #001f9c)' : 'var(--border-color, #c4cbdb)'}`,
-                borderRadius: '12px',
-                padding: '12px 18px',
-                boxShadow: dropdownOpen ? '0 0 0 3px rgba(0, 31, 156, 0.1)' : '0 1px 3px rgba(0,0,0,0.04)',
-                cursor: 'pointer',
-                userSelect: 'none',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0 }}>
-                <div style={{
-                  width: '42px',
-                  height: '42px',
-                  borderRadius: '10px',
-                  background: 'var(--primary-light, #eff6ff)',
-                  color: 'var(--primary, #001f9c)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
-                }}>
-                  <CurrentIcon size={20} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-light, #64748b)', letterSpacing: '0.05em' }}>
-                      Settings Section
-                    </span>
-                    {currentTab?.badge && (
-                      <span style={{
-                        fontSize: '10px',
-                        fontWeight: '800',
-                        textTransform: 'uppercase',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                        background: '#eff6ff',
-                        color: '#001f9c',
-                        border: '1px solid #bfdbfe'
-                      }}>
-                        {currentTab.badge}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary, #0f172a)', letterSpacing: '-0.01em', marginTop: '1px' }}>
-                    {currentTab?.label}
-                  </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted, #525d76)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {currentTab?.desc}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '12px' }}>
-                <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary, #001f9c)' }}>
-                  Change Section
-                </span>
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '8px',
-                  background: dropdownOpen ? 'var(--primary, #001f9c)' : 'var(--bg-sunken, #f1f5f9)',
-                  color: dropdownOpen ? '#ffffff' : 'var(--text-primary, #1e293b)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease'
-                }}>
-                  <ChevronDown
-                    size={18}
-                    style={{
-                      transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                      transition: 'transform 0.2s ease'
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Dropdown Menu List */}
-            {dropdownOpen && (
-              <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 8px)',
-                left: 0,
-                right: 0,
-                background: 'var(--bg-card, #ffffff)',
-                border: '1px solid var(--border-color, #c4cbdb)',
-                borderRadius: '12px',
-                boxShadow: '0 14px 30px rgba(0, 0, 0, 0.12), 0 6px 12px rgba(0, 0, 0, 0.06)',
-                zIndex: 100,
-                padding: '8px',
-                maxHeight: '440px',
-                overflowY: 'auto'
-              }}>
-                {settingsTabs.map((group, gIdx) => (
-                  <div key={group.group} style={{ marginTop: gIdx > 0 ? '8px' : 0, paddingTop: gIdx > 0 ? '8px' : 0, borderTop: gIdx > 0 ? '1px solid #e2e8f0' : 'none' }}>
-                    <div style={{
-                      fontSize: '11px',
+          <div
+            className="hide-scrollbar"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              overflowX: 'auto',
+              paddingBottom: '8px',
+              marginBottom: '20px',
+              WebkitOverflowScrolling: 'touch'
+            }}
+          >
+            {settingsTabs.map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    borderRadius: '9999px',
+                    fontSize: '13px',
+                    fontWeight: isActive ? '700' : '600',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.15s ease',
+                    background: isActive ? '#071746' : 'var(--bg-card, #ffffff)',
+                    color: isActive ? '#ffffff' : 'var(--text-primary, #334155)',
+                    border: isActive ? '1.5px solid #071746' : '1.5px solid var(--border-color, #cbd5e1)',
+                    boxShadow: isActive ? '0 2px 6px rgba(7, 23, 70, 0.2)' : 'none'
+                  }}
+                >
+                  <Icon size={15} color={isActive ? '#ffffff' : '#64748b'} />
+                  <span>{tab.label}</span>
+                  {tab.badge && (
+                    <span style={{
+                      fontSize: '10px',
                       fontWeight: '800',
                       textTransform: 'uppercase',
-                      color: 'var(--text-light, #64748b)',
-                      letterSpacing: '0.05em',
-                      padding: '6px 12px 4px'
+                      padding: '1px 6px',
+                      borderRadius: '10px',
+                      background: isActive ? 'rgba(255, 255, 255, 0.25)' : '#eff6ff',
+                      color: isActive ? '#ffffff' : '#071746',
+                      border: isActive ? 'none' : '1px solid #bfdbfe'
                     }}>
-                      {group.group}
-                    </div>
-                    {group.items.map(tab => {
-                      const Icon = tab.icon;
-                      const isActive = activeTab === tab.id;
-                      return (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          onClick={() => {
-                            setActiveTab(tab.id);
-                            setDropdownOpen(false);
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            width: '100%',
-                            padding: '10px 12px',
-                            border: 'none',
-                            borderRadius: '8px',
-                            background: isActive ? 'var(--primary-light, #eff6ff)' : 'transparent',
-                            color: isActive ? 'var(--primary, #001f9c)' : 'var(--text-primary, #1e293b)',
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            transition: 'background 0.15s ease'
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isActive) e.currentTarget.style.background = 'var(--bg-hover, #f8fafc)';
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isActive) e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                            <div style={{
-                              width: '32px',
-                              height: '32px',
-                              borderRadius: '6px',
-                              background: isActive ? 'var(--primary, #001f9c)' : 'var(--bg-sunken, #f1f5f9)',
-                              color: isActive ? '#ffffff' : 'var(--text-muted, #64748b)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0
-                            }}>
-                              <Icon size={16} />
-                            </div>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '13.5px', fontWeight: isActive ? '800' : '600' }}>
-                                  {tab.label}
-                                </span>
-                                {tab.badge && (
-                                  <span style={{
-                                    fontSize: '10px',
-                                    fontWeight: '700',
-                                    padding: '1px 5px',
-                                    borderRadius: '4px',
-                                    background: '#eff6ff',
-                                    color: '#001f9c',
-                                    border: '1px solid #bfdbfe'
-                                  }}>
-                                    {tab.badge}
-                                  </span>
-                                )}
-                              </div>
-                              <div style={{ fontSize: '11.5px', color: 'var(--text-muted, #64748b)', marginTop: '1px' }}>
-                                {tab.desc}
-                              </div>
-                            </div>
-                          </div>
-                          {isActive && (
-                            <div style={{ color: 'var(--primary, #001f9c)', marginLeft: '8px' }}>
-                              <Check size={16} />
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            )}
+                      {tab.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         );
       })()}
@@ -645,7 +586,7 @@ export const SettingsPage = () => {
             <div className="settings-card-header">
               <div>
                 <div className="settings-card-title">
-                  <User size={18} color="#001f9c" /> Personal & Institutional Profile
+                  <User size={18} color="#071746" /> Personal & Institutional Profile
                 </div>
                 <div className="settings-card-subtitle">
                   Information used on official QF-PDAS-DC-01 request forms, job orders, and campus communications.
@@ -674,6 +615,19 @@ export const SettingsPage = () => {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="e.g. Associate Professor / Maintenance Specialist"
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                <div className="form-group">
+                  <label className="form-label">Academic Rank / Plantilla Position</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={academicRank}
+                    onChange={(e) => setAcademicRank(e.target.value)}
+                    placeholder="e.g. Instructor I, Administrative Officer II, Administrative Aide III"
                   />
                 </div>
               </div>
@@ -732,7 +686,7 @@ export const SettingsPage = () => {
                   <input
                     type="text"
                     className="form-input"
-                    value={currentUser?.email || currentUser?.gmail || 'user@isatu.edu.ph'}
+                    value={currentUser?.email || currentUser?.gmail || 'user@gmail.com'}
                     disabled
                     style={{ background: 'var(--bg-muted)', color: '#64748b', cursor: 'not-allowed' }}
                   />
@@ -805,7 +759,7 @@ export const SettingsPage = () => {
             <div className="settings-card-header">
               <div>
                 <div className="settings-card-title">
-                  <Key size={18} color="#001f9c" /> Password & Credential Management
+                  <Key size={18} color="#071746" /> Password & Credential Management
                 </div>
                 <div className="settings-card-subtitle">
                   Ensure your account has a strong, unique password to safeguard ISAT U PDAS records.
@@ -902,11 +856,11 @@ export const SettingsPage = () => {
               <div className="toggle-switch-container">
                 <div>
                   <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '13.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Shield size={16} color="#001f9c" />
+                    <Shield size={16} color="#071746" />
                     Two-Factor Authentication (2FA) for Critical Actions
                   </div>
                   <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                    Require institutional email one-time passcodes when performing high-risk actions (e.g. signature confirmations or role assignments).
+                    Require email one-time passcodes when performing high-risk actions (e.g. signature confirmations or role assignments).
                   </div>
                 </div>
                 <label className="toggle-switch">
@@ -932,7 +886,7 @@ export const SettingsPage = () => {
             <div className="settings-card-header">
               <div>
                 <div className="settings-card-title">
-                  <Laptop size={18} color="#001f9c" /> Active Sessions & Device Activity
+                  <Laptop size={18} color="#071746" /> Active Sessions & Device Activity
                 </div>
                 <div className="settings-card-subtitle">
                   Review devices currently logged into this FixIT account.
@@ -967,7 +921,7 @@ export const SettingsPage = () => {
                       width: '38px',
                       height: '38px',
                       borderRadius: '8px',
-                      background: sess.isCurrent ? '#001f9c' : '#e2e8f0',
+                      background: sess.isCurrent ? '#071746' : '#e2e8f0',
                       color: sess.isCurrent ? '#ffffff' : '#64748b',
                       display: 'flex',
                       alignItems: 'center',
@@ -1006,7 +960,7 @@ export const SettingsPage = () => {
           <div className="settings-card-header">
             <div>
               <div className="settings-card-title">
-                <Bell size={18} color="#001f9c" /> Communication & Notification Preferences
+                <Bell size={18} color="#071746" /> Communication & Notification Preferences
               </div>
               <div className="settings-card-subtitle">
                 Customize how and when you receive automated notifications from the FixIT PDAS tracking engine.
@@ -1144,7 +1098,7 @@ export const SettingsPage = () => {
           <div className="settings-card-header">
             <div>
               <div className="settings-card-title">
-                <Shield size={18} color="#001f9c" /> Role & Institutional Capabilities Matrix
+                <Shield size={18} color="#071746" /> Role & Institutional Capabilities Matrix
               </div>
               <div className="settings-card-subtitle">
                 System permissions associated with your active role tier: <strong>{currentUser?.roleTitle || currentUser?.title || (isMaintenance ? 'Maintenance' : isFacultyOrStaff ? 'Faculty/Staff' : 'Administrator')}</strong>
@@ -1176,10 +1130,10 @@ export const SettingsPage = () => {
               </div>
               <div>
                 <div style={{ fontWeight: '700', fontSize: '13.5px', color: '#0f172a' }}>
-                  Physical Signature Verification Gate
+                  Electronic Signature & Archive Verification Gate
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                  Verify receipt of signed hardcopy QF-PDAS-DC-01 forms and advance tickets to Approved.
+                  Verify electronic endorsements and optional archive attachments for completed records.
                 </div>
                 <span style={{ fontSize: '11px', fontWeight: '700', color: isFacultyOrStaff ? '#64748b' : '#001f9c', display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '6px' }}>
                   {isFacultyOrStaff ? 'Restricted to PDAS Admin' : <><Check size={13} /> Granted</>}
@@ -1357,7 +1311,7 @@ export const SettingsPage = () => {
                   <Layout size={18} color="#001f9c" /> Form Template &amp; Layout Customization (QF-PDAS-DC-01)
                 </div>
                 <div className="settings-card-subtitle">
-                  Configure the official university header, body metadata labels, layout typography, defect photo visibility, and footer signatories. Changes reflect on all printed slips and document previews.
+                  Configure the official university header, body metadata labels, layout typography, attached photo visibility, and footer signatories. Changes reflect on all printed slips and document previews.
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -1539,16 +1493,9 @@ export const SettingsPage = () => {
                           checked={d.showDefectPhoto !== false}
                           onChange={e => setD({ showDefectPhoto: e.target.checked })}
                         />
-                        Include attached defect photo on printed slip
+                        Include attached photo on printed slip
                       </label>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#1e293b' }}>
-                        <input
-                          type="checkbox"
-                          checked={d.showVerificationQr !== false}
-                          onChange={e => setD({ showVerificationQr: e.target.checked })}
-                        />
-                        Include hardcopy QR verification strip
-                      </label>
+
                     </div>
                   </div>
 
@@ -1691,6 +1638,77 @@ export const SettingsPage = () => {
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* Floating Sticky Save Bar on Unsaved Changes */}
+      {isCurrentTabDirty && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1000,
+            background: '#071746',
+            color: '#ffffff',
+            borderRadius: '12px',
+            padding: '12px 20px',
+            boxShadow: '0 8px 30px rgba(7, 23, 70, 0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '18px',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            maxWidth: '90vw'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', fontWeight: '600' }}>
+            <AlertCircle size={17} color="#f59e0b" />
+            <span>Careful — you have unsaved changes!</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={handleResetActiveTab}
+              style={{
+                background: 'transparent',
+                color: '#cbd5e1',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                borderRadius: '8px',
+                padding: '6px 14px',
+                fontSize: '12.5px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#ffffff'; e.currentTarget.style.borderColor = '#ffffff'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#cbd5e1'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)'; }}
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveActiveTab}
+              style={{
+                background: '#f59e0b',
+                color: '#071746',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '6px 16px',
+                fontSize: '12.5px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 6px rgba(245, 158, 11, 0.3)'
+              }}
+            >
+              <Save size={14} /> Save Changes
+            </button>
+          </div>
         </div>
       )}
     </div>

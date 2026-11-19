@@ -53,7 +53,7 @@ let token = null;
   const { status, json } = await req('/auth/login', {
     method: 'POST',
     body: {
-      email: process.env.ADMIN_EMAIL || 'adminisatu.edu.ph@gmail.com',
+      email: process.env.ADMIN_EMAIL || 'admin@gmail.com',
       password: process.env.ADMIN_PASSWORD || 'admin123',
       role: 'admin'
     }
@@ -71,7 +71,7 @@ let token = null;
   const wrongPass = await req('/auth/login', {
     method: 'POST',
     body: {
-      email: process.env.ADMIN_EMAIL || 'adminisatu.edu.ph@gmail.com',
+      email: process.env.ADMIN_EMAIL || 'admin@gmail.com',
       password: 'definitely-wrong',
       role: 'admin'
     }

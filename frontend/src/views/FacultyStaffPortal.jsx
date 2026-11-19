@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Clock,
   AlertTriangle,
@@ -11,14 +11,22 @@ import {
   Check,
   CheckCircle,
   X,
-  Edit
+  Edit,
+  ChevronDown,
+  Plus,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { StatusBadge, UrgencyBadge, CategoryPill } from '../components/common/StatusBadge';
 import { Modal } from '../components/common/Modal';
-import { CommunicationBox } from './CommunicationBox';
+import { JobRequestPrintSheet } from '../components/common/JobRequestPrintSheet';
+import { JobRequestFormOverlay } from '../components/common/JobRequestFormOverlay';
+import { ClientSatisfactionPrintSheet } from '../components/common/ClientSatisfactionPrintSheet';
+import { PrintPortal } from '../components/common/PrintPortal';
+import { printDocument } from '../utils/print';
 import { EvaluationForm } from './EvaluationForm';
+import { CommunicationBox } from './CommunicationBox';
 import {
   useRequestIntake,
   RequestIntake,
@@ -28,9 +36,12 @@ import { LimitedTextArea } from '../components/common/LimitedTextArea';
 import { PageHeader } from '../components/common/PageHeader';
 import { Pagination } from '../components/ui/Pagination';
 import { formatTicketDate } from '../components/common/TimeGreeting';
-import { CATEGORY_OPTIONS, buildScopeOfWorks } from '../utils/jobRequestIntake';
+import { CATEGORY_OPTIONS, isUrgentReq } from '../utils/jobRequestIntake';
 import { filterMyRequests } from '../utils/myRequests';
 import { SupervisorDashboard } from './supervisor/SupervisorDashboard';
+import { apiGetSupervisorsList } from '../backend/api';
+import { DashboardSkeleton, useDelayedLoading } from '../components/common/Skeleton';
+
 
 
 /* Shared filter options. My Open Tickets and Request History render the SAME
@@ -38,7 +49,7 @@ import { SupervisorDashboard } from './supervisor/SupervisorDashboard';
    move anything around. The only difference is the actions slot on the right.
    The category list is the shared one, so a category you can file is always a
    category you can filter by. */
-const URGENCY_OPTIONS = ['High Risk', 'Medium Risk', 'Low Risk'];
+const URGENCY_OPTIONS = ['High', 'Medium', 'Low'];
 
 const STATUS_OPTIONS = [
   { value: 'pending', label: 'Pending' },
@@ -83,7 +94,7 @@ const TicketFilterBar = ({
     </select>
 
     <select
-      aria-label="Filter by risk level"
+      aria-label="Filter by urgency"
       className="form-select"
       value={urgency}
       onChange={(e) => onUrgencyChange(e.target.value)}
@@ -133,18 +144,41 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
     ticketSearch: searchTerm,
     focusedTicketRef,
     setFocusedTicketRef,
-    reviseRequisition
+    reviseRequisition,
+    isLoadingRequisitions
   } = useData();
+  const showSkeleton = useDelayedLoading(isLoadingRequisitions && (!requisitions || requisitions.length === 0));
 
   const [selectedTicketDetail, setSelectedTicketDetail] = useState(null);
   const [evaluationRequest, setEvaluationRequest] = useState(null);
+  const [selectedCsmPrint, setSelectedCsmPrint] = useState(null);
   const [revisionTarget, setRevisionTarget] = useState(null);
+  const [selectedReqForPrint, setSelectedReqForPrint] = useState(null);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Completed requests requiring CSM feedback
+  const userPendingFeedback = useMemo(() => {
+    return requisitions.filter(r => {
+      const isCompleted = r.status === 'Completed' || r.status === 'completed';
+      if (!isCompleted) return false;
+      const isMine = Boolean(
+        currentUser &&
+        ((currentUser.name && r.requestedBy && r.requestedBy.toLowerCase() === currentUser.name.toLowerCase()) ||
+         (currentUser.email && r.requesterEmail && r.requesterEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
+         (currentUser.id && r.userId && String(r.userId) === String(currentUser.id)))
+      );
+      if (!isMine) return false;
+      const alreadyEvaluated = (evaluations || []).some(e => e.reqId === r.id || e.controlNo === r.controlNo);
+      return !alreadyEvaluated;
+    });
+  }, [requisitions, currentUser, evaluations]);
 
   // Revision Form State
   const [revTitle, setRevTitle] = useState('');
   const [revCategory, setRevCategory] = useState('');
   const [revLocation, setRevLocation] = useState('');
   const [revUrgency, setRevUrgency] = useState('');
+  const [revSupervisor, setRevSupervisor] = useState('');
   const [revDescription, setRevDescription] = useState('');
   const [revNotes, setRevNotes] = useState('');
   const [revPhotoUrl, setRevPhotoUrl] = useState('');
@@ -152,19 +186,42 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
   const [isSubmittingRevision, setIsSubmittingRevision] = useState(false);
   const [revError, setRevError] = useState('');
 
+  // Supervisor dropdown state and helpers (declared before revisionTarget effect)
+  const [supervisorList, setSupervisorList] = useState([]);
+  const [supDropOpen, setSupDropOpen] = useState(false);
+  const supDropRef = useRef(null);
+  const [revSupDropOpen, setRevSupDropOpen] = useState(false);
+  const revSupDropRef = useRef(null);
+  const [isTypingRevSup, setIsTypingRevSup] = useState(false);
+
+  const refreshSupervisors = useCallback(() => {
+    apiGetSupervisorsList()
+      .then((list) => setSupervisorList(Array.isArray(list) ? list : []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshSupervisors();
+  }, [refreshSupervisors]);
+
   useEffect(() => {
     if (revisionTarget) {
       setRevTitle(revisionTarget.title || '');
       setRevCategory(revisionTarget.category || 'Carpentry');
       setRevLocation(revisionTarget.location || '');
-      setRevUrgency(revisionTarget.urgency || 'Medium Risk');
+      const rawUrg = revisionTarget.urgency || '';
+      const normUrg = /high/i.test(rawUrg) ? 'High' : (/low/i.test(rawUrg) ? 'Low' : 'Medium');
+      setRevUrgency(normUrg);
+      setRevSupervisor(revisionTarget.immediateSupervisor || '');
       setRevDescription(revisionTarget.description || '');
       setRevNotes('');
       setRevPhotoUrl(revisionTarget.photoUrl || '');
       setRevPhotoName(revisionTarget.photoName || '');
       setRevError('');
+      setIsTypingRevSup(false);
+      refreshSupervisors();
     }
-  }, [revisionTarget]);
+  }, [revisionTarget, refreshSupervisors]);
 
   const handleSubmitRevision = async (e) => {
     if (e?.preventDefault) e.preventDefault();
@@ -180,6 +237,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
         category: revCategory,
         location: revLocation.trim(),
         urgency: revUrgency,
+        immediateSupervisor: revSupervisor.trim(),
         description: revDescription.trim(),
         revisionNotes: revNotes.trim(),
         photoUrl: revPhotoUrl || null,
@@ -193,15 +251,17 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
     }
   };
 
-  // Filters State (search text comes from the navbar global search box)
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [urgencyFilter, setUrgencyFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  // Request History opens on the closed records by default; the scope pills
+  // still let the user widen the view to active or all records.
+  const [historyScope, setHistoryScope] = useState('completed'); // 'all' | 'active' | 'completed'
   const [tablePage, setTablePage] = useState(1);
   const tablePageSize = 8;
 
   // Reset table pagination whenever the tab or filters change
-  useEffect(() => { setTablePage(1); }, [activeTab, searchTerm, categoryFilter, urgencyFilter, statusFilter]);
+  useEffect(() => { setTablePage(1); }, [activeTab, searchTerm, categoryFilter, urgencyFilter, statusFilter, historyScope]);
 
   const handleResetFilters = () => {
     setCategoryFilter('all');
@@ -222,12 +282,42 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
   // "first room in the building" would silently file the wrong location.
   const [selectedOffice] = useState(() => currentUser?.department || offices?.[0] || 'Office of the Campus Administrator');
 
-  // Urgent Standard Form Completion Modal State
-  const [isUrgentModalOpen, setIsUrgentModalOpen] = useState(false);
-  const [urgentTargetReq, setUrgentTargetReq] = useState(null);
-  const [urgentModalSupervisor, setUrgentModalSupervisor] = useState('');
-  const [urgentModalOptions, setUrgentModalOptions] = useState([]);
-  const [urgentModalDesc, setUrgentModalDesc] = useState('');
+  // Dropdown outside click handlers (for revision modal supervisor dropdown)
+  useEffect(() => {
+    if (!supDropOpen) return;
+    const handler = (e) => {
+      if (supDropRef.current && !supDropRef.current.contains(e.target)) setSupDropOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [supDropOpen]);
+
+  useEffect(() => {
+    if (!revSupDropOpen) return;
+    const handler = (e) => {
+      if (revSupDropRef.current && !revSupDropRef.current.contains(e.target)) setRevSupDropOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [revSupDropOpen]);
+
+  const filteredRevSupList = useMemo(() => {
+    if (!revSupDropOpen) return supervisorList;
+    if (!isTypingRevSup) return supervisorList;
+    const q = revSupervisor.trim().toLowerCase();
+    if (!q) return supervisorList;
+    return supervisorList.filter((s) => {
+      const full = `${s.firstName} ${s.middleName ? s.middleName + ' ' : ''}${s.lastName}`.toLowerCase();
+      return full.includes(q);
+    });
+  }, [supervisorList, revSupervisor, revSupDropOpen, isTypingRevSup]);
+
+  const selectRevSupFromList = useCallback((sup) => {
+    const fullName = `${sup.firstName} ${sup.middleName ? sup.middleName + ' ' : ''}${sup.lastName}`.trim();
+    setRevSupervisor(fullName);
+    setIsTypingRevSup(false);
+    setRevSupDropOpen(false);
+  }, []);
 
   // The request-intake flow is the shared one — the same component, buttons and
   // record shape the PDAS Administration dashboard uses. Nothing about filing a
@@ -244,14 +334,11 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
     office: selectedOffice
   });
 
-  // The urgent tab opens the lightweight fast path instead of
-  // the full form, so a hazard is never gated behind a long form.
-  // Standard submit tabs show the launcher first — the form opens
-  // only when the user explicitly clicks a button.
+  // Standard submit tabs show the launcher or open form directly
   useEffect(() => {
     if (intake.filed) return;
-    if (activeTab === 'faculty-urgent' || initialRequestType === 'Urgent Request') {
-      intake.openUrgent();
+    if (activeTab === 'faculty-urgent' || activeTab === 'faculty-submit') {
+      intake.openStandard();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, initialRequestType]);
@@ -263,28 +350,48 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
   // exact record in the details modal, then clear so it never reopens.
   useEffect(() => {
     if (!focusedTicketRef) return;
+    if (!requisitions || requisitions.length === 0) return;
     const all = [...(requisitions || [])];
-    const refStr = String(focusedTicketRef || '').trim();
+    const refStr = String(focusedTicketRef || '').trim().toLowerCase();
     const found = all.find(r =>
-      String(r.controlNo || '') === refStr ||
-      String(r.id || '') === refStr ||
-      String(r.ticket_no || '') === refStr
+      String(r.controlNo || '').toLowerCase() === refStr ||
+      String(r.id || '').toLowerCase() === refStr ||
+      String(r.ticket_no || '').toLowerCase() === refStr ||
+      String(r.id_raw || '').toLowerCase() === refStr ||
+      String(r.officialTrackingNo || '').toLowerCase() === refStr
     );
     if (found) {
-      if (onTabChange) onTabChange('faculty-tickets');
-      setSelectedTicketDetail(found);
+      if (onTabChange) onTabChange('faculty-history');
+      const isCompleted = found.status === 'Completed' || found.status === 'completed';
+      const alreadyEvaluated = (evaluations || []).some(e => e.reqId === found.id || e.controlNo === found.controlNo);
+      if (isCompleted && !alreadyEvaluated) {
+        setEvaluationRequest(found);
+      } else {
+        setSelectedTicketDetail(found);
+      }
     }
     setFocusedTicketRef(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedTicketRef]);
+  }, [focusedTicketRef, requisitions]);
 
-  // Requisition Partitioning (most recent first)
+  // Requisition Partitioning (First-come, first-served: earliest first)
+  const byDateAsc = (a, b) => {
+    const d = String(a.date || '').localeCompare(String(b.date || ''));
+    if (d !== 0) return d;
+    return String(a.controlNo || a.id || '').localeCompare(String(b.controlNo || b.id || ''));
+  };
   const byDateDesc = (a, b) => String(b.date || '').localeCompare(String(a.date || ''));
   /* The shared predicate — see utils/myRequests. This list and the Dashboard
      tile counts read from the same source, so they cannot drift apart. */
-  const myTickets = filterMyRequests(requisitions, currentUser);
-  const activeTickets = myTickets.filter(r => r.status !== 'Completed' && r.status !== 'Rejected');
-  const completedTickets = myTickets.filter(r => r.status === 'Completed' || r.status === 'Rejected');
+  const myTickets = useMemo(() => filterMyRequests(requisitions, currentUser), [requisitions, currentUser]);
+  const activeTickets = useMemo(() => myTickets.filter(r => r.status !== 'Completed' && r.status !== 'Rejected'), [myTickets]);
+  const completedTickets = useMemo(() => myTickets.filter(r => r.status === 'Completed' || r.status === 'Rejected'), [myTickets]);
+
+  const scopedTickets = useMemo(() => {
+    if (historyScope === 'active') return activeTickets;
+    if (historyScope === 'completed') return completedTickets;
+    return myTickets;
+  }, [historyScope, activeTickets, completedTickets, myTickets]);
 
   // Filtered Active Tickets
   const filteredActiveTickets = activeTickets.filter(req => {
@@ -294,26 +401,47 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
       (req.description && req.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (req.location && req.location.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCategory = categoryFilter === 'all' || req.category === categoryFilter;
-    const matchesUrgency = urgencyFilter === 'all' || req.urgency === urgencyFilter;
+    const matchesUrgency = urgencyFilter === 'all' ||
+      (urgencyFilter === 'High' && /high|urgent|emergency/i.test(String(req.urgency || ''))) ||
+      (urgencyFilter === 'Medium' && (/medium/i.test(String(req.urgency || '')) || !req.urgency)) ||
+      (urgencyFilter === 'Low' && /low/i.test(String(req.urgency || ''))) ||
+      req.urgency === urgencyFilter;
     const matchesStatus = statusFilter === 'all' || req.status.toLowerCase().replace(/\s+/g, '-') === statusFilter || (statusFilter === 'pending-final-approval' && (req.status === 'Pending Final Approval' || req.status === 'Awaiting Signatures'));
     return matchesSearch && matchesCategory && matchesUrgency && matchesStatus;
   }).sort(byDateDesc);
 
-  // Filtered History Tickets
-  const filteredHistoryTickets = completedTickets.filter(req => {
-    const matchesSearch = 
-      String(req.controlNo || req.id).toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (req.title && req.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (req.description && req.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (req.location && req.location.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (req.assignedTo && req.assignedTo.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesCategory = categoryFilter === 'all' || req.category === categoryFilter;
-    const matchesUrgency = urgencyFilter === 'all' || req.urgency === urgencyFilter;
-    return matchesSearch && matchesCategory && matchesUrgency;
-  }).sort(byDateDesc);
+  // Filtered History & Tracking Tickets (Scoped by All / Active / Completed)
+  const filteredHistoryTickets = useMemo(() => {
+    const q = (searchTerm || '').trim().toLowerCase();
+    return scopedTickets.filter(req => {
+      const matchesSearch = 
+        !q ||
+        String(req.controlNo || req.id || req.ticket_no || '').toLowerCase().includes(q) ||
+        (req.title && req.title.toLowerCase().includes(q)) ||
+        (req.description && req.description.toLowerCase().includes(q)) ||
+        (req.location && req.location.toLowerCase().includes(q)) ||
+        (req.assignedTo && req.assignedTo.toLowerCase().includes(q));
+      const matchesCategory = categoryFilter === 'all' || req.category === categoryFilter;
+      const matchesUrgency = urgencyFilter === 'all' ||
+        (urgencyFilter === 'High' && /high|urgent|emergency/i.test(String(req.urgency || ''))) ||
+        (urgencyFilter === 'Medium' && (/medium/i.test(String(req.urgency || '')) || !req.urgency)) ||
+        (urgencyFilter === 'Low' && /low/i.test(String(req.urgency || ''))) ||
+        req.urgency === urgencyFilter;
+      const matchesStatus = statusFilter === 'all' || 
+        req.status.toLowerCase().replace(/\s+/g, '-') === statusFilter || 
+        (statusFilter === 'pending-final-approval' && (req.status === 'Pending Final Approval' || req.status === 'Awaiting Signatures'));
+      return matchesSearch && matchesCategory && matchesUrgency && matchesStatus;
+    }).sort(byDateDesc);
+  }, [scopedTickets, searchTerm, categoryFilter, urgencyFilter, statusFilter]);
 
   const pagedActive = paginate(filteredActiveTickets);
   const pagedHistory = paginate(filteredHistoryTickets);
+
+  /* My Open Tickets lists active work; Request History lists closed records.
+     Both tabs reuse the same filter bar, search and status vocabulary. */
+  const isHistoryTab = activeTab === 'faculty-history';
+  const visibleTickets = isHistoryTab ? filteredHistoryTickets : filteredActiveTickets;
+  const visiblePage = isHistoryTab ? pagedHistory : pagedActive;
 
   // Export the rows currently listed to CSV, so the download always matches
   // what the filters and search are showing.
@@ -358,14 +486,18 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
     return <CommunicationBox />;
   }
 
+  if (showSkeleton) {
+    return <div style={{ paddingTop: '16px' }}><DashboardSkeleton /></div>;
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingTop: '16px', fontFamily: "'Inter', Verdana, Geneva, Tahoma, sans-serif" }}>
       
       {/* Page Header. The Scan QR / New Request pair belongs to the Dashboard
           only — the same two buttons were repeated on every list page below. */}
       <PageHeader
-        breadcrumbs={['My Requests', activeTab === 'faculty-history' ? 'History' : activeTab === 'faculty-tickets' ? 'Open Tickets' : 'New Request']}
-        title={activeTab === 'faculty-history' ? 'Request History' : activeTab === 'faculty-tickets' ? 'My Open Tickets' : 'New Request'}
+        breadcrumbs={['My Requests', activeTab === 'faculty-history' ? 'History' : activeTab === 'faculty-tickets' || activeTab === 'my-tickets' ? 'Open Tickets' : 'New Request']}
+        title={activeTab === 'faculty-history' ? 'Request History' : activeTab === 'faculty-tickets' || activeTab === 'my-tickets' ? 'My Open Tickets' : 'New Request'}
       />
 
       {/* Summary KPI cards live on the Dashboard tab only (faculty-dashboard). */}
@@ -378,75 +510,194 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
               intake={intake}
               requesterName={currentUser?.name}
               department={currentUser?.department || selectedOffice}
-              onTrack={() => { if (onTabChange) onTabChange('faculty-tickets'); }}
+              onTrack={() => { if (onTabChange) onTabChange('faculty-history'); }}
             />
           </div>
         </div>
       )}
 
 
-      {/* TAB 2: MY ACTIVE TICKETS & TRACKING */}
-      {(activeTab === 'faculty-tickets' || activeTab === 'my-tickets') && (
+      {/* UNIFIED REQUEST HISTORY & LIVE TRACKING TAB */}
+      {(activeTab === 'faculty-history' || activeTab === 'faculty-tickets' || activeTab === 'my-tickets') && (
         <div className="content-card" style={{ paddingTop: '20px' }}>
 
-          {/* URGENT PENDING STANDARD FORM WARNING BANNER */}
-          {activeTickets.some(r => r.urgentPendingStandardForm) && (
+          {/* Pending CSM Feedback Banner */}
+          {userPendingFeedback.length > 0 && (
             <div style={{
-              background: '#fff1f2',
-              border: '2px solid #fecdd3',
-              borderRadius: '12px',
-              padding: '16px 20px',
               margin: '0 24px 20px 24px',
+              padding: '16px 20px',
+              background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)',
+              border: '1.5px solid #93c5fd',
+              borderRadius: '12px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: '16px',
-              boxShadow: '0 4px 12px rgba(225, 29, 72, 0.1)'
+              flexWrap: 'wrap',
+              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.08)'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <div style={{
-                  width: '40px',
-                  height: '40px',
+                  width: '42px',
+                  height: '42px',
                   borderRadius: '10px',
-                  background: '#ffe4e6',
-                  color: '#e11d48',
+                  background: '#001f9c',
+                  color: '#ffffff',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0
                 }}>
-                  <AlertTriangle size={22} />
+                  <Star size={22} fill="#fbbf24" stroke="#fbbf24" />
                 </div>
                 <div>
-                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#9f1239' }}>
-                    Action needed: complete the standard form
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>Client Satisfaction Feedback Required</span>
+                    <span style={{
+                      fontSize: '11px',
+                      background: '#dbeafe',
+                      color: '#1e40af',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      fontWeight: '700'
+                    }}>
+                      {userPendingFeedback.length} Completed {userPendingFeedback.length === 1 ? 'Request' : 'Requests'}
+                    </span>
                   </div>
-                  <div style={{ fontSize: '12.5px', color: '#881337', marginTop: '2px' }}>
-                    Some urgent requests still need the full QF-PDAS-DC-01 form. Please complete it within the day.
+                  <div style={{ fontSize: '12.5px', color: '#334155', marginTop: '3px', lineHeight: 1.4 }}>
+                    Your request <strong>{userPendingFeedback[0].controlNo || userPendingFeedback[0].id}</strong> has been marked completed by the PDAS team. Please fill in the official <strong>Client Satisfaction Measurement (CSM / QF-HRM-15)</strong> form to help maintain service excellence.
                   </div>
                 </div>
               </div>
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => {
-                  const targetReq = activeTickets.find(r => r.urgentPendingStandardForm);
-                  if (targetReq) {
-                    setUrgentTargetReq(targetReq);
-                    setUrgentModalSupervisor(targetReq.immediateSupervisor || '');
-                    setUrgentModalOptions([]);
-                    setUrgentModalDesc(targetReq.description || '');
-                    setIsUrgentModalOpen(true);
-                  }
+                onClick={() => setEvaluationRequest(userPendingFeedback[0])}
+                style={{
+                  background: '#071746',
+                  borderColor: '#071746',
+                  color: '#ffffff',
+                  fontWeight: '700',
+                  padding: '9px 18px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  whiteSpace: 'nowrap'
                 }}
-                style={{ background: '#e11d48', borderColor: '#be123c', color: '#ffffff', flexShrink: 0, fontWeight: '700' }}
               >
-                Complete Standard Form Now
+                <Star size={14} fill="#fbbf24" stroke="#fbbf24" /> Complete Feedback Form (CSM)
               </button>
             </div>
           )}
 
-          {/* Filter Bar (search lives in the top navbar) */}
+          {/* Scope Selection Pills (Request History only) */}
+          {isHistoryTab && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 24px 16px 24px',
+            borderBottom: '1px solid #e2e8f0',
+            marginBottom: '16px',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'inline-flex', background: 'var(--bg-sunken)', padding: '3px', borderRadius: '10px', gap: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setHistoryScope('all')}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontSize: '13px',
+                  fontWeight: historyScope === 'all' ? '700' : '500',
+                  color: historyScope === 'all' ? '#ffffff' : '#475569',
+                  background: historyScope === 'all' ? '#071746' : 'transparent',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>All Requests</span>
+                <span style={{
+                  fontSize: '11px',
+                  background: historyScope === 'all' ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                  color: historyScope === 'all' ? '#ffffff' : '#475569',
+                  padding: '1px 6px',
+                  borderRadius: '10px',
+                  fontWeight: '700'
+                }}>
+                  {myTickets.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryScope('active')}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontSize: '13px',
+                  fontWeight: historyScope === 'active' ? '700' : '500',
+                  color: historyScope === 'active' ? '#ffffff' : '#475569',
+                  background: historyScope === 'active' ? '#071746' : 'transparent',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>Active &amp; Tracking</span>
+                <span style={{
+                  fontSize: '11px',
+                  background: historyScope === 'active' ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                  color: historyScope === 'active' ? '#ffffff' : '#475569',
+                  padding: '1px 6px',
+                  borderRadius: '10px',
+                  fontWeight: '700'
+                }}>
+                  {activeTickets.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryScope('completed')}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontSize: '13px',
+                  fontWeight: historyScope === 'completed' ? '700' : '500',
+                  color: historyScope === 'completed' ? '#ffffff' : '#475569',
+                  background: historyScope === 'completed' ? '#071746' : 'transparent',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>Completed</span>
+                <span style={{
+                  fontSize: '11px',
+                  background: historyScope === 'completed' ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                  color: historyScope === 'completed' ? '#ffffff' : '#475569',
+                  padding: '1px 6px',
+                  borderRadius: '10px',
+                  fontWeight: '700'
+                }}>
+                  {completedTickets.length}
+                </span>
+              </button>
+            </div>
+          </div>
+          )}
+
+          {/* Filter Bar */}
           <TicketFilterBar
             category={categoryFilter}
             onCategoryChange={setCategoryFilter}
@@ -454,194 +705,27 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
             onUrgencyChange={setUrgencyFilter}
             status={statusFilter}
             onStatusChange={setStatusFilter}
-            statusLabel="All Active Status"
-            onReset={handleResetFilters}
-            isFiltered={isFiltered}
-            actions={
-              <span className="ticket-filter-bar__result">
-                {filteredActiveTickets.length} open
-              </span>
-            }
-          />
-
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th scope="col">TRACKING NO</th>
-                  <th scope="col">SUBJECT & LOCATION</th>
-                  <th scope="col">CATEGORY</th>
-                  <th scope="col">URGENCY</th>
-                  <th scope="col">CURRENT STATUS</th>
-                  <th scope="col">DATE FILED</th>
-                  <th scope="col">ASSIGNED TECH</th>
-                  <th scope="col" style={{ textAlign: 'right' }}>ACTIONS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredActiveTickets.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} style={{ textAlign: 'center', padding: '48px 16px', color: '#94a3b8' }}>
-                      <Clock size={32} style={{ margin: '0 auto 8px auto', opacity: 0.4 }} />
-                      <div style={{ fontSize: '14px', fontWeight: '600', color: '#475569' }}>No active tickets matching your criteria</div>
-                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-                        {activeTickets.length === 0 ? 'You currently have no pending or ongoing maintenance requests.' : 'Try changing your search or filter settings.'}
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  pagedActive.rows.map(req => (
-                    <tr key={req.id}>
-                      <td style={{ fontWeight: '700', color: '#001f9c' }}>
-                        {req.controlNo || req.id}
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: '700', color: '#0f172a' }}>{req.title}</div>
-                        <div style={{ fontSize: '12px', color: '#64748b' }}>{req.location}</div>
-                        {req.status === 'Returned' && (
-                          <div style={{
-                            marginTop: '4px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            background: '#fffbeb',
-                            border: '1px solid #fde68a',
-                            color: '#b45309',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: '700'
-                          }}>
-                            <AlertTriangle size={11} /> Returned for Revision
-                          </div>
-                        )}
-                        {req.replacementFlag?.isFlagged && (
-                          <div style={{
-                            marginTop: '4px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            background: '#fef2f2',
-                            border: '1px solid #fecaca',
-                            color: '#b91c1c',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: '700'
-                          }}>
-                            <AlertTriangle size={11} />
-                            Irreparable Item Flagged (Procurement in Progress)
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        <CategoryPill category={req.category} />
-                      </td>
-                      <td>
-                        <UrgencyBadge urgency={req.urgency} />
-                      </td>
-                      <td>
-                        <StatusBadge status={req.status} />
-                      </td>
-                      <td style={{ fontSize: '12.5px', color: '#64748b' }}>
-                        {formatTicketDate(req.date)}
-                      </td>
-                      <td style={{ fontSize: '12.5px', color: req.assignedTo ? '#0f172a' : '#94a3b8' }}>
-                        {req.assignedTo || 'Pending Assignment'}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '6px' }}>
-                          {req.status === 'Returned' && (
-                            <button
-                              type="button"
-                              className="btn btn-sm"
-                              onClick={() => setRevisionTarget(req)}
-                              style={{
-                                background: '#f59e0b',
-                                color: '#ffffff',
-                                border: 'none',
-                                fontWeight: '700',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '5px 9px',
-                                borderRadius: '6px',
-                                cursor: 'pointer'
-                              }}
-                              title="Edit and resubmit this returned request"
-                            >
-                              <Edit size={13} />
-                              Revise
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => setSelectedTicketDetail(req)}
-                            title="View full progress timeline & details"
-                          >
-                            <Eye size={13} />
-                            Details
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => { setSelectedReqForPrint(req); setIsPrintModalOpen(true); }}
-                            title="Print official QF-PDAS-DC-01 form"
-                          >
-                            <Printer size={13} />
-                            Slip
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ padding: '0 24px 20px 24px' }}>
-            <Pagination
-              page={pagedActive.safe}
-              totalPages={pagedActive.totalPages}
-              onPageChange={setTablePage}
-              pageSize={tablePageSize}
-              total={filteredActiveTickets.length}
-              itemLabel="requests"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: REQUEST HISTORY & COMPLETED LOGS */}
-      {activeTab === 'faculty-history' && (
-        <div className="content-card" style={{ paddingTop: '20px' }}>
-          {/* Filter Bar — identical control set and order as My Open Tickets,
-              with Export CSV sitting inline after the status filter. */}
-          <TicketFilterBar
-            category={categoryFilter}
-            onCategoryChange={setCategoryFilter}
-            urgency={urgencyFilter}
-            onUrgencyChange={setUrgencyFilter}
-            status={statusFilter}
-            onStatusChange={setStatusFilter}
-            statusLabel="All Closed Status"
+            statusLabel="All Statuses"
             onReset={handleResetFilters}
             isFiltered={isFiltered}
             actions={
               <>
                 <span className="ticket-filter-bar__result">
-                  {filteredHistoryTickets.length} record{filteredHistoryTickets.length === 1 ? '' : 's'}
+                  {visibleTickets.length} {isHistoryTab
+                    ? `record${visibleTickets.length === 1 ? '' : 's'}`
+                    : 'open'}
                 </span>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={handleExportCSV}
-                  disabled={filteredHistoryTickets.length === 0}
-                  title="Export the records currently listed to CSV"
-                >
-                  <Download size={14} /> Export CSV
-                </button>
+                {isHistoryTab && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleExportCSV}
+                    disabled={filteredHistoryTickets.length === 0}
+                    title="Export the records currently listed to CSV"
+                  >
+                    <Download size={14} /> Export CSV
+                  </button>
+                )}
               </>
             }
           />
@@ -651,28 +735,54 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
               <thead>
                 <tr>
                   <th scope="col">TRACKING NO</th>
-                  <th scope="col">SUBJECT & LOCATION</th>
+                  <th scope="col">SUBJECT &amp; LOCATION</th>
                   <th scope="col">CATEGORY</th>
-                  <th scope="col">FINAL STATUS</th>
-                  <th scope="col">DATE COMPLETED</th>
-                  <th scope="col">SERVICED BY</th>
-                  <th scope="col">ISO 25010 EVALUATION</th>
+                  <th scope="col">URGENCY</th>
+                  <th scope="col">CURRENT STATUS</th>
+                  <th scope="col">DATE FILED</th>
+                  <th scope="col">ASSIGNED TECH</th>
+                  <th scope="col">SERVICE EVALUATION</th>
                   <th scope="col" style={{ textAlign: 'right' }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredHistoryTickets.length === 0 ? (
+                {visibleTickets.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: 'center', padding: '48px 16px', color: '#94a3b8' }}>
-                      <History size={32} style={{ margin: '0 auto 8px auto', opacity: 0.4 }} />
-                      <div style={{ fontSize: '14px', fontWeight: '600', color: '#475569' }}>No completed request history records found</div>
-                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-                        Once pending repairs are finished and closed by the PDAS team, they will appear here.
+                    <td colSpan={9} style={{ textAlign: 'center', padding: '48px 16px', color: '#94a3b8' }}>
+                      <History size={36} style={{ margin: '0 auto 10px auto', opacity: 0.35, color: '#001f9c' }} />
+                      <div style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>
+                        {myTickets.length === 0 ? 'No maintenance requests filed yet' : 'No requests match your current filters'}
                       </div>
+                      <div style={{ fontSize: '13px', color: '#64748b', marginTop: '6px', maxWidth: '420px', marginInline: 'auto' }}>
+                        {myTickets.length === 0 ? (
+                          'Submit a new request or scan a QR code to track maintenance, repairs, and service evaluations in real-time.'
+                        ) : (
+                          'Try clearing your search query or adjusting your category, risk level, and status filters.'
+                        )}
+                      </div>
+                      {myTickets.length === 0 ? (
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => { if (onTabChange) onTabChange('faculty-submit'); else intake.openStandard(); }}
+                          style={{ marginTop: '16px' }}
+                        >
+                          <Plus size={14} /> File a Request Now
+                        </button>
+                      ) : isFiltered ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={handleResetFilters}
+                          style={{ marginTop: '14px' }}
+                        >
+                          Clear Filters
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ) : (
-                  pagedHistory.rows.map(req => {
+                  visiblePage.rows.map(req => {
                     const evalData = evaluations.find(e => e.reqId === req.id || e.controlNo === req.controlNo);
                     let avgRating = null;
                     if (evalData) {
@@ -681,59 +791,154 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                     }
 
                     return (
-                      <tr key={req.id}>
-                        <td style={{ fontWeight: '700', color: '#001f9c' }}>
-                          {req.controlNo || req.id}
+                      <tr
+                        key={req.id}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setSelectedTicketDetail(req)}
+                      >
+                        <td style={{ fontWeight: '700', color: '#001f9c', whiteSpace: 'nowrap' }}>
+                          {req.controlNo || req.ticket_no || req.id}
                         </td>
                         <td>
                           <div style={{ fontWeight: '700', color: '#0f172a' }}>{req.title}</div>
                           <div style={{ fontSize: '12px', color: '#64748b' }}>{req.location}</div>
+                          {req.status === 'Returned' && (
+                            <div style={{
+                              marginTop: '4px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              background: '#fffbeb',
+                              border: '1px solid #fde68a',
+                              color: '#b45309',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: '700'
+                            }}>
+                              <AlertTriangle size={11} /> Returned for Revision
+                            </div>
+                          )}
+                          {req.replacementFlag?.isFlagged && (
+                            <div style={{
+                              marginTop: '4px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              background: '#fef2f2',
+                              border: '1px solid #fecaca',
+                              color: '#b91c1c',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: '700'
+                            }}>
+                              <AlertTriangle size={11} /> Irreparable Item Flagged
+                            </div>
+                          )}
                         </td>
                         <td>
                           <CategoryPill category={req.category} />
                         </td>
                         <td>
+                          <UrgencyBadge urgency={req.urgency} />
+                        </td>
+                        <td>
                           <StatusBadge status={req.status} />
                         </td>
-                        <td style={{ fontSize: '12.5px', color: '#64748b' }}>
+                        <td style={{ fontSize: '12.5px', color: '#64748b', whiteSpace: 'nowrap' }}>
                           {formatTicketDate(req.date)}
                         </td>
-                        <td style={{ fontSize: '12.5px', color: '#0f172a', fontWeight: '600' }}>
-                          {req.assignedTo || 'PDAS Maintenance Team'}
+                        <td style={{ fontSize: '12.5px', color: req.assignedTo ? '#0f172a' : '#94a3b8' }}>
+                          {req.assignedTo || 'Pending Assignment'}
                         </td>
                         <td>
                           {req.status === 'Completed' ? (
                             evalData ? (
-                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', padding: '3px 8px', borderRadius: '6px', fontSize: '11.5px', fontWeight: '700' }}>
-                                <Star size={12} fill="#047857" /> {avgRating} / 5.0 (Evaluated)
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', padding: '3px 8px', borderRadius: '6px', fontSize: '11.5px', fontWeight: '700' }}>
+                                  <Star size={12} fill="#047857" /> {avgRating} / 5.0 (Evaluated)
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={(e) => { e.stopPropagation(); setSelectedCsmPrint({ eval: evalData, req }); }}
+                                  style={{ padding: '2px 8px', fontSize: '11px', color: '#001f9c', fontWeight: '700' }}
+                                  title="View official Client Satisfaction Measurement form (QF-HRM-15)"
+                                >
+                                  <Eye size={12} /> View CSM
+                                </button>
                               </div>
-                            ) : (
+                            ) : Boolean(
+                              currentUser && (
+                                (req.userId && String(req.userId) === String(currentUser.id)) ||
+                                (req.requesterId && String(req.requesterId) === String(currentUser.id)) ||
+                                (currentUser.name && req.requestedBy && req.requestedBy.toLowerCase() === currentUser.name.toLowerCase()) ||
+                                (currentUser.email && req.requesterEmail && req.requesterEmail.toLowerCase() === currentUser.email.toLowerCase())
+                              )
+                            ) ? (
                               <button
                                 type="button"
                                 className="btn btn-primary btn-sm"
-                                onClick={() => setEvaluationRequest(req)}
-                                style={{ background: '#f59e0b', color: '#0f172a', fontWeight: '700', border: 'none', padding: '3px 10px', fontSize: '11.5px' }}
+                                onClick={(e) => { e.stopPropagation(); setEvaluationRequest(req); }}
+                                style={{ background: '#f59e0b', color: '#0f172a', fontWeight: '700', border: 'none', padding: '4px 10px', fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                               >
-                                <Star size={12} /> Rate Service
+                                <Star size={12} fill="#0f172a" /> Fill Feedback (CSM)
                               </button>
+                            ) : (
+                              <span style={{ fontSize: '11.5px', color: '#64748b', fontStyle: 'italic' }}>
+                                Awaiting Requester Feedback
+                              </span>
                             )
+                          ) : req.status === 'Rejected' ? (
+                            <span style={{ fontSize: '11.5px', color: '#94a3b8', fontStyle: 'italic' }}>Closed (Rejected)</span>
+                          ) : req.status === 'Returned' ? (
+                            <span style={{ fontSize: '11.5px', color: '#d97706', fontWeight: '600' }}>Awaiting Revision</span>
                           ) : (
-                            <span style={{ fontSize: '12px', color: '#94a3b8' }}>N/A ({req.status})</span>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', color: '#0284c7', background: '#f0f9ff', border: '1px solid #bae6fd', padding: '2px 8px', borderRadius: '6px', fontWeight: '600' }}>
+                              <Clock size={11} /> Live Tracking
+                            </div>
                           )}
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', gap: '6px' }}>
+                          <div style={{ display: 'inline-flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                            {req.status === 'Returned' && (
+                              <button
+                                type="button"
+                                className="btn btn-sm"
+                                onClick={() => setRevisionTarget(req)}
+                                style={{
+                                  background: '#f59e0b',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  fontWeight: '700',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '5px 9px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer'
+                                }}
+                                title="Edit and resubmit this returned request"
+                              >
+                                <Edit size={13} />
+                                Revise
+                              </button>
+                            )}
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"
                               onClick={() => setSelectedTicketDetail(req)}
+                              title="Track progress and view lifecycle stepper"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                             >
-                              <Eye size={13} /> Details
+                              <Eye size={13} /> Track
                             </button>
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"
                               onClick={() => { setSelectedReqForPrint(req); setIsPrintModalOpen(true); }}
+                              title="Print official QF-PDAS-DC-01 form"
                             >
                               <Printer size={13} /> Slip
                             </button>
@@ -746,14 +951,14 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
               </tbody>
             </table>
           </div>
-          <div style={{ padding: '0 24px 20px 24px' }}>
+          <div style={{ padding: '14px 24px', borderTop: '1px solid #edf1f7', background: 'var(--bg-card, #ffffff)' }}>
             <Pagination
-              page={pagedHistory.safe}
-              totalPages={pagedHistory.totalPages}
+              page={visiblePage.safe}
+              totalPages={visiblePage.totalPages}
               onPageChange={setTablePage}
               pageSize={tablePageSize}
-              total={filteredHistoryTickets.length}
-              itemLabel="requests"
+              total={visibleTickets.length}
+              itemLabel={isHistoryTab ? 'records' : 'open requests'}
             />
           </div>
         </div>
@@ -838,7 +1043,58 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
             >
               Close
             </button>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {selectedTicketDetail?.status === 'Completed' && (
+                (() => {
+                  const evalData = (evaluations || []).find(e => e.reqId === selectedTicketDetail.id || e.controlNo === selectedTicketDetail.controlNo);
+                  const isRequester = Boolean(
+                    currentUser && (
+                      (selectedTicketDetail.userId && String(selectedTicketDetail.userId) === String(currentUser.id)) ||
+                      (selectedTicketDetail.requesterId && String(selectedTicketDetail.requesterId) === String(currentUser.id)) ||
+                      (currentUser.name && selectedTicketDetail.requestedBy && selectedTicketDetail.requestedBy.toLowerCase() === currentUser.name.toLowerCase()) ||
+                      (currentUser.email && selectedTicketDetail.requesterEmail && selectedTicketDetail.requesterEmail.toLowerCase() === currentUser.email.toLowerCase())
+                    )
+                  );
+                  if (evalData) {
+                    return (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setSelectedCsmPrint({ eval: evalData, req: selectedTicketDetail })}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#001f9c', fontWeight: '700' }}
+                        title="View official Client Satisfaction Measurement form (QF-HRM-15)"
+                      >
+                        <Eye size={14} /> View CSM Form
+                      </button>
+                    );
+                  }
+                  if (isRequester) {
+                    return (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          const target = selectedTicketDetail;
+                          setSelectedTicketDetail(null);
+                          setEvaluationRequest(target);
+                        }}
+                        style={{
+                          background: '#f59e0b',
+                          color: '#0f172a',
+                          border: 'none',
+                          fontWeight: '700',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <Star size={14} fill="#0f172a" /> Complete Feedback (CSM)
+                      </button>
+                    );
+                  }
+                  return null;
+                })()
+              )}
               {selectedTicketDetail?.status === 'Returned' && (
                 <button
                   type="button"
@@ -1029,11 +1285,11 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
             {selectedTicketDetail.photoUrl && (
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', marginBottom: '6px' }}>
-                  Attached Defect Photo:
+                  Attached Photo:
                 </div>
                 <img
                   src={selectedTicketDetail.photoUrl}
-                  alt="Defect visual evidence"
+                  alt="Facility visual evidence"
                   style={{ width: '100%', maxHeight: '200px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #cbd5e1' }}
                 />
               </div>
@@ -1077,12 +1333,12 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
         )}
       </Modal>
 
-      {/* ISO/IEC 25010 Evaluation Modal */}
+      {/* Client Satisfaction Measurement (CSM) Evaluation Modal */}
       <Modal
         isOpen={Boolean(evaluationRequest)}
         onClose={() => setEvaluationRequest(null)}
-        title={`ISO/IEC 25010 Service Evaluation: ${evaluationRequest?.controlNo || evaluationRequest?.id || ''}`}
-        maxWidth="640px"
+        title={`Client Satisfaction Measurement (QF-HRM-15): ${evaluationRequest?.controlNo || evaluationRequest?.id || ''}`}
+        maxWidth="820px"
       >
         {evaluationRequest && (
           <EvaluationForm
@@ -1094,9 +1350,47 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
         )}
       </Modal>
 
+      {/* CSM Official Form Print / View Modal */}
+      <Modal
+        isOpen={Boolean(selectedCsmPrint)}
+        onClose={() => setSelectedCsmPrint(null)}
+        title="Official Document (QF-HRM-15) — Client Satisfaction Measurement"
+        maxWidth="840px"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', color: '#64748b' }}>
+              Tracking: <strong>{selectedCsmPrint?.req?.controlNo || selectedCsmPrint?.req?.id || '—'}</strong>
+            </span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSelectedCsmPrint(null)}>Close</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => printDocument()}>
+                <Printer size={14} /> Print / Save PDF
+              </button>
+            </div>
+          </div>
+        }
+      >
+        {selectedCsmPrint && (
+          <ClientSatisfactionPrintSheet
+            evaluation={selectedCsmPrint.eval}
+            request={selectedCsmPrint.req}
+          />
+        )}
+      </Modal>
+
+      {selectedCsmPrint && (
+        <PrintPortal active={Boolean(selectedCsmPrint)}>
+          <ClientSatisfactionPrintSheet
+            evaluation={selectedCsmPrint.eval}
+            request={selectedCsmPrint.req}
+          />
+        </PrintPortal>
+      )}
+
       {/* The shared intake dialogs: standard overlay, urgent fast path, print sheet. */}
       <RequestIntake intake={intake} />
 
+      
       {/* Requester Revision & Resubmission Modal */}
       <Modal
         isOpen={Boolean(revisionTarget)}
@@ -1214,7 +1508,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', textTransform: 'uppercase' }}>
-                  Risk / Urgency Level *
+                  Urgency Level *
                 </label>
                 <select
                   className="form-select"
@@ -1226,6 +1520,33 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
                     <option key={u} value={u}>{u}</option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* Immediate Supervisor */}
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', textTransform: 'uppercase' }}>
+                Immediate Supervisor *
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={revSupervisor || currentUser?.assignedSupervisor || currentUser?.supervisorName || 'Assigned Immediate Supervisor'}
+                  disabled
+                  style={{ width: '100%', background: 'var(--bg-sunken)', color: '#0f172a', fontWeight: '600', cursor: 'default', paddingRight: '140px' }}
+                />
+                <span style={{
+                  position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                  background: '#eff6ff',
+                  color: '#071746',
+                  fontSize: '11px', fontWeight: '700',
+                  padding: '2px 8px', borderRadius: '9999px',
+                  border: '1px solid #bfdbfe',
+                  whiteSpace: 'nowrap'
+                }}>
+                  ✓ Assigned Supervisor
+                </span>
               </div>
             </div>
 
@@ -1261,7 +1582,7 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
             {/* Photo Attachment preview/upload */}
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px', textTransform: 'uppercase' }}>
-                Defect Photo (Optional)
+                Photo Attachment (Optional)
               </label>
               {revPhotoUrl ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-sunken)', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
@@ -1308,97 +1629,49 @@ export const FacultyStaffPortal = ({ activeTab = 'faculty-submit', onTabChange, 
       </Modal>
 
 
-      {/* Urgent Request Standard Form Completion Modal */}
-      <Modal
-        isOpen={isUrgentModalOpen}
-        onClose={() => setIsUrgentModalOpen(false)}
-        title="Complete the standard form"
-        maxWidth="640px"
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setIsUrgentModalOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                if (urgentTargetReq) {
-                  const updatedScope = buildScopeOfWorks(urgentTargetReq.category, urgentModalOptions, urgentModalDesc);
-                  completeStandardFormForUrgent(urgentTargetReq.id, {
-                    immediateSupervisor: urgentModalSupervisor,
-                    scopeOfWorks: updatedScope,
-                    description: urgentModalDesc.trim() || undefined
-                  });
-                  setIsUrgentModalOpen(false);
-                }
-              }}
-            >
-              Submit the standard form
-            </button>
-          </div>
-        }
-      >
-        {urgentTargetReq && (
-          <div>
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '12px', marginBottom: '16px', fontSize: '13px', color: '#1e40af' }}>
-              <strong>Tracking Number:</strong> {urgentTargetReq.controlNo || urgentTargetReq.id}<br />
-              <strong>Urgent Subject:</strong> {urgentTargetReq.title}<br />
-              <strong>Location:</strong> {urgentTargetReq.location}
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Immediate Supervisor Name *</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g. Dr. Maria Santos / Department Chair"
-                value={urgentModalSupervisor}
-                onChange={(e) => setUrgentModalSupervisor(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Scope Options for {urgentTargetReq.category}:</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--bg-sunken)', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                {(
-                  urgentTargetReq.category === 'Drawing/Design' ? ['Floor Plans', 'Detailed Drawings', 'Perspective', 'Specifications', 'List of Materials', 'Other Services'] :
-                  urgentTargetReq.category === 'Physical Structures' ? ['New Structure', 'Rehabilitation/Repair', 'Renovation', 'Partial', 'Full', 'Other Services'] :
-                  ['New Installation', 'Repair', 'Rehabilitation', 'Other Services']
-                ).map(opt => (
-                  <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={urgentModalOptions.includes(opt)}
-                      onChange={(e) => {
-                        if (e.target.checked) setUrgentModalOptions(prev => [...prev, opt]);
-                        else setUrgentModalOptions(prev => prev.filter(o => o !== opt));
-                      }}
-                    />
-                    {opt}
-                  </label>
-                ))}
+      {/* Official QF-PDAS-DC-01 Print Slip Modal */}
+      {isPrintModalOpen && selectedReqForPrint && (
+        <Modal
+          isOpen={isPrintModalOpen}
+          onClose={() => { setIsPrintModalOpen(false); setSelectedReqForPrint(null); }}
+          title={`Official Job Request Slip (QF-PDAS-DC-01) — ${selectedReqForPrint.controlNo || selectedReqForPrint.id}`}
+          maxWidth="920px"
+          footer={
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '10px' }}>
+              <span style={{ fontSize: '12px', color: '#64748b' }}>
+                ISAT U Dumangas Quality Management System (ISO 9001:2015 Compliant)
+              </span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => { setIsPrintModalOpen(false); setSelectedReqForPrint(null); }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => printDocument()}
+                >
+                  <Printer size={14} /> Print / Save PDF
+                </button>
               </div>
             </div>
-
-            <div className="form-group">
-              <LimitedTextArea
-                id="urgent-complete-desc"
-                label="Complete Work Description"
-                rows={3}
-                value={urgentModalDesc}
-                onChange={setUrgentModalDesc}
-                style={{ minHeight: '90px' }}
-              />
-            </div>
+          }
+        >
+          <div style={{ maxHeight: '72vh', overflowY: 'auto', padding: '8px' }}>
+            <JobRequestPrintSheet req={selectedReqForPrint} />
           </div>
-        )}
-      </Modal>
+        </Modal>
+      )}
+
+      {/* Print-only official form rendered next to <body> for a clean sheet */}
+      {selectedReqForPrint && (
+        <PrintPortal active={isPrintModalOpen}>
+          <JobRequestPrintSheet req={selectedReqForPrint} />
+        </PrintPortal>
+      )}
     </div>
   );
 };

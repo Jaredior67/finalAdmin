@@ -1,9 +1,10 @@
 import React, { useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ArrowLeft } from 'lucide-react';
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
-export const Modal = ({ isOpen, onClose, onBack, title, children, footer, maxWidth = '680px' }) => {
+export const Modal = ({ isOpen, onClose, onBack, title, subtitle = null, children, footer, maxWidth = '680px' }) => {
   const titleId = useId();
   const cardRef = useRef(null);
   const prevFocusRef = useRef(null);
@@ -14,32 +15,14 @@ export const Modal = ({ isOpen, onClose, onBack, title, children, footer, maxWid
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   // Guard: only auto-focus once per open.
-  //
-  // React 18 Strict Mode intentionally runs every effect TWICE:
-  //   mount → cleanup → mount again (all synchronously before paint).
-  //
-  // Before this fix the sequence was:
-  //   1. Effect runs → initial.focus() → focus goes to first button/input
-  //   2. Strict Mode cleanup: remove listener, return focus to opener
-  //   3. Effect runs AGAIN → initial.focus() AGAIN → focus goes to first button
-  //
-  // The user then clicks an input and starts typing. On the very next
-  // keystroke, React re-renders the parent (because state changed), which
-  // can cause the modal to re-mount in Strict Mode, triggering the cycle
-  // again and stealing focus from the input mid-word.
-  //
-  // Fix: RAF + didFocusRef so the auto-focus fires only once per open,
-  // and Strict Mode's first cleanup cancels the pending RAF before it fires.
   const didFocusRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
-      // Reset guard on close so the next open will auto-focus again.
       didFocusRef.current = false;
       return undefined;
     }
 
-    // Save what was focused before the modal opened so we can restore it.
     prevFocusRef.current = document.activeElement;
     document.body.style.overflow = 'hidden';
 
@@ -48,33 +31,20 @@ export const Modal = ({ isOpen, onClose, onBack, title, children, footer, maxWid
       ? [...card.querySelectorAll(FOCUSABLE)].filter(el => !el.disabled && el.offsetParent !== null)
       : []);
 
+    let focusRaf = null;
     if (!didFocusRef.current) {
-      // First (real) run: schedule initial focus via RAF.
-      // Strict Mode's cleanup will cancelAnimationFrame before it fires,
-      // so the focus() never runs on the first (discarded) mount.
       didFocusRef.current = true;
-      const raf = requestAnimationFrame(() => {
+      focusRaf = requestAnimationFrame(() => {
         const initial = focusables()[0] || card;
         if (initial && typeof initial.focus === 'function') initial.focus();
       });
-
-      return () => {
-        cancelAnimationFrame(raf);
-        document.body.style.overflow = '';
-        if (prevFocusRef.current && typeof prevFocusRef.current.focus === 'function') {
-          prevFocusRef.current.focus();
-        }
-      };
     }
 
-    // Second (real) run or any later re-run caused by isOpen toggling:
-    // attach the keyboard handler without moving focus again.
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         onCloseRef.current();
         return;
       }
-      // Focus trap — Tab cycles inside the dialog only.
       if (e.key !== 'Tab') return;
       const items = focusables();
       if (items.length === 0) { e.preventDefault(); return; }
@@ -91,28 +61,22 @@ export const Modal = ({ isOpen, onClose, onBack, title, children, footer, maxWid
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
+      if (focusRaf) cancelAnimationFrame(focusRaf);
       document.body.style.overflow = '';
       window.removeEventListener('keydown', handleKeyDown);
       if (prevFocusRef.current && typeof prevFocusRef.current.focus === 'function') {
         prevFocusRef.current.focus();
       }
     };
-
-  // Only re-run when the modal opens/closes. onClose is stable via ref.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  return (
-    // Backdrop: clicking it closes the modal.
-    // aria-hidden so screen readers don't navigate to a dead zone.
+  const modalNode = (
     <div
       className="modal-backdrop"
       onClick={onClose}
-      aria-hidden="true"
     >
-      {/* Card: the actual dialog. role/aria-modal live here, not on the backdrop. */}
       <div
         ref={cardRef}
         tabIndex={-1}
@@ -123,8 +87,8 @@ export const Modal = ({ isOpen, onClose, onBack, title, children, footer, maxWid
         style={{ width: '100%', maxWidth: `min(${maxWidth}, calc(100vw - 24px))` }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+        <div className="modal-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', padding: '20px 24px', borderBottom: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0 }}>
             {onBack && (
               <button
                 type="button"
@@ -152,27 +116,47 @@ export const Modal = ({ isOpen, onClose, onBack, title, children, footer, maxWid
                 <span>Back</span>
               </button>
             )}
-            <h3 className="modal-title" id={titleId} style={{ margin: 0 }}>{title}</h3>
+            <div>
+              <h3 className="modal-title" id={titleId} style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#071746' }}>{title}</h3>
+              {subtitle && <div style={{ fontSize: '12.5px', color: 'var(--text-muted, #64748b)', fontWeight: '500', marginTop: '3px' }}>{subtitle}</div>}
+            </div>
           </div>
           <button
             type="button"
             className="btn-icon"
             onClick={onClose}
             aria-label="Close modal"
-            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#64748b', flexShrink: 0 }}
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              background: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: '#64748b',
+              flexShrink: 0,
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-sunken)'; e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#64748b'; }}
           >
-            <X size={20} />
+            <X size={16} />
           </button>
         </div>
-        <div className="modal-body">
+        <div className="modal-body" style={{ padding: '24px 28px' }}>
           {children}
         </div>
         {footer && (
-          <div className="modal-footer">
+          <div className="modal-footer" style={{ padding: '16px 28px', borderTop: '1px solid #e2e8f0', background: '#ffffff', borderBottomLeftRadius: 'var(--radius-xl)', borderBottomRightRadius: 'var(--radius-xl)' }}>
             {footer}
           </div>
         )}
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalNode, document.body) : modalNode;
 };

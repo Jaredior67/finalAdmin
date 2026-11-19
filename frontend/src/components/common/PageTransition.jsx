@@ -3,9 +3,9 @@ import React from 'react';
 export const PageTransition = ({ children, className = '' }) => {
   return (
     <div 
-      className={`transition-opacity duration-150 ease-in-out animate-fadeIn ${className}`}
+      className={`page-transition-wrap ${className}`}
       style={{
-        animation: 'fadeIn 0.15s ease-in-out'
+        animation: 'pageSlideFadeIn 0.24s cubic-bezier(0.16, 1, 0.3, 1)'
       }}
     >
       {children}

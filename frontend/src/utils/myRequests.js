@@ -1,31 +1,38 @@
 /* "Which requests are mine?"
+   
+   The Dashboard tiles and the Request History / Active Tickets views both
+   answer that question. This single robust predicate is imported everywhere.
+   Supports loose string/number ID equality, trimmed case-insensitive email,
+   idNumber match, and name containment. */
+export const filterMyRequests = (requisitions, currentUser) => {
+  if (!currentUser) return [];
 
-   The Dashboard tiles and the list pages ("My Active Tickets", "Request
-   History") both answer that question, and each used to hold its own copy of
-   the answer. The Dashboard matched on e-mail and name only and had no archive
-   rule, so a request could raise a count on the Dashboard and be missing from
-   the list that count claimed to summarise.
+  const myId = currentUser.id != null ? String(currentUser.id).trim() : null;
+  const myEmail = currentUser.email ? currentUser.email.trim().toLowerCase() : null;
+  const myName = currentUser.name ? currentUser.name.trim().toLowerCase() : null;
+  const myIdNumber = currentUser.idNumber ? String(currentUser.idNumber).trim().toLowerCase() : null;
 
-   One predicate, imported by both. Change it here or not at all. */
-export const filterMyRequests = (requisitions, currentUser) =>
-  (requisitions || []).filter((r) => {
-    /* Completed and Rejected requests are archived the instant they are
-       written. Leaving those out would empty the History tab and take the
-       "Rate Service" button away before anyone could press it, so the archive
-       flag only hides tickets filed away by hand. */
+  return (requisitions || []).filter((r) => {
+    // Hidden only if manually archived and not a completed/rejected record
     const visible = !r.isArchived || r.status === 'Completed' || r.status === 'Rejected';
     if (!visible) return false;
 
-    const id = currentUser?.id;
-    const email = currentUser?.email?.toLowerCase();
-    const name = currentUser?.name?.toLowerCase();
+    // 1. Direct ID match (loose string/number)
+    const rId = r.requesterId ?? r.requester_id;
+    if (myId && rId != null && String(rId).trim() === myId) return true;
 
-    return Boolean(
-      (id && (r.requesterId === id || r.requester_id === id)) ||
-      (email && (
-        r.requesterEmail?.toLowerCase() === email ||
-        r.requester_email?.toLowerCase() === email
-      )) ||
-      (name && r.requestedBy?.toLowerCase().includes(name))
-    );
+    // 2. Email match (case-insensitive & trimmed)
+    const rEmail = (r.requesterEmail || r.requester_email || '')?.trim().toLowerCase();
+    if (myEmail && rEmail && rEmail === myEmail) return true;
+
+    // 3. ID Number match (e.g. employee/faculty ID number)
+    const rIdNumber = (r.idNumber || r.id_number || '')?.trim().toLowerCase();
+    if (myIdNumber && rIdNumber && rIdNumber === myIdNumber) return true;
+
+    // 4. Name match (case-insensitive containment either way)
+    const rName = (r.requestedBy || r.requester_name || '')?.trim().toLowerCase();
+    if (myName && rName && (rName.includes(myName) || myName.includes(rName))) return true;
+
+    return false;
   });
+};

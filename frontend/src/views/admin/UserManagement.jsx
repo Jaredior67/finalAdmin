@@ -1,25 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { 
-  Users, 
+import {
+  Users,
   Plus,
-  UserPlus, 
-  Shield, 
-  Check, 
-  X, 
+  UserPlus,
+  Shield,
+  Check,
   Search,
-  FileCheck,
-  Eye,
   CheckCircle2,
-  XCircle,
-  IdCard,
   GraduationCap,
   Briefcase,
   Wrench,
-  FileWarning,
   Pencil,
   UserCheck,
   UserX,
-  Trash2,
+  Archive,
   Landmark,
   ChevronDown
 } from 'lucide-react';
@@ -28,10 +22,11 @@ import { useToast } from '../../components/ui/Toast';
 import { apiGetSupervisors, apiGetSupervisorAssignments, apiAssignSupervisor, apiDesignateSupervisor } from '../../backend/api';
 import { Modal } from '../../components/common/Modal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
-import { RegisterModal } from '../../components/auth/RegisterModal';
+import { UserRegistrationForm } from '../../components/users/UserRegistrationForm';
 
 const userRoleLabel = (user) => {
   const role = String(user?.role || user?.userType || '').trim().toLowerCase();
+  if (role === 'superadmin' || role === 'super_admin') return 'Super Admin';
   if (role === 'admin' || role === 'administrator') return 'Admin';
   if (role === 'campus_admin' || role === 'campus_administrator' || role === 'approver') return 'Approver';
   if (role === 'supervisor') return 'Supervisor';
@@ -43,6 +38,14 @@ const userRoleLabel = (user) => {
 
 const getRoleBadgeStyle = (user) => {
   const role = String(user?.role || user?.userType || '').trim().toLowerCase();
+  if (role === 'superadmin' || role === 'super_admin') {
+    return {
+      bg: '#fae8ff',
+      color: '#86198f',
+      border: '1px solid #f5d0fe',
+      icon: <Shield size={13} />
+    };
+  }
   if (role === 'admin' || role === 'administrator') {
     return {
       bg: '#fee2e2',
@@ -92,31 +95,38 @@ const getRoleBadgeStyle = (user) => {
   };
 };
 
-export const UserManagement = () => {
-  const { 
-    users, 
-    pendingRegistrations, 
-    pendingRegistrationsCount, 
-    rejectedRegistrations,
-    approveRegistration, 
-    rejectRegistration,
-    createMaintenanceUser, 
+export const UserManagement = ({ onNavigate, initialRegisterOpen = false }) => {
+  const {
+    users,
     toggleUserStatus,
     updateUser,
     removeUser,
     offices,
     departments,
     addOffice,
-    addDepartment
+    addDepartment,
   } = useData();
   const { toast } = useToast();
+
+  const [isRegisterOpen, setIsRegisterOpen] = useState(Boolean(initialRegisterOpen));
+
+  useEffect(() => {
+    if (initialRegisterOpen) setIsRegisterOpen(true);
+  }, [initialRegisterOpen]);
+
+  const handleCloseRegister = () => {
+    setIsRegisterOpen(false);
+    // The legacy #register-user deep link opens this modal over the directory.
+    // Once it closes, keep the URL and active tab on Personnel Directory.
+    if (typeof onNavigate === 'function') onNavigate('user-management');
+  };
 
   const [activeTab, setActiveTabState] = useState(() => {
     return (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('fixit_user_mgmt_tab')) || 'verified';
   });
   const setActiveTab = (tab) => {
     setActiveTabState(tab);
-    try { sessionStorage.setItem('fixit_user_mgmt_tab', tab); } catch {}
+    try { sessionStorage.setItem('fixit_user_mgmt_tab', tab); } catch { }
   };
 
   // View Switcher Dropdown State
@@ -183,38 +193,16 @@ export const UserManagement = () => {
     });
     return map;
   }, [supervisorAssignments]);
-  
-  // Maintenance creation modal
-  const [isTechModalOpen, setIsTechModalOpen] = useState(false);
-  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
-  const [techForm, setTechForm] = useState({
-    firstName: '',
-    lastName: '',
-    middleName: '',
-    email: '',
-    phone: '',
-    specialization: 'Electrical & HVAC',
-    password: '',
-    idNumber: ''
-  });
 
-  // Rejection modal
-  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
-  const [targetRejectReg, setTargetRejectReg] = useState(null);
-  const [rejectionReason, setRejectionReason] = useState('Blurry and unreadable ID photo attachment. Please re-submit a high-resolution photo.');
-
-  // Inspect Modal
-  const [selectedPendingReg, setSelectedPendingReg] = useState(null);
-  const [isInspectModalOpen, setIsInspectModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', role: 'Faculty', department: '', designation: '', phone: '' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', role: 'Faculty', department: '', designation: '', phone: '', academicRank: '' });
   const [newOffice, setNewOffice] = useState('');
   const [newDepartment, setNewDepartment] = useState('');
 
   const filteredUsers = users.filter(u => {
-    const fullName = `${u.firstName || ''} ${u.middleName || ''} ${u.lastName || ''} ${u.name || ''}`;
-    const matchesSearch = 
+    const fullName = `${u.firstName || ''} ${u.middleName || ''} ${u.lastName || ''} ${u.extName || ''} ${u.name || ''}`;
+    const matchesSearch =
       fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (u.email && u.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (u.department && u.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -232,82 +220,6 @@ export const UserManagement = () => {
     return matchesSearch && matchesType;
   });
 
-  const filteredPending = pendingRegistrations.filter(r => {
-    const fullName = `${r.firstName} ${r.middleName} ${r.lastName}`;
-    const contactNumber = r.contactNumber || '';
-    return (
-      fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.gmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.department && r.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (r.office && r.office.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (r.idNumber && r.idNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      contactNumber.includes(searchTerm)
-    );
-  });
-
-  const filteredRejected = (rejectedRegistrations || []).filter(r => {
-    const fullName = `${r.firstName} ${r.middleName} ${r.lastName}`;
-    return (
-      fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.gmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.reason && r.reason.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-  });
-
-  const handleOpenReject = (reg) => {
-    setTargetRejectReg(reg);
-    setIsRejectModalOpen(true);
-  };
-
-  const handleConfirmReject = (e) => {
-    e.preventDefault();
-    if (targetRejectReg) {
-      rejectRegistration(targetRejectReg.id, rejectionReason);
-      setIsRejectModalOpen(false);
-      setIsInspectModalOpen(false);
-      setTargetRejectReg(null);
-    }
-  };
-
-  const handleCreateTechnician = async (e) => {
-    e.preventDefault();
-    try {
-      await createMaintenanceUser({
-        ...techForm,
-        idNumber: techForm.idNumber || `ISATU-TEC-${Date.now().toString().slice(-4)}`
-      });
-      setIsTechModalOpen(false);
-      setTechForm({
-        firstName: '',
-        lastName: '',
-        middleName: '',
-        email: '',
-        phone: '',
-        specialization: 'Electrical & HVAC',
-        password: '',
-        idNumber: ''
-      });
-    } catch (requestError) {
-      window.alert(requestError.message || 'The maintenance account could not be created.');
-    }
-  };
-
-  const handleOpenInspect = (reg) => {
-    setSelectedPendingReg(reg);
-    setIsInspectModalOpen(true);
-  };
-
-  const handleApproveReg = async () => {
-    if (selectedPendingReg) {
-      try {
-        await approveRegistration(selectedPendingReg.id);
-        setIsInspectModalOpen(false);
-      } catch (requestError) {
-        window.alert(requestError.message || 'The registration could not be approved.');
-      }
-    }
-  };
-
   const [removingUser, setRemovingUser] = useState(null);
 
   const handleOpenEdit = (user) => {
@@ -316,10 +228,14 @@ export const UserManagement = () => {
     const normalizedRole = rawRole.includes('tech') || rawRole.includes('maint')
       ? 'Maintenance'
       : rawRole === 'staff'
-      ? 'Staff'
-      : rawRole === 'admin'
-      ? 'Admin'
-      : 'Faculty';
+        ? 'Staff'
+        : rawRole === 'superadmin' || rawRole === 'super_admin'
+          ? 'Super Admin'
+          : rawRole === 'admin'
+            ? 'Admin'
+            : rawRole === 'campus_admin' || rawRole === 'campus_administrator' || rawRole === 'approver'
+              ? 'Campus Admin'
+              : 'Faculty';
     setEditForm({
       name: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim(),
       email: user.email || user.gmail || '',
@@ -327,6 +243,7 @@ export const UserManagement = () => {
       designation: user.designation || '',
       phone: user.phone || user.contactNumber || '',
       role: normalizedRole,
+      academicRank: user.academicRank || '',
       specialization: user.specialization || 'General Campus Facility',
       availabilityStatus: user.availabilityStatus || 'available',
       // normalizeUser (api.js) now guarantees isSupervisor is a boolean,
@@ -413,7 +330,7 @@ export const UserManagement = () => {
           ...targetAssignUser,
           isSupervisor: isDesignatedSupervisor,
           is_supervisor: isDesignatedSupervisor ? 1 : 0
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       const supId = selectedSupervisorId === '' ? null : Number(selectedSupervisorId);
@@ -436,7 +353,9 @@ export const UserManagement = () => {
       ? { role: 'Technician', userType: 'Maintenance' }
       : editForm.role === 'Campus Admin' || editForm.role === 'Approver'
         ? { role: 'campus_admin', userType: 'campus_admin' }
-        : { role: editForm.role, userType: editForm.role };
+        : editForm.role === 'Super Admin'
+          ? { role: 'superadmin', userType: 'superadmin' }
+          : { role: editForm.role, userType: editForm.role };
     // The designation flag rides along with the profile fields, so a refused
     // save (bad role, server down) must say so: userDataError is never rendered.
     updateUser(editingUser.id, {
@@ -444,6 +363,7 @@ export const UserManagement = () => {
       ...roleFields,
       isSupervisor: Boolean(editForm.isSupervisor),
       is_supervisor: editForm.isSupervisor ? 1 : 0,
+      academicRank: editForm.academicRank || undefined,
       specialization: editForm.role === 'Maintenance' ? editForm.specialization : undefined,
       availabilityStatus: editForm.role === 'Maintenance' ? editForm.availabilityStatus : undefined
     })
@@ -454,7 +374,7 @@ export const UserManagement = () => {
   };
 
   const handleConfirmRemove = () => {
-    if (removingUser && removingUser.role !== 'Admin' && removingUser.userType !== 'Admin') {
+    if (removingUser && !['admin', 'superadmin'].includes(String(removingUser.role || removingUser.userType || '').toLowerCase())) {
       removeUser(removingUser.id);
       setRemovingUser(null);
     }
@@ -474,34 +394,35 @@ export const UserManagement = () => {
 
   return (
     <div>
-      {/* Page Header */}
       <div className="page-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h1 className="page-title">User Management & ID Acceptance</h1>
+            <h1 className="page-title">Personnel Directory</h1>
             <span style={{
-              background: '#fee2e2',
-              color: '#dc2626',
+              background: '#ede9fe',
+              color: '#5b21b6',
               fontSize: '11px',
               fontWeight: '700',
               padding: '2px 8px',
               borderRadius: '6px',
               textTransform: 'uppercase'
             }}>
-              PDAS Admin Only
+              Super Admin Only
             </span>
           </div>
           <p className="page-subtitle">
-            Review applicant registrations, accept institutional photo IDs, and manage maintenance personnel accounts
+            View and manage all verified campus personnel accounts
           </p>
         </div>
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button type="button" className="btn btn-secondary" onClick={() => setIsRegisterModalOpen(true)}>
-            <UserPlus size={16} /> Register Faculty / Staff
-          </button>
-          <button type="button" className="btn btn-primary" onClick={() => setIsTechModalOpen(true)} style={{ background: '#001f9c' }}>
-            <Wrench size={16} /> Create Maintenance Personnel Account
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setIsRegisterOpen(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+          >
+            <UserPlus size={16} /> Register User
           </button>
         </div>
       </div>
@@ -541,26 +462,9 @@ export const UserManagement = () => {
             label: 'Active Campus Personnel',
             count: users.length,
             icon: Users,
-            desc: 'Verified accounts with active campus roles and institutional permissions',
+            desc: 'All registered accounts with active campus roles and permissions',
             badge: null
           },
-          {
-            id: 'pending-id',
-            label: 'Pending ID Confirmations',
-            count: pendingRegistrationsCount,
-            icon: FileCheck,
-            desc: 'New registrations awaiting official ISAT U ID verification and approval',
-            badge: pendingRegistrationsCount > 0 ? `${pendingRegistrationsCount} Pending` : null,
-            badgeColor: '#ef4444'
-          },
-          {
-            id: 'rejected-logs',
-            label: 'Rejected Applications Log',
-            count: rejectedRegistrations?.length || 0,
-            icon: FileWarning,
-            desc: 'Archive of denied registrations with recorded audit rejection remarks',
-            badge: null
-          }
         ];
 
         const currentTab = tabs.find(t => t.id === activeTab) || tabs[0];
@@ -634,7 +538,7 @@ export const UserManagement = () => {
                   width: '32px',
                   height: '32px',
                   borderRadius: '8px',
-                  background: dropdownOpen ? 'var(--primary, #001f9c)' : 'var(--bg-sunken, #f1f5f9)',
+                  background: dropdownOpen ? 'var(--primary, #071746)' : 'var(--bg-sunken)',
                   color: dropdownOpen ? '#ffffff' : 'var(--text-primary, #1e293b)',
                   display: 'flex',
                   alignItems: 'center',
@@ -692,7 +596,7 @@ export const UserManagement = () => {
                         transition: 'background 0.15s ease'
                       }}
                       onMouseEnter={(e) => {
-                        if (!isActive) e.currentTarget.style.background = 'var(--bg-hover, #f8fafc)';
+                        if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)';
                       }}
                       onMouseLeave={(e) => {
                         if (!isActive) e.currentTarget.style.background = 'transparent';
@@ -703,7 +607,7 @@ export const UserManagement = () => {
                           width: '32px',
                           height: '32px',
                           borderRadius: '6px',
-                          background: isActive ? 'var(--primary, #001f9c)' : 'var(--bg-sunken, #f1f5f9)',
+                          background: isActive ? 'var(--primary, #071746)' : 'var(--bg-sunken)',
                           color: isActive ? '#ffffff' : 'var(--text-muted, #64748b)',
                           display: 'flex',
                           alignItems: 'center',
@@ -777,9 +681,10 @@ export const UserManagement = () => {
               onChange={(e) => setTypeFilter(e.target.value)}
             >
               <option value="all">All Roles</option>
+              <option value="Super Admin">Super Admin</option>
               <option value="Faculty">Faculty</option>
               <option value="Staff">Staff</option>
-              <option value="Supervisor">Supervisor</option>
+              <option value="Supervisor">Immediate Supervisor</option>
               <option value="Maintenance">Maintenance Personnel</option>
               <option value="Approver">Approver (Campus Admin)</option>
               <option value="Admin">Admin</option>
@@ -825,7 +730,7 @@ export const UserManagement = () => {
               </thead>
               <tbody>
                 {filteredUsers.map(user => {
-                  const displayName = user.name || `${user.firstName || ''} ${user.middleName ? user.middleName + ' ' : ''}${user.lastName || ''}`;
+                  const displayName = user.name || `${user.firstName || ''} ${user.middleName ? user.middleName + ' ' : ''}${user.lastName || ''}${user.extName ? ' ' + user.extName : ''}`;
                   return (
                     <tr key={user.id}>
                       <td>
@@ -884,6 +789,11 @@ export const UserManagement = () => {
                             Office: {user.office}
                           </div>
                         )}
+                        {user.academicRank && (
+                          <div style={{ fontSize: '11.5px', color: '#6366f1', fontWeight: '600' }}>
+                            Rank: {user.academicRank}
+                          </div>
+                        )}
                         {user.specialization && (
                           <div style={{ fontSize: '11px', color: '#d97706', fontWeight: '600' }}>
                             Trade: {user.specialization}
@@ -912,7 +822,7 @@ export const UserManagement = () => {
                               </div>
                             );
                           }
-                          if (!Boolean(user.isSupervisor || user.is_supervisor)) {
+                          if (!(user.isSupervisor || user.is_supervisor)) {
                             return (
                               <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
                                 Reports to: <span style={{ color: '#d97706', fontWeight: '500' }}>Unassigned</span>
@@ -955,53 +865,19 @@ export const UserManagement = () => {
                                   color: availStatus === 'off_duty' ? '#dc2626' : availStatus === 'busy' ? '#b45309' : '#047857',
                                   border: availStatus === 'off_duty' ? '1px solid #fecaca' : availStatus === 'busy' ? '1px solid #fde68a' : '1px solid #a7f3d0'
                                 }}>
-                                  {availStatus === 'off_duty' ? '🔴 Off Duty' : availStatus === 'busy' ? '🟡 Busy' : '🟢 Available'}
+                                  {availStatus === 'off_duty' ? 'Off Duty' : availStatus === 'busy' ? 'Busy' : 'Available'}
                                 </span>
                               )}
                             </div>
                           );
                         })()}
                       </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <td style={{ textAlign: 'right', verticalAlign: 'middle', whiteSpace: 'nowrap', width: '100px' }}>
                         {(() => {
                           const isUserActive = String(user.status || '').trim().toLowerCase() === 'active';
-                          const isAdminUser = String(user.role || user.userType || '').toLowerCase() === 'admin';
+                          const isAdminUser = ['admin', 'superadmin', 'super_admin'].includes(String(user.role || user.userType || '').toLowerCase());
                           return (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
-                              {!isAdminUser && (
-                                <button
-                                  type="button"
-                                  className="btn btn-sm"
-                                  onClick={() => handleOpenAssignSupervisor(user)}
-                                  title="Assign immediate supervisor"
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '5px 10px',
-                                    fontSize: '12px',
-                                    background: '#e0e7ff',
-                                    color: '#3730a3',
-                                    border: '1px solid #c7d2fe',
-                                    fontWeight: '600'
-                                  }}
-                                >
-                                  <UserCheck size={13} />
-                                  <span>Assign Supervisor</span>
-                                </button>
-                              )}
-
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => handleOpenEdit(user)}
-                                title="Edit user profile"
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 10px', fontSize: '12px' }}
-                              >
-                                <Pencil size={13} />
-                                <span>Edit</span>
-                              </button>
-
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'stretch', width: '92px', marginLeft: 'auto' }}>
                               {!isAdminUser && (
                                 <button
                                   type="button"
@@ -1011,38 +887,89 @@ export const UserManagement = () => {
                                   style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
+                                    justifyContent: 'center',
                                     gap: '4px',
-                                    padding: '5px 10px',
-                                    fontSize: '12px',
+                                    padding: '3px 6px',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    borderRadius: '5px',
                                     color: isUserActive ? '#b45309' : '#047857',
                                     background: isUserActive ? '#fffbeb' : '#ecfdf5',
                                     border: isUserActive ? '1px solid #fde68a' : '1px solid #a7f3d0'
                                   }}
                                 >
-                                  {isUserActive ? <UserX size={13} /> : <UserCheck size={13} />}
+                                  {isUserActive ? <UserX size={12} /> : <UserCheck size={12} />}
                                   <span>{isUserActive ? 'Deactivate' : 'Activate'}</span>
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => handleOpenEdit(user)}
+                                title="Edit user profile"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '4px',
+                                  padding: '3px 6px',
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                  borderRadius: '5px'
+                                }}
+                              >
+                                <Pencil size={12} />
+                                <span>Edit</span>
+                              </button>
+
+                              {!isAdminUser && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => setRemovingUser(user)}
+                                  title="Archive account"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                    padding: '3px 6px',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    borderRadius: '5px',
+                                    background: 'var(--bg-sunken)',
+                                    color: '#475569',
+                                    border: '1px solid #cbd5e1'
+                                  }}
+                                >
+                                  <Archive size={12} />
+                                  <span>Archive</span>
                                 </button>
                               )}
 
                               {!isAdminUser && (
                                 <button
                                   type="button"
-                                  className="btn btn-danger btn-sm"
-                                  onClick={() => setRemovingUser(user)}
-                                  title="Remove account"
+                                  className="btn btn-sm"
+                                  onClick={() => handleOpenAssignSupervisor(user)}
+                                  title="Assign immediate supervisor"
                                   style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '5px 9px',
-                                    fontSize: '12px',
-                                    background: '#fef2f2',
-                                    color: '#dc2626',
-                                    border: '1px solid #fecaca'
+                                    justifyContent: 'center',
+                                    gap: '3px',
+                                    padding: '2px 5px',
+                                    fontSize: '10px',
+                                    background: '#e0e7ff',
+                                    color: '#3730a3',
+                                    border: '1px solid #c7d2fe',
+                                    fontWeight: '600',
+                                    borderRadius: '5px'
                                   }}
                                 >
-                                  <Trash2 size={13} />
-                                  <span>Remove</span>
+                                  <UserCheck size={11} />
+                                  <span>Supervisor</span>
                                 </button>
                               )}
                             </div>
@@ -1078,14 +1005,30 @@ export const UserManagement = () => {
               className="form-select"
               value={editForm.role}
               onChange={event => setEditForm({ ...editForm, role: event.target.value })}
-              disabled={editingUser?.role === 'Admin' || editingUser?.userType === 'Admin'}
+              disabled={['admin', 'superadmin', 'super_admin'].includes(String(editingUser?.role || editingUser?.userType || '').toLowerCase())}
             >
               <option value="Faculty">Faculty</option>
               <option value="Staff">Staff</option>
               <option value="Maintenance">Maintenance Personnel</option>
               <option value="Campus Admin">Campus Admin / Approver</option>
+              <option value="Admin">PDAS Admin</option>
+              <option value="Super Admin">Super Admin</option>
             </select>
           </div>
+
+          {/* Academic Rank / Plantilla Position — for Faculty & Staff */}
+          {(editForm.role === 'Faculty' || editForm.role === 'Staff') && (
+            <div className="form-group">
+              <label className="form-label">Academic Rank / Plantilla Position</label>
+              <input
+                className="form-input"
+                type="text"
+                value={editForm.academicRank ?? ''}
+                onChange={e => setEditForm({ ...editForm, academicRank: e.target.value })}
+                placeholder="e.g. Instructor I, Administrative Officer II"
+              />
+            </div>
+          )}
 
           {/* Maintenance Personnel Trade Specialization & Availability Status */}
           {editForm.role === 'Maintenance' && (
@@ -1112,9 +1055,9 @@ export const UserManagement = () => {
                   value={editForm.availabilityStatus || 'available'}
                   onChange={e => setEditForm({ ...editForm, availabilityStatus: e.target.value })}
                 >
-                  <option value="available">🟢 Available (On Duty - Ready for Dispatch)</option>
-                  <option value="busy">🟡 Busy (Active On Field Job)</option>
-                  <option value="off_duty">🔴 Off Duty / On Leave</option>
+                  <option value="available">Available (On Duty - Ready for Dispatch)</option>
+                  <option value="busy">Busy (Active On Field Job)</option>
+                  <option value="off_duty">Off Duty / On Leave</option>
                 </select>
               </div>
             </div>
@@ -1123,7 +1066,7 @@ export const UserManagement = () => {
           {/* Supervisor designation — available for any non-admin account so the
               admin can designate and assign supervisors to any Faculty, Staff,
               Maintenance, or Campus Admin account as needed. */}
-          {editingUser?.role !== 'Admin' && editingUser?.userType !== 'Admin' && (
+          {!['admin', 'superadmin', 'super_admin'].includes(String(editingUser?.role || editingUser?.userType || '').toLowerCase()) && (
             <>
               <div className="form-group" style={{ background: 'var(--bg-sunken)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle, #e2e8f0)' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', color: '#0f172a', fontSize: '13px' }}>
@@ -1172,7 +1115,6 @@ export const UserManagement = () => {
           <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Save Changes</button>
         </form>
       </Modal>
-      <RegisterModal isOpen={isRegisterModalOpen} onClose={() => setIsRegisterModalOpen(false)} />
 
       {/* Assign Immediate Supervisor Modal */}
       <Modal
@@ -1211,7 +1153,7 @@ export const UserManagement = () => {
 
           {targetAssignUser && (
             <div style={{
-              background: '#f8fafc',
+              background: 'var(--bg-sunken)',
               border: '1px solid #e2e8f0',
               borderRadius: '8px',
               padding: '12px 14px',
@@ -1316,518 +1258,26 @@ export const UserManagement = () => {
         </form>
       </Modal>
 
-      {/* Tab 2: Pending ID Confirmations */}
-      {activeTab === 'pending-id' && (
-        <div className="content-card">
-          <div className="card-header">
-            <h2 className="card-title">Pending Faculty & Staff Registration Applications</h2>
-            <span style={{ fontSize: '13px', color: '#64748b' }}>
-              Inspect attached photo of ID before accepting and granting access
-            </span>
-          </div>
-
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>APPLICANT NAME</th>
-                  <th>ID NUMBER</th>
-                  <th>EMAIL</th>
-                  <th>TYPE</th>
-                  <th>DEPARTMENT / OFFICE</th>
-                  <th>CONTACT NUMBER</th>
-                  <th>ATTACHED ID PHOTO</th>
-                  <th>DATE</th>
-                  <th style={{ textAlign: 'right' }}>ACTION</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPending.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} style={{ textAlign: 'center', padding: '48px', color: '#94a3b8' }}>
-                      <CheckCircle2 size={36} color="#10b981" style={{ marginBottom: '8px' }} />
-                      <div style={{ fontWeight: '600', color: '#475569' }}>All registration submissions accepted!</div>
-                      <div style={{ fontSize: '12.5px', color: '#94a3b8' }}>
-                        No pending applications in the review queue.
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredPending.map(reg => (
-                    <tr key={reg.id}>
-                      <td style={{ fontWeight: '700', color: '#0f172a' }}>
-                        {reg.firstName} {reg.lastName}
-                      </td>
-                      <td style={{ fontSize: '12.5px', fontWeight: '600', color: '#001f9c' }}>
-                        {reg.idNumber}
-                      </td>
-                      <td style={{ fontSize: '13px', color: '#334155' }}>
-                        {reg.gmail}
-                      </td>
-                      <td>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          padding: '2px 7px',
-                          borderRadius: '6px',
-                          fontSize: '11px',
-                          fontWeight: '700',
-                          background: reg.userType === 'Faculty' ? '#eff6ff' : '#f5f3ff',
-                          color: reg.userType === 'Faculty' ? '#1d4ed8' : '#6d28d9'
-                        }}>
-                          {reg.userType === 'Faculty' ? <GraduationCap size={12} /> : <Briefcase size={12} />}
-                          {reg.userType}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: '12.5px', color: '#334155' }}>
-                        {reg.office || reg.department}
-                      </td>
-                      <td style={{ fontSize: '12.5px', color: '#475569' }}>
-                        {reg.contactNumber}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenInspect(reg)}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            background: '#eff6ff',
-                            border: '1px solid #bfdbfe',
-                            padding: '4px 10px',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            color: '#1d4ed8',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <Eye size={13} />
-                          Inspect ID Photo
-                        </button>
-                      </td>
-                      <td style={{ fontSize: '12px', color: '#64748b' }}>
-                        {reg.registeredDate}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                          <button
-                            type="button"
-                            className="btn btn-success btn-sm"
-                            onClick={() => approveRegistration(reg.id)}
-                            title="Accept ID and Activate Account"
-                          >
-                            <Check size={14} />
-                            Accept
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-danger btn-sm"
-                            onClick={() => handleOpenReject(reg)}
-                            title="Reject Submission with Reason"
-                          >
-                            <X size={14} />
-                            Reject
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 3: Rejected Applications Log */}
-      {activeTab === 'rejected-logs' && (
-        <div className="content-card">
-          <div className="card-header">
-            <h2 className="card-title">Rejected Applications Audit Log</h2>
-            <span style={{ fontSize: '13px', color: '#64748b' }}>
-              Historical record of rejected registration requests with stated official reasons
-            </span>
-          </div>
-
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>APPLICANT</th>
-                  <th>ID NUMBER</th>
-                  <th>EMAIL</th>
-                  <th>DATE REJECTED</th>
-                  <th>OFFICIAL REJECTION REASON</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRejected.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>
-                      No rejected applications recorded.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredRejected.map(r => (
-                    <tr key={r.id}>
-                      <td style={{ fontWeight: '700', color: '#0f172a' }}>
-                        {r.firstName} {r.lastName}
-                      </td>
-                      <td style={{ fontSize: '12.5px', color: '#64748b' }}>
-                        {r.idNumber}
-                      </td>
-                      <td style={{ fontSize: '13px', color: '#334155' }}>
-                        {r.gmail}
-                      </td>
-                      <td style={{ fontSize: '12px', color: '#64748b' }}>
-                        {r.rejectedDate}
-                      </td>
-                      <td style={{ color: '#b91c1c', fontSize: '12.5px', fontWeight: '500' }}>
-                        {r.reason}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Rejection Reason Modal */}
+      {/* Personnel registration opens in place so the directory stays in view. */}
       <Modal
-        isOpen={isRejectModalOpen}
-        onClose={() => setIsRejectModalOpen(false)}
-        onBack={() => setIsRejectModalOpen(false)}
-        title="Reject Registration Application"
-        maxWidth="520px"
+        isOpen={isRegisterOpen}
+        onClose={handleCloseRegister}
+        title="Register New User"
+        maxWidth="920px"
       >
-        {targetRejectReg && (
-          <form onSubmit={handleConfirmReject}>
-            <div style={{
-              background: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: '10px',
-              padding: '12px 14px',
-              marginBottom: '16px',
-              color: '#991b1b',
-              fontSize: '13px'
-            }}>
-              <div style={{ fontWeight: '800', marginBottom: '2px' }}>
-                State Official Rejection Reason
-              </div>
-              <div>
-                Applicant <strong>{targetRejectReg.firstName} {targetRejectReg.lastName}</strong> will be notified with this specific reason.
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Official Rejection Reason *</label>
-              <textarea
-                className="form-textarea"
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="e.g. Blurry ID photo, Unrecognized department, Invalid employee ID number..."
-                required
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setIsRejectModalOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn btn-danger"
-              >
-                <XCircle size={15} />
-                Confirm Rejection & Notify
-              </button>
-            </div>
-          </form>
-        )}
+        <UserRegistrationForm variant="modal" onClose={handleCloseRegister} />
       </Modal>
 
-      {/* Admin Create Maintenance Personnel Modal */}
-      <Modal
-        isOpen={isTechModalOpen}
-        onClose={() => setIsTechModalOpen(false)}
-        onBack={() => setIsTechModalOpen(false)}
-        title="Create Maintenance Personnel Account (Admin Only)"
-        maxWidth="600px"
-      >
-        <form onSubmit={handleCreateTechnician}>
-          <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
-            Maintenance accounts are created by the PDAS Director. They cannot be self-registered.
-          </p>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div className="form-group">
-              <label className="form-label">First Name *</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g. Rogelio"
-                value={techForm.firstName}
-                onChange={(e) => setTechForm({ ...techForm, firstName: e.target.value })}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Last Name *</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g. Ramos"
-                value={techForm.lastName}
-                onChange={(e) => setTechForm({ ...techForm, lastName: e.target.value })}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Middle Name</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g. S"
-                value={techForm.middleName}
-                onChange={(e) => setTechForm({ ...techForm, middleName: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <div className="form-group">
-              <label className="form-label">Assigned Trade Specialization *</label>
-              <select
-                className="form-select"
-                value={techForm.specialization}
-                onChange={(e) => setTechForm({ ...techForm, specialization: e.target.value })}
-                required
-              >
-                <option value="Electrical & HVAC">Electrical & HVAC Systems</option>
-                <option value="Plumbing & Drainage">Plumbing & Water Systems</option>
-                <option value="Carpentry & Masonry">Carpentry & Structural Masonry</option>
-                <option value="Network & IT Infrastructure">Network & IT Hardware</option>
-                <option value="General Campus Facility">General Campus Maintenance</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Technician ID Number *</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g. ISATU-TEC-2026-08"
-                value={techForm.idNumber}
-                onChange={(e) => setTechForm({ ...techForm, idNumber: e.target.value })}
-                required
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <div className="form-group">
-              <label className="form-label">Email / Username *</label>
-              <input
-                type="email"
-                className="form-input"
-                placeholder="e.g. rogelio.ramos@dumangas.isatu.edu.ph"
-                value={techForm.email}
-                onChange={(e) => setTechForm({ ...techForm, email: e.target.value })}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Mobile Contact Number *</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="+63 9XX XXX XXXX"
-                value={techForm.phone}
-                onChange={(e) => setTechForm({ ...techForm, phone: e.target.value })}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Temporary Password *</label>
-            <input
-              type="text"
-              className="form-input"
-              value={techForm.password}
-              onChange={(e) => setTechForm({ ...techForm, password: e.target.value })}
-              placeholder="Min 8 characters, letter + number"
-              required
-            />
-            <div className="form-help">The technician must change this after first sign-in.</div>
-          </div>
-
-          <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setIsTechModalOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-            >
-              <UserPlus size={16} />
-              Create Maintenance Account
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Inspect Photo of ID Modal */}
-      <Modal
-        isOpen={isInspectModalOpen}
-        onClose={() => setIsInspectModalOpen(false)}
-        title="Admin Photo of ID Confirmation Verification"
-        maxWidth="680px"
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', color: '#64748b' }}>
-              ISAT U Dumangas PDAS ID Verification Protocol
-            </span>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                type="button"
-                className="btn btn-danger btn-sm"
-                onClick={() => handleOpenReject(selectedPendingReg)}
-              >
-                <XCircle size={15} />
-                Reject Submission
-              </button>
-              <button
-                type="button"
-                className="btn btn-success btn-sm"
-                onClick={handleApproveReg}
-              >
-                <CheckCircle2 size={15} />
-                Confirm Photo of ID & Activate Account
-              </button>
-            </div>
-          </div>
-        }
-      >
-        {selectedPendingReg && (
-          <div>
-            {/* User Info Details */}
-            <div style={{
-              background: 'var(--bg-sunken)',
-              border: '1px solid #e2e8f0',
-              borderRadius: '12px',
-              padding: '16px',
-              marginBottom: '20px',
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '12px',
-              fontSize: '13px'
-            }}>
-              <div>
-                <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700' }}>First Name:</span>
-                <div style={{ fontWeight: '700', color: '#0f172a' }}>{selectedPendingReg.firstName}</div>
-              </div>
-              <div>
-                <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700' }}>Last Name:</span>
-                <div style={{ fontWeight: '700', color: '#0f172a' }}>{selectedPendingReg.lastName}</div>
-              </div>
-              <div>
-                <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700' }}>Valid ID Number:</span>
-                <div style={{ fontWeight: '700', color: '#001f9c' }}>{selectedPendingReg.idNumber}</div>
-              </div>
-              <div>
-                <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700' }}>Account Classification:</span>
-                <div style={{ fontWeight: '800', color: '#001f9c' }}>{selectedPendingReg.userType}</div>
-              </div>
-              <div>
-                <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700' }}>
-                  Department / Office:
-                </span>
-                <div style={{ fontWeight: '700', color: '#047857' }}>
-                  {selectedPendingReg.office || selectedPendingReg.department}
-                </div>
-              </div>
-              <div>
-                <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700' }}>Email Address:</span>
-                <div style={{ fontWeight: '600', color: '#1e293b' }}>{selectedPendingReg.gmail}</div>
-              </div>
-              <div>
-                <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: '700' }}>Contact Number:</span>
-                <div style={{ fontWeight: '600', color: '#1e293b' }}>{selectedPendingReg.contactNumber}</div>
-              </div>
-            </div>
-
-            {/* Attached Photo of ID */}
-            <div>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <IdCard size={16} color="#001f9c" />
-                Attached Photo of ID for Confirmation:
-              </div>
-              <div style={{
-                border: '2px solid #cbd5e1',
-                borderRadius: '12px',
-                padding: '12px',
-                textAlign: 'center',
-                background: '#0f172a',
-                overflow: 'hidden'
-              }}>
-                {selectedPendingReg.idPhotoUrl ? (
-                  <img
-                    src={selectedPendingReg.idPhotoUrl}
-                    alt="Attached Photo of ID"
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '340px',
-                      borderRadius: '8px',
-                      objectFit: 'contain'
-                    }}
-                  />
-                ) : (
-                  <div style={{
-                    padding: '28px 16px',
-                    color: '#94a3b8',
-                    fontSize: '13px',
-                    background: '#1e293b',
-                    borderRadius: '8px'
-                  }}>
-                    No ID photo was attached to this application.
-                  </div>
-                )}
-              </div>
-              <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '6px', textAlign: 'center' }}>
-                Attached by the applicant for identity confirmation.
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Safe Delete Confirmation Dialog */}
+      {/* Safe Archive Confirmation Dialog */}
       <ConfirmDialog
         isOpen={Boolean(removingUser)}
         onClose={() => setRemovingUser(null)}
         onConfirm={handleConfirmRemove}
-        title="Remove Personnel Account"
-        message={`Are you sure you want to remove ${removingUser?.name || removingUser?.email || 'this personnel'} from FixIT? Their system access will be revoked.`}
-        confirmText="Remove Account"
+        title="Archive Personnel Account"
+        message={`Are you sure you want to archive ${removingUser?.name || removingUser?.email || 'this personnel'} in FixIT? Their system access will be deactivated and preserved for institutional records.`}
+        confirmText="Archive Account"
         cancelText="Cancel"
-        isDanger={true}
+        isDanger={false}
       />
     </div>
   );

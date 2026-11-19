@@ -51,14 +51,14 @@ if errorlevel 1 (
 
 echo.
 echo [4/4] Opening FixIt PDAS in your browser...
-echo [*] Access URL: http://localhost/capstoneSystem
-start "" "http://localhost/capstoneSystem"
+echo [*] Access URL: http://localhost/pdasFixit
+start "" "http://localhost/pdasFixit"
 
 echo.
 echo ======================================================================
 echo  FixIt PDAS is running!
 echo.
-echo  • Web Application (Apache):  http://localhost/capstoneSystem
+echo  • Web Application (Apache):  http://localhost/pdasFixit
 echo  • Dev Server (Vite):         http://localhost:5173
 echo  • Backend API:               http://localhost:5000/api
 echo.

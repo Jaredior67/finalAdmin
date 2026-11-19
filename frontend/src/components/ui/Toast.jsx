@@ -19,9 +19,18 @@ export function ToastProvider({ children }) {
 
   const toast = useCallback((message, tone = 'success', opts = {}) => {
     const id = ++idRef.current;
-    setToasts(prev => [...prev.slice(-3), { id, message, tone: TONE[tone] ? tone : 'info' }]);
+    setToasts(prev => [
+      ...prev.slice(-3),
+      {
+        id,
+        message,
+        tone: TONE[tone] ? tone : 'info',
+        actionLabel: opts.actionLabel || null,
+        onAction: typeof opts.onAction === 'function' ? opts.onAction : null,
+      },
+    ]);
     if (opts.duration !== 0) {
-      setTimeout(() => dismiss(id), opts.duration || 4000);
+      setTimeout(() => dismiss(id), opts.duration || (opts.onAction ? 8000 : 4000));
     }
     return id;
   }, [dismiss]);
@@ -66,6 +75,30 @@ export function ToastProvider({ children }) {
             >
               <tone.Icon size={18} style={{ flexShrink: 0, marginTop: '1px' }} />
               <span style={{ flex: 1, minWidth: 0 }}>{t.message}</span>
+              {t.actionLabel && t.onAction && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const fn = t.onAction;
+                    dismiss(t.id);
+                    fn();
+                  }}
+                  style={{
+                    background: '#071746',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    marginTop: '-1px',
+                  }}
+                >
+                  {t.actionLabel}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => dismiss(t.id)}

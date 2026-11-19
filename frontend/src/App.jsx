@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { DataProvider } from './context/DataContext';
+import { DataProvider, useData } from './context/DataContext';
 import { ToastProvider } from './components/ui/Toast';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Navbar } from './components/layout/Navbar';
@@ -11,44 +11,60 @@ import { SystemFooter } from './components/layout/SystemFooter';
 import { BackendStatus } from './components/common/BackendStatus';
 import { OfflineBanner } from './components/common/OfflineBanner';
 import { SkipLink } from './components/common/SkipLink';
+import {
+  resolveLocationFromQr,
+  getPendingScannedQr,
+  savePendingScannedQr,
+  stripQrUrlParam,
+  clearPendingScannedQr
+} from './utils/qrLocationResolver';
 
 // Role Workspaces
+const SuperAdminRoutes = lazy(() => import('./routes/SuperAdminRoutes').then(m => ({ default: m.SuperAdminRoutes })));
 const AdminRoutes = lazy(() => import('./routes/AdminRoutes').then(m => ({ default: m.AdminRoutes })));
 const FacultyRoutes = lazy(() => import('./routes/FacultyRoutes').then(m => ({ default: m.FacultyRoutes })));
 const MaintenanceRoutes = lazy(() => import('./routes/MaintenanceRoutes').then(m => ({ default: m.MaintenanceRoutes })));
 const CampusAdminRoutes = lazy(() => import('./routes/CampusAdminRoutes').then(m => ({ default: m.CampusAdminRoutes })));
 import { Spinner } from './components/ui/Spinner';
+import { DashboardSkeleton } from './components/common/Skeleton';
+import { PageTransition } from './components/common/PageTransition';
 
 const RouteFallback = () => (
-  <div style={{ padding: '60px 40px', textAlign: 'center', color: '#64748b', fontSize: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
-    <Spinner size={22} color="#001f9c" />
-    <span>Loading workspace…</span>
-  </div>
+  <PageTransition>
+    <div style={{ padding: '24px', maxWidth: '1280px', margin: '0 auto', width: '100%' }}>
+      <DashboardSkeleton />
+    </div>
+  </PageTransition>
 );
 
 const ALLOWED_TABS_BY_ROLE = {
+  superadmin: [
+    'superadmin-dashboard', 'register-user', 'user-management', 'print-labels',
+    'archived-requests', 'audit-log', 'audit-trail', 'communication-box', 'notifications', 'settings'
+  ],
   admin: [
     'executive-dashboard', 'job-requests', 'official-documents',
-    'preventive-calendar', 'archived-requests', 'audit-trail', 'user-management',
-    'communication-box', 'analytics-reports', 'replacement-requests', 'print-labels', 'settings'
+    'preventive-calendar', 'archived-requests', 'audit-log', 'audit-trail',
+    'communication-box', 'notifications', 'analytics-reports', 'replacement-requests', 'settings'
   ],
   campusAdmin: [
     'campus-admin-dashboard', 'campus-approvals', 'executive-dashboard',
-    'official-documents', 'approval-history', 'communication-box', 'analytics-reports', 'settings'
+    'official-documents', 'approval-history', 'communication-box', 'notifications', 'analytics-reports', 'settings'
   ],
   maintenance: [
-    'tech-tasks', 'tech-emergency', 'tech-history', 'tech-calendar',
-    'tech-messages', 'tech-documents', 'replacement-requests', 'settings'
+    'tech-dashboard', 'tech-tasks', 'tech-emergency', 'tech-history', 'tech-calendar',
+    'tech-messages', 'notifications', 'replacement-requests', 'settings'
   ],
   faculty: [
-    'faculty-dashboard', 'faculty-tickets', 'faculty-history', 'faculty-messages',
+    'faculty-dashboard', 'faculty-tickets', 'faculty-history', 'faculty-messages', 'notifications',
     'replacement-requests', 'settings', 'faculty-urgent', 'faculty-submit',
     'supervisor-queue', 'supervisor-approvals', 'supervisor-dashboard'
   ]
 };
 
 function getRoleDefaultTab(auth) {
-  if (auth.isMaintenance) return 'tech-tasks';
+  if (auth.isSuperAdmin) return 'superadmin-dashboard';
+  if (auth.isMaintenance) return 'tech-dashboard';
   if (auth.isFacultyOrStaff) return auth.isSupervisor ? 'supervisor-queue' : 'faculty-dashboard';
   if (auth.isCampusAdmin) return 'campus-admin-dashboard';
   if (auth.isAdmin) return 'executive-dashboard';
@@ -60,6 +76,9 @@ function validateTabForAuth(tab, auth) {
   const cleanTab = tab.replace(/^#\/?/, '').trim();
   if (!cleanTab) return null;
 
+  if (auth.isSuperAdmin) {
+    return ALLOWED_TABS_BY_ROLE.superadmin.includes(cleanTab) ? cleanTab : null;
+  }
   if (auth.isMaintenance) {
     return ALLOWED_TABS_BY_ROLE.maintenance.includes(cleanTab) ? cleanTab : null;
   }
@@ -79,7 +98,7 @@ function validateTabForAuth(tab, auth) {
 
 function AppContent() {
   const auth = useAuth();
-  const { currentUser, isAdmin, isCampusAdmin, isSupervisor, isMaintenance, isFacultyOrStaff } = auth;
+  const { currentUser, isSuperAdmin, isAdmin, isCampusAdmin, isSupervisor, isMaintenance, isFacultyOrStaff } = auth;
 
   // Persist activeTab across refreshes & deep links while strictly validating role access
   const [activeTab, setActiveTabState] = useState(() => {
@@ -127,8 +146,44 @@ function AppContent() {
     });
   };
 
+  // QR deep-link detection. Runs once on mount.
+  // Case A (logged in):  ?qr= resolves to a location → setPendingScannedLocation → intake auto-opens.
+  // Case B (not logged in): tag saved to sessionStorage; recovered in Case C below.
+  // Case C (after login): this effect fires again (currentUser changes) and
+  //   recovers any sessionStorage tag saved in Case B.
+  const { setPendingScannedLocation, campusLocations } = useData();
+  const qrHandledRef = useRef(false);
+
+  useEffect(() => {
+    if (!currentUser) {
+      // Not logged in — save the QR tag so it survives the login redirect.
+      const raw = getPendingScannedQr();
+      if (raw) {
+        savePendingScannedQr(raw);
+        stripQrUrlParam(); // strip ?qr= from address bar while keeping in sessionStorage
+      }
+      qrHandledRef.current = false;
+      return;
+    }
+
+    // Logged in — recover whatever is pending (URL param or sessionStorage).
+    if (qrHandledRef.current) return;
+    const raw = getPendingScannedQr();
+    if (!raw) return;
+    qrHandledRef.current = true;
+    clearPendingScannedQr();
+
+    const resolved = resolveLocationFromQr(raw, campusLocations || []);
+    if (resolved) {
+      // Small delay so the DataProvider and all route components are mounted.
+      setTimeout(() => setPendingScannedLocation(resolved), 350);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
   // Sidebar collapse control
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Track previous user ID to detect new login / account switch
   const prevUserIdRef = useRef(currentUser?.id || null);
@@ -178,7 +233,7 @@ function AppContent() {
         window.history.replaceState(null, '', `#${targetTab}`);
       }
     } catch {}
-  }, [currentUser?.id, currentUser?.role, auth.isAdmin, auth.isCampusAdmin, auth.isMaintenance, auth.isFacultyOrStaff, auth.isSupervisor]);
+  }, [currentUser?.id, currentUser?.role, auth.isSuperAdmin, auth.isAdmin, auth.isCampusAdmin, auth.isMaintenance, auth.isFacultyOrStaff, auth.isSupervisor]);
 
   // Handle browser Back / Forward navigation buttons and URL hash edits
   useEffect(() => {
@@ -195,14 +250,37 @@ function AppContent() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [activeTab, auth]);
 
-  // If user is not logged in, show the dedicated FixIT Institutional Login Page
+  // If user is not logged in, show the dedicated FixIT Institutional Landing & Login Page
   if (!currentUser) {
     return (
-      <div style={{ minHeight: '100dvh', background: '#EEF2F8', display: 'flex', flexDirection: 'column' }}>
+      <>
+        <BackendStatus />
+        <LoginPage />
+      </>
+    );
+  }
+
+  // 0. Role-based routing for Super Administrator
+  if (isSuperAdmin) {
+    return (
+      <div className="app-container">
+        <div className="app-top-accent-stripe" aria-hidden="true" />
+        <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <LoginPage />
-        <SystemFooter />
+        <div className="main-layout">
+          <Sidebar activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); setMobileSidebarOpen(false); }} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} mobileOpen={mobileSidebarOpen} onCloseMobile={() => setMobileSidebarOpen(false)} />
+          <div className="app-content-column">
+            <Navbar onNavigateTab={(tab) => { setActiveTab(tab); setMobileSidebarOpen(false); }} sidebarCollapsed={sidebarCollapsed} onToggleMobileMenu={() => setMobileSidebarOpen(prev => !prev)} />
+            <main className="content-area" id="main-content">
+              <Suspense fallback={<RouteFallback />}>
+                <SuperAdminRoutes activeTab={activeTab} onTabChange={setActiveTab} />
+              </Suspense>
+            </main>
+            <SystemFooter />
+          </div>
+        </div>
+        <LoginModal />
       </div>
     );
   }
@@ -211,19 +289,22 @@ function AppContent() {
   if (isFacultyOrStaff) {
     return (
       <div className="app-container">
+        <div className="app-top-accent-stripe" aria-hidden="true" />
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
         <div className="main-layout">
-          <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
-          <main className="content-area" id="main-content" style={{ paddingTop: '24px' }}>
-            <Suspense fallback={<RouteFallback />}>
-              <FacultyRoutes activeTab={activeTab} onTabChange={setActiveTab} />
-            </Suspense>
-          </main>
+          <Sidebar activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); setMobileSidebarOpen(false); }} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} mobileOpen={mobileSidebarOpen} onCloseMobile={() => setMobileSidebarOpen(false)} />
+          <div className="app-content-column">
+            <Navbar onNavigateTab={(tab) => { setActiveTab(tab); setMobileSidebarOpen(false); }} sidebarCollapsed={sidebarCollapsed} onToggleMobileMenu={() => setMobileSidebarOpen(prev => !prev)} />
+            <main className="content-area" id="main-content">
+              <Suspense fallback={<RouteFallback />}>
+                <FacultyRoutes activeTab={activeTab} onTabChange={setActiveTab} />
+              </Suspense>
+            </main>
+            <SystemFooter />
+          </div>
         </div>
-        <SystemFooter />
         <LoginModal />
       </div>
     );
@@ -233,42 +314,47 @@ function AppContent() {
   if (isCampusAdmin) {
     return (
       <div className="app-container">
+        <div className="app-top-accent-stripe" aria-hidden="true" />
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
         <div className="main-layout">
-          <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
-          <main className="content-area" id="main-content" style={{ paddingTop: '24px' }}>
-            <Suspense fallback={<RouteFallback />}>
-              <CampusAdminRoutes activeTab={activeTab} onTabChange={setActiveTab} />
-            </Suspense>
-          </main>
+          <Sidebar activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); setMobileSidebarOpen(false); }} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} mobileOpen={mobileSidebarOpen} onCloseMobile={() => setMobileSidebarOpen(false)} />
+          <div className="app-content-column">
+            <Navbar onNavigateTab={(tab) => { setActiveTab(tab); setMobileSidebarOpen(false); }} sidebarCollapsed={sidebarCollapsed} onToggleMobileMenu={() => setMobileSidebarOpen(prev => !prev)} />
+            <main className="content-area" id="main-content">
+              <Suspense fallback={<RouteFallback />}>
+                <CampusAdminRoutes activeTab={activeTab} onTabChange={setActiveTab} />
+              </Suspense>
+            </main>
+            <SystemFooter />
+          </div>
         </div>
-        <SystemFooter />
         <LoginModal />
       </div>
     );
   }
 
-
   // 3. Role-based routing for Maintenance Personnel
   if (isMaintenance) {
     return (
       <div className="app-container">
+        <div className="app-top-accent-stripe" aria-hidden="true" />
         <SkipLink />
         <BackendStatus />
         <OfflineBanner />
-        <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
         <div className="main-layout">
-          <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
-          <main className="content-area" id="main-content" style={{ paddingTop: '24px' }}>
-            <Suspense fallback={<RouteFallback />}>
-              <MaintenanceRoutes activeTab={activeTab} onTabChange={setActiveTab} />
-            </Suspense>
-          </main>
+          <Sidebar activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); setMobileSidebarOpen(false); }} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} mobileOpen={mobileSidebarOpen} onCloseMobile={() => setMobileSidebarOpen(false)} />
+          <div className="app-content-column">
+            <Navbar onNavigateTab={(tab) => { setActiveTab(tab); setMobileSidebarOpen(false); }} sidebarCollapsed={sidebarCollapsed} onToggleMobileMenu={() => setMobileSidebarOpen(prev => !prev)} />
+            <main className="content-area" id="main-content">
+              <Suspense fallback={<RouteFallback />}>
+                <MaintenanceRoutes activeTab={activeTab} onTabChange={setActiveTab} />
+              </Suspense>
+            </main>
+            <SystemFooter />
+          </div>
         </div>
-        <SystemFooter />
         <LoginModal />
       </div>
     );
@@ -276,27 +362,29 @@ function AppContent() {
 
   return (
     <div className="app-container">
+      <div className="app-top-accent-stripe" aria-hidden="true" />
       <SkipLink />
       <BackendStatus />
       <OfflineBanner />
-      <Navbar onNavigateTab={(tab) => setActiveTab(tab)} sidebarCollapsed={sidebarCollapsed} />
       
       <div className="main-layout">
-        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
+        <Sidebar activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); setMobileSidebarOpen(false); }} collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} mobileOpen={mobileSidebarOpen} onCloseMobile={() => setMobileSidebarOpen(false)} />
         
-                <main className="content-area" id="main-content" style={{ paddingTop: '24px' }}>
-          <Suspense fallback={<RouteFallback />}>
-            <AdminRoutes
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              jobRequestStatus={jobRequestStatus}
-              setJobRequestStatus={setJobRequestStatus}
-            />
-          </Suspense>
-        </main> 
+        <div className="app-content-column">
+          <Navbar onNavigateTab={(tab) => { setActiveTab(tab); setMobileSidebarOpen(false); }} sidebarCollapsed={sidebarCollapsed} onToggleMobileMenu={() => setMobileSidebarOpen(prev => !prev)} />
+          <main className="content-area" id="main-content">
+            <Suspense fallback={<RouteFallback />}>
+              <AdminRoutes
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                jobRequestStatus={jobRequestStatus}
+                setJobRequestStatus={setJobRequestStatus}
+              />
+            </Suspense>
+          </main> 
+          <SystemFooter />
+        </div>
       </div>
-
-      <SystemFooter />
 
       <LoginModal />
     </div>

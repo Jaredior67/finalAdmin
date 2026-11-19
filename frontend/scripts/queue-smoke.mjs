@@ -146,12 +146,25 @@ console.log('\nqueue logic');
 check('archived tickets never reach the queue', () => {
   const q = buildMyQueue(tickets, { name: 'Mark Villanueva' });
   if (q.some((t) => t.isArchived)) throw new Error('archived ticket leaked into the queue');
-  if (q.length !== 3) throw new Error(`expected 3 tickets, got ${q.length}`);
+  if (q.length !== 2) throw new Error(`expected 2 tickets for Mark Villanueva, got ${q.length}`);
+});
+check('new accounts start with an empty queue and different accounts have different queues', () => {
+  const newTechQueue = buildMyQueue(tickets, { name: 'Nico Robin' });
+  if (newTechQueue.length !== 0) throw new Error(`expected 0 tickets for new tech, got ${newTechQueue.length}`);
+  const rinaQueue = buildMyQueue(tickets, { name: 'Rina Santos' });
+  if (rinaQueue.length !== 1 || rinaQueue[0].assignedTo !== 'Rina Santos') {
+    throw new Error(`expected 1 ticket for Rina, got ${rinaQueue.length}`);
+  }
 });
 check('assignee options come from real tickets', () => {
   const names = buildAssigneeOptions(buildMyQueue(tickets, { name: 'Mark Villanueva' }));
-  if (!names.includes('Mark Villanueva') || !names.includes('Rina Santos')) {
+  if (!names.includes('Mark Villanueva')) {
     throw new Error(`unexpected assignees: ${JSON.stringify(names)}`);
+  }
+  const adminQueue = buildMyQueue(tickets, { role: 'admin' });
+  const allNames = buildAssigneeOptions(adminQueue);
+  if (!allNames.includes('Mark Villanueva') || !allNames.includes('Rina Santos')) {
+    throw new Error(`admin should see all assignees: ${JSON.stringify(allNames)}`);
   }
 });
 check('status slugs normalise', () => {
@@ -161,10 +174,10 @@ check('status slugs normalise', () => {
 check('saved view filters partition the queue', () => {
   const q = buildMyQueue(tickets, { name: 'Mark Villanueva' });
   const counts = QUEUE_VIEWS.map((v) => q.filter(v.filter).length);
-  // urgent=2 (R-1 Urgent + R-2 High), in-progress=1 (R-1), completed=1 (R-3), all=3
+  // urgent=1 (R-1 Urgent), in-progress=1 (R-1), completed=1 (R-3), all=2
   const map = Object.fromEntries(QUEUE_VIEWS.map((v, i) => [v.id, counts[i]]));
-  if (map.all !== 3) throw new Error(`all=${map.all}, expected 3`);
-  if (map.urgent !== 2) throw new Error(`urgent=${map.urgent}, expected 2`);
+  if (map.all !== 2) throw new Error(`all=${map.all}, expected 2`);
+  if (map.urgent !== 1) throw new Error(`urgent=${map.urgent}, expected 1`);
   if (map['in-progress'] !== 1) throw new Error(`in-progress=${map['in-progress']}, expected 1`);
   if (map.completed !== 1) throw new Error(`completed=${map.completed}, expected 1`);
 });
@@ -173,7 +186,8 @@ console.log('\npage renders (active tab + legacy deep links)');
 for (const tab of ['tech-tasks', 'tech-emergency', 'tech-history']) {
   check(`tab "${tab}"`, () => {
     const html = render(tab);
-    if (!html.includes('Maintenance Work Queue')) throw new Error('page did not render');
+    const expectedTitle = tab === 'tech-history' ? 'Request History' : 'Maintenance Work Queue';
+    if (!html.includes(expectedTitle)) throw new Error('page did not render');
     if (!html.includes('Field Operations')) throw new Error('breadcrumb missing');
   });
 }
@@ -208,7 +222,7 @@ check('staff, evaluation and lock state render', () => {
 });
 check('assigned staff filter is populated from the queue', () => {
   const html = render('tech-tasks');
-  if (!html.includes('Rina Santos')) throw new Error('other technicians missing from staff filter');
+  if (!html.includes('Mark Villanueva')) throw new Error('assigned technician missing from staff filter');
   if (!html.includes('All staff')) throw new Error('staff filter has no "all" option');
 });
 

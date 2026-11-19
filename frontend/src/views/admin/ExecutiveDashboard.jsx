@@ -2,15 +2,16 @@ import React, { useState, useEffect } from 'react';
 import {
   ArrowRight,
   CheckCircle,
-  Eye,
+  CheckCircle2,
   Clock,
+  ChevronRight,
+  Eye,
   Calendar,
   Activity,
-  ChevronRight,
   ClipboardList
 } from 'lucide-react';
 import { useData, toLocalISODate } from '../../context/DataContext';
-import { apiGetPreventiveSchedules } from '../../backend/api';
+import { apiGetPreventiveSchedules, apiGetAuditLog } from '../../backend/api';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge, UrgencyBadge, CategoryPill } from '../../components/common/StatusBadge';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -22,6 +23,10 @@ import {
   RequestIntakePanel
 } from '../../components/common/RequestIntake';
 import { ChartsRow, DonutCard, BarCard, ColumnCard } from '../../components/common/DashboardCharts';
+import { PageTransition } from '../../components/common/PageTransition';
+import { DashboardSkeleton, useDelayedLoading } from '../../components/common/Skeleton';
+
+
 
 export const ExecutiveDashboard = ({ onNavigate }) => {
   const { currentUser } = useAuth();
@@ -33,12 +38,16 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
     completedRepairs = 0,
     ticketSearch: searchTerm,
     calendarEvents = [],
-    setFocusedTicketRef
+    evaluations = [],
+    setFocusedTicketRef,
+    isLoadingRequisitions
   } = useData();
+  const showSkeleton = useDelayedLoading(isLoadingRequisitions && requisitions.length === 0);
 
-  const [dispatchMessage, setDispatchMessage] = useState('');
+    const [dispatchMessage, setDispatchMessage] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
 
+  
   // Filing a request is the same flow every other account gets: the same two
   // buttons, the same QF-PDAS-DC-01 form, the same urgent fast path and the same
   // print sheet. Only the requester's identity differs.
@@ -55,7 +64,7 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
       if (!created) return;
       setDispatchMessage(
         `${created.requestType} ${created.id} filed. Tracking PENDING, issued when the work order is assigned, after final approval. ` +
-        'Requester must pass the signed QF-PDAS-DC-01 hardcopy to the PDAS Office within 24 hours.'
+        'Request has entered the electronic approval workflow.'
       );
     }
   });
@@ -73,16 +82,26 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
     const uA = /high|urgent|emergency/i.test(String(a.urgency || '')) ? 1 : (/low/i.test(String(a.urgency || '')) ? 3 : 2);
     const uB = /high|urgent|emergency/i.test(String(b.urgency || '')) ? 1 : (/low/i.test(String(b.urgency || '')) ? 3 : 2);
     if (uA !== uB) return uA - uB;
-    return String(b.date || '').localeCompare(String(a.date || ''));
+    // Within priority tier, first-come first-served (earliest submitted first)
+    const dateCmp = String(a.date || '').localeCompare(String(b.date || ''));
+    if (dateCmp !== 0) return dateCmp;
+    return String(a.controlNo || a.id || '').localeCompare(String(b.controlNo || b.id || ''));
   });
-
-  const pendingList = requisitions.filter(r => r.status === 'Pending').slice(0, 3);
-  const flaggedReplacements = requisitions.filter(r => r.replacementFlag?.isFlagged || r.maintenanceFlag?.type === 'Disposal');
 
   // The statistics row reads the whole unfiltered pipeline, the way the KPI
   // cards do — scoping it to the toolbar's search would let the charts
   // disagree with the tiles directly above them.
   const chartScope = requisitions.filter(r => !r.isArchived);
+
+  // Pending approval items needing administrative triage & assignment
+  const pendingAttention = requisitions.filter(
+    r => !r.isArchived && (r.status === 'Pending' || r.status === 'Pending Supervisor Approval' || r.status === 'Under Review')
+  ).sort((a, b) => {
+    const uA = /high|urgent|emergency/i.test(String(a.urgency || '')) ? 1 : (/low/i.test(String(a.urgency || '')) ? 3 : 2);
+    const uB = /high|urgent|emergency/i.test(String(b.urgency || '')) ? 1 : (/low/i.test(String(b.urgency || '')) ? 3 : 2);
+    if (uA !== uB) return uA - uB;
+    return String(a.date || '').localeCompare(String(b.date || ''));
+  });
 
   // Header date. The greeting and first-name helpers are intentionally not
   // used here — the shared PageHeader renders its own.
@@ -108,26 +127,109 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
     }))
     // Local calendar date. The UTC form of this comparison made "upcoming"
     // include yesterday's schedules for the first eight hours of the day.
-    .filter(ev => /^\d{4}-\d{2}-\d{2}$/.test(ev.date) && ev.date >= toLocalISODate(new Date()))
+    .filter(ev => /^\d{4}-\d{2}-\d{2}$/.test(ev.date) && ev.date >= toLocalISODate(new Date()) && ev.status !== 'Completed' && ev.status !== 'Cancelled')
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 4));
+
+  // Live recent activity feed (MySQL audit_log)
+  const [recentActivities, setRecentActivities] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    apiGetAuditLog(5)
+      .then(rows => { if (!cancelled) setRecentActivities(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (!cancelled) setRecentActivities([]); });
+    return () => { cancelled = true; };
+  }, [requisitions]);
+
+  const timeAgo = (dateStr) => {
+    if (!dateStr) return '';
+    const diffSec = Math.floor((new Date() - new Date(dateStr)) / 1000);
+    if (isNaN(diffSec) || diffSec < 60) return 'Just now';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
+
+  const formatActivityLabel = (item) => {
+    const actor = item.actor_name || 'System';
+    const target = item.ticket_no || item.official_tracking_no || item.details || '';
+    switch (item.action) {
+      case 'request.submitted':
+        return { text: target ? `New request filed: ${target}` : 'New request filed', sub: `By ${actor}` };
+      case 'request.supervisor.approved':
+        return { text: target ? `Supervisor endorsed: ${target}` : 'Request endorsed by supervisor', sub: `By ${actor}` };
+      case 'request.supervisor.returned':
+        return { text: target ? `Supervisor returned: ${target}` : 'Request returned by supervisor', sub: `By ${actor}` };
+      case 'request.admin.approved':
+        return { text: target ? `Admin approved: ${target}` : 'Request approved by admin', sub: `By ${actor}` };
+      case 'request.admin.returned':
+        return { text: target ? `Admin returned: ${target}` : 'Request returned by admin', sub: `By ${actor}` };
+      case 'request.approver.approved':
+        return { text: target ? `Final approval granted: ${target}` : 'Final approval granted', sub: `By ${actor}` };
+      case 'request.approver.rejected':
+        return { text: target ? `Request rejected: ${target}` : 'Request rejected', sub: `By ${actor}` };
+      case 'request.assigned':
+        return { text: target ? `Assigned to technician: ${target}` : 'Technician assigned', sub: `By ${actor}` };
+      case 'request.completed':
+      case 'request.status_change':
+        return { text: target ? `Status updated: ${target}` : 'Status updated', sub: `By ${actor}` };
+      default: {
+        const cleanAction = (item.action || 'system.event').replace(/^request\./, '').replace(/_/g, ' ');
+        return { text: target ? `${target} — ${cleanAction}` : cleanAction, sub: `By ${actor}` };
+      }
+    }
+  };
+
+  const statusToTab = (status) => {
+    switch (status) {
+      case 'Pending':
+      case 'Pending Supervisor Approval':
+        return 'pending';
+      case 'Under Review':
+        return 'under-review';
+      case 'Pending Final Approval':
+      case 'Awaiting Signatures':
+        return 'pending-final';
+      case 'Approved':
+        return 'approved';
+      case 'Ongoing':
+      case 'In Progress':
+        return 'in-progress';
+      case 'On Hold':
+        return 'on-hold';
+      case 'Returned':
+        return 'returned';
+      case 'Completed':
+        return 'completed';
+      default:
+        return 'all';
+    }
+  };
 
   const handleOpenDetail = (req) => {
     // Dashboard Manage opens the full approver-style review modal on the
     // Job Requests tab: jump there and deep-open this exact ticket.
     if (setFocusedTicketRef) setFocusedTicketRef(req.controlNo || req.ticket_no || req.id);
-    const targetStatus = (req.status === 'Pending' || req.status === 'Pending Supervisor Approval') ? 'pending' : 'all';
+    const targetStatus = statusToTab(req?.status);
     if (onNavigate) onNavigate('job-requests', targetStatus);
   };
 
+  if (showSkeleton) {
+    return <PageTransition><DashboardSkeleton /></PageTransition>;
+  }
+
   return (
+    <PageTransition>
     <div className="admin-dashboard" style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingTop: '16px', fontFamily: "'Inter', Verdana, Geneva, Tahoma, sans-serif" }}>
 
       {/* Page Header */}
       <PageHeader
         breadcrumbs={['PDAS Administration', 'Overview']}
-        title="Work Order Dashboard"
-        description={`ISAT U Dumangas — Physical Development & Auxiliary Services | ${formattedDate}`}
+        title={`Welcome, ${currentUser?.name || 'System Administrator'}`}
+        description={`Physical Development & Auxiliary Services · ${formattedDate}`}
         action={<RequestIntakeActions intake={intake} />}
       />
 
@@ -155,6 +257,7 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
         </div>
       )}
 
+
       {/* Confirmation after filing — the same screen faculty gets. Shown here
           instead of the stat grid so the filer's next step is the first thing
           on the page. */}
@@ -169,61 +272,118 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
         </div>
       ) : null}
 
-      {/* 2 Stat Cards — Total and Replacement/Disposal. The per-status breakdown
-          (Pending, Ongoing, Completed) lives in the Pipeline by Status donut below,
-          so repeating those here would be redundant. */}
-      <div className="admin-stats-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-        {/* Total Requests — deliberately not a status colour: a count of every
-            state, so it must not borrow one state's hue. */}
-        <div
-          onClick={() => onNavigate && onNavigate('job-requests', 'all')}
-          style={{
-            background: '#ffffff',
-            borderRadius: '10px',
-            padding: '14px 16px',
-            border: '1px solid #e2e8f0',
-            borderLeft: '3px solid #5b6a82',
-            boxShadow: 'var(--shadow-subtle)',
-            cursor: 'pointer',
-            transition: 'box-shadow 0.15s, border-color 0.15s'
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
-        >
-          <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Total Requests</div>
-          <div style={{ fontSize: '28px', fontWeight: '700', color: '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{totalRequisitions}</div>
-        </div>
-
-        {/* Replacement & Disposal — StatusBadge maps this to status-rejected */}
-        <div
-          onClick={() => onNavigate && onNavigate('replacement-requests')}
-          style={{
-            background: '#ffffff',
-            borderRadius: '10px',
-            padding: '14px 16px',
-            border: '1px solid #e2e8f0',
-            borderLeft: '3px solid #ef4444',
-            boxShadow: 'var(--shadow-subtle)',
-            cursor: 'pointer',
-            transition: 'box-shadow 0.15s'
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
-        >
-          <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Replacement / Disposal</div>
-          <div style={{ fontSize: '28px', fontWeight: '700', color: flaggedReplacements.length > 0 ? '#b91c1c' : '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{flaggedReplacements.length}</div>
-        </div>
+      {/* Statistics — clicking a donut segment, bar, or status tile navigates to the matching filter. */}
+      {/* ── KPI Summary Tiles (Consistent 4px Left Accent Bar Layout) ── */}
+      <div
+        role="region"
+        aria-label="Executive KPI Overview"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+          gap: '12px'
+        }}
+      >
+        {[
+          {
+            label: 'Total Requests',
+            value: chartScope.length,
+            accent: '#001f9c',
+            onClick: () => onNavigate && onNavigate('job-requests', 'all')
+          },
+          {
+            label: 'Pending',
+            value: chartScope.filter(r => r.status === 'Pending' || r.status === 'Pending Supervisor Approval').length,
+            accent: '#f59e0b',
+            onClick: () => onNavigate && onNavigate('job-requests', 'pending')
+          },
+          {
+            label: 'Under Review',
+            value: chartScope.filter(r => r.status === 'Under Review').length,
+            accent: '#8b5cf6',
+            onClick: () => onNavigate && onNavigate('job-requests', 'under-review')
+          },
+          {
+            label: 'Ongoing',
+            value: chartScope.filter(r => r.status === 'Ongoing' || r.status === 'In Progress').length,
+            accent: '#3b82f6',
+            onClick: () => onNavigate && onNavigate('job-requests', 'in-progress')
+          },
+          {
+            label: 'Completed',
+            value: chartScope.filter(r => r.status === 'Completed').length,
+            accent: '#10b981',
+            onClick: () => onNavigate && onNavigate('job-requests', 'completed')
+          },
+          {
+            label: 'CSM Response Rate',
+            value:
+              chartScope.filter(r => r.status === 'Completed').length > 0 && (evaluations?.length || 0) > 0
+                ? `${Math.round(((evaluations?.length || 0) / chartScope.filter(r => r.status === 'Completed').length) * 100)}%`
+                : '—',
+            accent: '#d97706',
+            onClick: () => onNavigate && onNavigate('analytics-reports')
+          }
+        ].map((tile) => (
+          <button
+            key={tile.label}
+            type="button"
+            onClick={tile.onClick}
+            title={tile.label}
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              borderLeft: `4px solid ${tile.accent}`,
+              borderRadius: '12px',
+              padding: '16px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              minWidth: 0,
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {tile.label}
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: '800', color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
+              {tile.value}
+            </div>
+          </button>
+        ))}
       </div>
 
-      {/* Statistics — clicking a donut segment or bar navigates to the matching filter. */}
       <ChartsRow isEmpty={chartScope.length === 0}>
         <DonutCard
-          title="Pipeline by Status" icon="status" list={chartScope}
-          pick={(r) => r.status} palette="status" unit="REQUESTS"
+          title="Pipeline by Status"
+          icon="status"
+          list={chartScope}
+          pick={(r) => r.status}
+          palette="status"
+          unit="REQUESTS"
+          showLegend={false}
           onSegmentClick={(label) => {
-            const map = { Pending: 'pending', 'Pending Supervisor Approval': 'pending', 'Under Review': 'all', Ongoing: 'in-progress', 'In Progress': 'in-progress', Completed: 'completed', Approved: 'all', Rejected: 'all' };
-            onNavigate && onNavigate('job-requests', map[label] || 'all');
+            onNavigate && onNavigate('job-requests', statusToTab(label));
           }}
+          footer={
+            <div style={{
+              marginTop: '10px',
+              paddingTop: '10px',
+              borderTop: '1px solid #f1f5f9',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '11.5px',
+              color: '#64748b'
+            }}>
+              <span>Active Pipeline:</span>
+              <span style={{ fontWeight: '700', color: '#0f172a' }}>
+                {chartScope.filter(r => r.status !== 'Completed' && r.status !== 'Rejected').length} active requests
+              </span>
+            </div>
+          }
         />
         <ColumnCard
           title="Monthly Volume"
@@ -234,81 +394,150 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
           pick={(r) => r.status}
           palette="status"
           totalLabel="requests filed in this window"
+          footer={
+            <div style={{
+              marginTop: '10px',
+              paddingTop: '10px',
+              borderTop: '1px solid #f1f5f9',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '11.5px',
+              color: '#64748b'
+            }}>
+              <span>Average Intake:</span>
+              <span style={{ fontWeight: '700', color: '#0f172a' }}>
+                {(chartScope.length / 6).toFixed(1)} requests / mo
+              </span>
+            </div>
+          }
         />
         <BarCard
-          title="Workload by Category" icon="category" list={chartScope}
-          pick={(r) => r.category} colorPick={(r) => r.status} colorPalette="status"
+          title="Workload by Category"
+          icon="category"
+          list={chartScope}
+          pick={(r) => r.category}
+          colorPick={(r) => r.status}
+          colorPalette="status"
           totalLabel="requests filed"
           onBarClick={() => { onNavigate && onNavigate('job-requests', 'all'); }}
+          footer={
+            <div style={{
+              marginTop: '10px',
+              paddingTop: '10px',
+              borderTop: '1px solid #f1f5f9',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '11.5px',
+              color: '#64748b'
+            }}>
+              <span>Categorized Services:</span>
+              <span style={{ fontWeight: '700', color: '#0f172a' }}>
+                {new Set(chartScope.map(r => r.category || 'General')).size} disciplines
+              </span>
+            </div>
+          }
         />
       </ChartsRow>
 
-      {/* "Needs Your Attention" Strip (Shortcut strip when pending exists) */}
-      {pendingList.length > 0 && (
-        <div style={{
-          background: '#fffbeb',
-          border: '1px solid #fde68a',
-          borderRadius: '14px',
-          padding: '16px 20px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Clock size={16} color="#d97706" />
-              <span style={{ fontSize: '15px', fontWeight: '700', color: '#92400e' }}>Needs Your Attention ({pendingApprovals} Pending Approval)</span>
-            </div>
-            <button
-              onClick={() => onNavigate && onNavigate('job-requests', 'pending')}
-              style={{ background: 'none', border: 'none', color: '#92400e', fontSize: '13.5px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-            >
-              View all pending <ChevronRight size={14} />
-            </button>
+      {/* ── Needs Your Attention Section (Matching Prototype) ── */}
+      <div style={{
+        background: '#fffdf0',
+        border: '1.5px solid #fde68a',
+        borderRadius: '14px',
+        padding: '18px 20px',
+        boxShadow: 'var(--shadow-subtle)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: pendingAttention.length > 0 ? '14px' : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#92400e', fontSize: '15px', fontWeight: '800' }}>
+            <Clock size={18} color="#d97706" />
+            <span>Needs Your Attention ({pendingAttention.length} Pending Approval)</span>
           </div>
+          <button
+            type="button"
+            onClick={() => onNavigate && onNavigate('job-requests', 'pending')}
+            style={{
+              background: 'none', border: 'none', color: '#b45309', fontWeight: '700',
+              fontSize: '13px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px'
+            }}
+          >
+            View all pending <ChevronRight size={14} />
+          </button>
+        </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {pendingList.map(req => (
+        {pendingAttention.length === 0 ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#047857', fontSize: '13.5px', fontWeight: '600', padding: '6px 0' }}>
+            <CheckCircle2 size={18} color="#059669" />
+            <span>All caught up — no pending requests requiring action</span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {pendingAttention.slice(0, 3).map(req => (
               <div
                 key={req.id}
+                onClick={() => handleOpenDetail(req)}
                 style={{
-                  background: '#ffffff',
-                  borderRadius: '10px',
-                  padding: '10px 14px',
-                  border: '1px solid #fef3c7',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
+                  gap: '12px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid #fed7aa',
+                  borderRadius: '10px',
+                  padding: '12px 16px',
+                  cursor: 'pointer',
                   flexWrap: 'wrap',
-                  gap: '12px'
+                  transition: 'border-color 0.15s, box-shadow 0.15s'
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#f59e0b'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(245,158,11,0.12)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#fed7aa'; e.currentTarget.style.boxShadow = 'none'; }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                  <span style={{ fontFamily: 'monospace', fontWeight: '600', color: '#001f9c', fontSize: '13.5px' }}>{req.controlNo || req.ticket_no || req.id}</span>
-                  <div style={{ fontSize: '14px', fontWeight: '500', color: '#0f172a' }}>{req.location} — {req.title}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', minWidth: 0 }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: '700', color: '#001f9c', fontSize: '13px' }}>
+                    {req.controlNo || req.ticket_no || req.id}
+                  </span>
+                  <span style={{ fontSize: '13.5px', fontWeight: '600', color: '#0f172a' }}>
+                    {req.location || 'Campus Facilities'} — {req.title || req.category}
+                  </span>
                   <UrgencyBadge urgency={req.urgency} />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: '400', color: '#64748b' }}>{formatTicketDate(req.date)}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 }}>
+                  <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>
+                    {formatTicketDate(req.date)}
+                  </span>
                   <button
                     type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={() => handleOpenDetail(req)}
-                    title="Review request & assign maintenance personnel"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                    onClick={(e) => { e.stopPropagation(); handleOpenDetail(req); }}
+                    style={{
+                      background: '#071746',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '7px 14px',
+                      fontSize: '12.5px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
                   >
-                    <Eye size={13} /> Review & Assign
+                    <Eye size={13} /> Review &amp; Assign
                   </button>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Main Content Card: Recent Facility Requests Table */}
+      {/* Main Content Card: Open Requests Table (Streamlined 5-Column Layout Matching Prototype) */}
       <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: 'var(--shadow-subtle)' }}>
         {/* Single Toolbar Row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <div>
-            <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Recent Facility Requests</h2>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>Open requests</h2>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -338,27 +567,25 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
 
         {/* Data Table */}
         <div style={{ width: '100%', overflowX: 'auto' }}>
-          <table className="table-nowrap" style={{ width: '100%', minWidth: '720px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+          <table className="table-nowrap" style={{ width: '100%', minWidth: '680px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
             <thead>
               <tr style={{ background: 'var(--bg-sunken)', borderBottom: '1px solid #e2e8f0' }}>
-                <th scope="col" style={{ padding: '12px 14px', fontWeight: '600', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>TRACKING NO.</th>
-                <th scope="col" style={{ padding: '12px 14px', fontWeight: '600', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>LOCATION &amp; ISSUE</th>
+                <th scope="col" style={{ padding: '12px 14px', fontWeight: '600', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>TRACKING NO</th>
+                <th scope="col" style={{ padding: '12px 14px', fontWeight: '600', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>LOCATION</th>
                 <th scope="col" className="col-category" style={{ padding: '12px 14px', fontWeight: '600', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>CATEGORY</th>
-                <th scope="col" style={{ padding: '12px 14px', fontWeight: '600', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>URGENCY</th>
+                <th scope="col" style={{ padding: '12px 14px', fontWeight: '600', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>REQUESTER</th>
                 <th scope="col" style={{ padding: '12px 14px', fontWeight: '600', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>STATUS</th>
-                <th scope="col" style={{ padding: '12px 14px', fontWeight: '600', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>DATE</th>
-                <th scope="col" style={{ padding: '12px 14px', fontWeight: '600', color: '#475569', fontSize: '12px', textTransform: 'uppercase', textAlign: 'right' }}>ACTION</th>
               </tr>
             </thead>
             <tbody>
               {filteredRequisitions.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#64748b', fontWeight: '400' }}>
-                      <ClipboardList size={32} style={{ margin: '0 auto 8px auto', color: '#94a3b8' }} />
-                      <div style={{ fontWeight: '600', color: '#334155' }}>No requests yet</div>
-                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Create a new request to track facility maintenance.</div>
-                    </td>
-                  </tr>
+                <tr>
+                  <td colSpan={5} style={{ padding: '36px', textAlign: 'center', color: '#64748b', fontWeight: '400' }}>
+                    <ClipboardList size={32} style={{ margin: '0 auto 8px auto', color: '#94a3b8' }} />
+                    <div style={{ fontWeight: '600', color: '#334155' }}>No open requests</div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Create a new request to track facility maintenance.</div>
+                  </td>
+                </tr>
               ) : (
                 filteredRequisitions.slice(0, 5).map(req => (
                   <tr
@@ -368,25 +595,21 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-card)'; }}
                     onClick={() => handleOpenDetail(req)}
                   >
-                    <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: '600', color: '#001f9c', fontSize: '13px' }}>{req.controlNo}</td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <div style={{ fontWeight: '500', color: '#0f172a', fontSize: '13px' }}>{req.location}</div>
-                      <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '400' }}>{req.title}</div>
+                    <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: '700', color: '#001f9c', fontSize: '13px' }}>
+                      {req.controlNo || req.ticket_no || req.id}
                     </td>
-                    <td className="col-category" style={{ padding: '12px 14px' }}><CategoryPill category={req.category} /></td>
-                    <td style={{ padding: '12px 14px' }}><UrgencyBadge urgency={req.urgency} /></td>
-                    <td style={{ padding: '12px 14px' }}><StatusBadge status={req.status} /></td>
-                    <td style={{ padding: '12px 14px', color: '#64748b', fontWeight: '400', whiteSpace: 'nowrap' }}>{formatTicketDate(req.date)}</td>
-                    <td style={{ padding: '12px 14px', textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); handleOpenDetail(req); }}
-                        className="btn btn-secondary btn-sm"
-                        title="Review request & assign maintenance personnel"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
-                      >
-                        <Eye size={13} /> Review & Assign
-                      </button>
+                    <td style={{ padding: '12px 14px' }}>
+                      <div style={{ fontWeight: '500', color: '#0f172a', fontSize: '13px' }}>{req.location || 'Campus Facilities'}</div>
+                      {req.title && <div style={{ fontSize: '11.5px', color: '#64748b' }}>{req.title}</div>}
+                    </td>
+                    <td className="col-category" style={{ padding: '12px 14px' }}>
+                      <CategoryPill category={req.category} />
+                    </td>
+                    <td style={{ padding: '12px 14px', color: '#334155', fontWeight: '500', fontSize: '13px' }}>
+                      {req.requestedBy || req.requesterName || req.clientName || 'Staff'}
+                    </td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <StatusBadge status={req.status} />
                     </td>
                   </tr>
                 ))
@@ -448,33 +671,46 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
 
         {/* Recent Activity Feed Card */}
         <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: 'var(--shadow-subtle)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-            <Activity size={18} color="#475569" />
-            <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Recent Activity</h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Activity size={18} color="#475569" />
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Recent Activity</h3>
+            </div>
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => onNavigate('audit-log')}
+                style={{ background: 'none', border: 'none', color: '#001f9c', fontSize: '12.5px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                View all →
+              </button>
+            )}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', marginTop: '6px' }} />
-              <div>
-                <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: '400' }}>Request REQ-2026-004 completed</div>
-                <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '400' }}>By Mark Villanueva — 25 mins ago</div>
+            {recentActivities.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px 12px' }}>
+                <div style={{ fontSize: '13px', fontWeight: '500', color: '#475569' }}>No recent activity</div>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>System actions and requests will appear here as they occur.</div>
               </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#6366f1', marginTop: '6px' }} />
-              <div>
-                <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: '400' }}>REQ-2026-003 assigned to Technician</div>
-                <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '400' }}>By PDAS Director — 2 hours ago</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b', marginTop: '6px' }} />
-              <div>
-                <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: '400' }}>New request filed from CEA Bldg</div>
-                <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '400' }}>By Dr. Elena Ramos — 4 hours ago</div>
-              </div>
-            </div>
+            ) : (
+              recentActivities.map((act) => {
+                const info = formatActivityLabel(act);
+                return (
+                  <div key={act.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0284c7', marginTop: '6px', flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {info.text}
+                      </div>
+                      <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '400' }}>
+                        {info.sub}{act.created_at ? ` — ${timeAgo(act.created_at)}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -484,5 +720,6 @@ export const ExecutiveDashboard = ({ onNavigate }) => {
       <RequestIntake intake={intake} allowActionTaken />
 
     </div>
+    </PageTransition>
   );
 };

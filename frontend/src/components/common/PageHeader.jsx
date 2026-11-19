@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChevronRight, ArrowLeft } from 'lucide-react';
 
-export const PageHeader = ({ breadcrumbs = [], title, description, action, onBack, showBackButton }) => {
+export const PageHeader = ({ breadcrumbs = [], title, description, action, onBack, showBackButton, style, titleStyle }) => {
   const handleBack = () => {
     if (typeof onBack === 'function') {
       onBack();
@@ -13,7 +13,7 @@ export const PageHeader = ({ breadcrumbs = [], title, description, action, onBac
   const shouldShowBack = Boolean(onBack || showBackButton);
 
   return (
-    <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '8px', ...style }}>
       {/* Breadcrumbs */}
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav aria-label="Breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', color: '#64748b', fontWeight: '500' }}>
@@ -41,7 +41,7 @@ export const PageHeader = ({ breadcrumbs = [], title, description, action, onBac
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '7px 14px',
+                padding: '6px 14px',
                 borderRadius: '8px',
                 border: '1px solid #cbd5e1',
                 background: '#ffffff',
@@ -59,11 +59,11 @@ export const PageHeader = ({ breadcrumbs = [], title, description, action, onBac
             </button>
           )}
           <div>
-            <h1 style={{ fontSize: '27px', fontWeight: '700', color: '#0f172a', margin: 0, letterSpacing: '-0.02em', lineHeight: 1.25 }}>
+            <h1 className="page-title" style={{ fontSize: '26px', fontWeight: '800', color: '#071746', margin: '0 0 4px 0', letterSpacing: '-0.025em', lineHeight: 1.2, ...titleStyle }}>
               {title}
             </h1>
             {description && (
-              <p style={{ fontSize: '15px', color: '#64748b', margin: '4px 0 0 0', fontWeight: '400' }}>
+              <p className="page-subtitle" style={{ fontSize: '13.5px', color: '#64748b', margin: 0, fontWeight: '400', lineHeight: 1.4 }}>
                 {description}
               </p>
             )}

@@ -1,104 +1,171 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+
 import isatuLogo from '../../assets/isatu-logo.png';
 import { SCOPE_SECTIONS } from '../../utils/jobRequestIntake';
-import { PDAS_HEAD_TITLE, APPROVER_TITLE, signatoryName, approvalStamp, formatGovTimestamp } from '../../utils/approvalSignatures';
+import { PDAS_HEAD_NAME, CAMPUS_ADMIN_NAME, PDAS_HEAD_TITLE, APPROVER_TITLE, approvalStamp, formatGovTimestamp, formatDateMDY } from '../../utils/approvalSignatures';
 import { useData } from '../../context/DataContext';
 
-// Print-safe QF-PDAS-DC-01 sheet. Simple, aligned, black-and-white.
-// Used inside a .print-only wrapper so window.print() outputs only this sheet.
+// Official Print-safe QF-PDAS-DC-01 sheet.
+// Matches the official university document standard (ISAT U Dumangas Campus).
 export const JobRequestPrintSheet = ({ req, customConfig = null }) => {
   const { formTemplateConfig } = useData() || {};
   const tpl = customConfig || formTemplateConfig || {};
-  const [qrUrl, setQrUrl] = useState('');
-  const tracking = req?.controlNo || 'PENDING, issued when the work order is assigned';
+  const tracking = req?.controlNo || req?.ticket_no || req?.id || 'PENDING, issued when the work order is assigned';
 
-  // Verification QR for the printed hardcopy. The payload MUST match the one
-  // the server embeds in the DOCX/PDF (docxJobRequestGenerator.js) or a scanned
-  // QR resolves differently depending on which output it came from.
-  useEffect(() => {
-    if (!req) return;
-    let live = true;
-    const payload = `FIXIT-REQ:${tracking}`;
-    import('qrcode')
-      .then((m) => (m.default || m).toDataURL(payload, { width: 96, margin: 1 }))
-      .then((url) => { if (live) setQrUrl(url); })
-      .catch(() => {});
-    return () => { live = false; };
-  }, [req, tracking]);
+
 
   if (!req) return null;
   const scope = req.scopeOfWorks || {};
   const actionTaken = req.actionTaken || {};
   const finalAction = req.finalAction || {};
 
-  /* Signatories. A personal name is printed only when the form or the database
-     actually recorded one; otherwise the line stays blank for wet ink and the
-     stamp is suppressed entirely. */
-  const pdasSignatory = signatoryName(actionTaken.pdasHeadName, req.pdasHeadName);
+  /* Approval stamps — only rendered when the database recorded an actual approval. */
   const pdasStamp = approvalStamp(actionTaken.pdasHeadName, req.pdasHeadName);
-  // Show stamp ONLY when that specific approver has actually clicked Approve.
-  // Status-based fallbacks are intentionally removed — they caused stamps to
-  // appear for approvers who had not yet acted on the request.
   const pdasApproved = Boolean(req.adminApproved);
-  const approverSignatory = signatoryName(finalAction.approverName, req.approverName);
   const approverStamp = approvalStamp(finalAction.approverName, req.approverName);
   const approverApproved = Boolean(req.campusAdminApproved);
 
+  // Immediate supervisor display name & electronic approval resolution
+  const resolveSupervisorName = (sup, fallback) => {
+    if (!sup) return '';
+    const clean = String(sup).trim();
+    if (clean.includes('@')) {
+      if (/campusadmin|admin/i.test(clean)) {
+        return fallback || 'Dr. Ramil G. Lumauag';
+      }
+      return fallback || clean.split('@')[0];
+    }
+    return clean;
+  };
+  const supervisorDisplay = resolveSupervisorName(req.immediateSupervisor, req.requestedBy);
+  const isSupervisorElectronicallyApproved = Boolean(
+    req.supervisorApproved ||
+    (req.campusAdminApproved && ['Approved', 'Ongoing', 'Completed', 'On Hold'].includes(req.status) &&
+      (req.immediateSupervisor === req.requestedBy || /campusadmin|lumauag/i.test(req.immediateSupervisor || '') || /campusadmin|lumauag/i.test(req.requestedBy || '')))
+  );
+  const supervisorApprovalDate = req.supervisorApprovedAt || req.campusAdminApprovedAt || req.requesterApprovedAt;
+
   const hasOpt = (key, opt) => {
+    // 1. Direct match in scope[key].options
     const sec = scope[key];
     if (sec?.options && Array.isArray(sec.options) && sec.options.length > 0) {
-      return sec.options.includes(opt);
+      if (sec.options.some(o => String(o).trim().toLowerCase() === String(opt).trim().toLowerCase())) {
+        return true;
+      }
     }
-    const catMap = {
-      drawingDesign: 'Drawing/Design',
-      physicalStructures: 'Physical Structures',
-      electrical: 'Electrical',
-      mechanical: 'Mechanical',
-      waterSanitary: 'Water/Sanitary',
-      airConditioning: 'Air Conditioning'
-    };
-    if (req.category === catMap[key]) {
-      if (!sec || !sec.options || sec.options.length === 0) {
-        return opt === 'Rehabilitation/Repair' || opt === 'Repair' || opt === 'Floor Plans' || opt === 'Perspective';
+
+    // 2. Identify trade category from category or title/description
+    const cat = String(req.category || '').toLowerCase();
+    const titleDesc = `${String(req.title || '')} ${String(req.description || '')} ${String(req.notes || '')}`.toLowerCase();
+
+    const isKeyTrade =
+      (key === 'electrical' && (cat.includes('elect') || titleDesc.includes('elect') || titleDesc.includes('wire') || titleDesc.includes('wiring') || titleDesc.includes('outlet') || titleDesc.includes('light') || titleDesc.includes('breaker') || titleDesc.includes('spark') || titleDesc.includes('switch') || titleDesc.includes('power') || titleDesc.includes('circuit'))) ||
+      (key === 'airConditioning' && (cat.includes('air') || cat.includes('ac') || cat.includes('cooling') || titleDesc.includes('aircon') || titleDesc.includes('ac ') || titleDesc.includes('inverter') || titleDesc.includes('cooling') || titleDesc.includes('hvac'))) ||
+      (key === 'mechanical' && (cat.includes('mech') || titleDesc.includes('engine') || titleDesc.includes('machine') || titleDesc.includes('pump') || titleDesc.includes('motor') || titleDesc.includes('generator'))) ||
+      (key === 'waterSanitary' && (cat.includes('water') || cat.includes('plumb') || cat.includes('sanitary') || titleDesc.includes('pipe') || titleDesc.includes('faucet') || titleDesc.includes('leak') || titleDesc.includes('drain') || titleDesc.includes('toilet') || titleDesc.includes('sink') || titleDesc.includes('clog'))) ||
+      (key === 'physicalStructures' && (cat.includes('phys') || cat.includes('struct') || cat.includes('carpentr') || titleDesc.includes('door') || titleDesc.includes('window') || titleDesc.includes('roof') || titleDesc.includes('ceiling') || titleDesc.includes('wall') || titleDesc.includes('tile') || titleDesc.includes('desk') || titleDesc.includes('chair') || titleDesc.includes('floor') || titleDesc.includes('masonry'))) ||
+      (key === 'drawingDesign' && (cat.includes('draw') || cat.includes('design') || cat.includes('plan') || titleDesc.includes('blueprint') || titleDesc.includes('cad') || titleDesc.includes('drawing')));
+
+    if (isKeyTrade) {
+      if (sec?.options && Array.isArray(sec.options) && sec.options.length > 0) {
+        return sec.options.some(o => String(o).trim().toLowerCase() === String(opt).trim().toLowerCase());
+      }
+      const isInstallation = /install|new /i.test(titleDesc);
+      const isRehab = /rehab|renovat/i.test(titleDesc);
+
+      if (opt === 'Repair' || opt === 'Rehabilitation/Repair') {
+        return !isInstallation || /repair|fix|broken|defective|damaged|troubleshoot|spark|leak|burnt|replace/i.test(titleDesc);
+      }
+      if (opt === 'New Installation' || opt === 'New Structure') {
+        return isInstallation;
+      }
+      if (opt === 'Rehabilitation' || opt === 'Renovation') {
+        return isRehab;
+      }
+      if (opt === 'Floor Plans' || opt === 'Perspective') {
+        return key === 'drawingDesign';
       }
     }
     return false;
   };
-  const descOf = (key) => scope[key]?.description || '';
-  const compliedOf = (key) => scope[key]?.dateComplied || '';
 
-  const cell = { border: '1px solid #000', padding: '5px 7px', fontSize: '11px', verticalAlign: 'top' };
+  const descOf = (key) => {
+    if (scope[key]?.description) return scope[key].description;
+    const cat = String(req.category || '').toLowerCase();
+    const titleDesc = `${String(req.title || '')} ${String(req.description || '')}`.toLowerCase();
+    const matchesTrade =
+      (key === 'electrical' && (cat.includes('elect') || titleDesc.includes('elect') || titleDesc.includes('wire') || titleDesc.includes('outlet') || titleDesc.includes('light') || titleDesc.includes('spark'))) ||
+      (key === 'airConditioning' && (cat.includes('air') || cat.includes('ac') || titleDesc.includes('aircon') || titleDesc.includes('cooling'))) ||
+      (key === 'mechanical' && (cat.includes('mech') || titleDesc.includes('engine') || titleDesc.includes('machine') || titleDesc.includes('pump') || titleDesc.includes('motor'))) ||
+      (key === 'waterSanitary' && (cat.includes('water') || cat.includes('plumb') || titleDesc.includes('pipe') || titleDesc.includes('faucet') || titleDesc.includes('leak'))) ||
+      (key === 'physicalStructures' && (cat.includes('phys') || cat.includes('struct') || titleDesc.includes('door') || titleDesc.includes('roof') || titleDesc.includes('wall') || titleDesc.includes('window'))) ||
+      (key === 'drawingDesign' && (cat.includes('draw') || cat.includes('design')));
+    return matchesTrade ? (req.description || '') : '';
+  };
+
+  const compliedOf = (key) => {
+    if (scope[key]?.dateComplied) return scope[key].dateComplied;
+    if (req.status === 'Completed' && descOf(key)) {
+      return (req.completed_at || req.completedAt || req.date || '').slice(0, 10);
+    }
+    return '';
+  };
+
+  const cell = { border: '1px solid #000', padding: '4px 6px', fontSize: '10.5px', verticalAlign: 'top' };
   const fontFamily = tpl.fontFamily === 'sans'
-    ? "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    ? "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif"
     : '"Times New Roman", Times, serif';
 
   return (
-    <div className="jr-print-sheet" style={{ background: '#fff', color: '#000', fontFamily, width: '100%' }}>
-      {/* Header */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', border: '1.5px solid #000', marginBottom: '10px' }}>
+    <div
+      className="jr-print-sheet"
+      style={{
+        background: '#ffffff',
+        color: '#000000',
+        fontFamily,
+        width: '100%',
+        maxWidth: '780px',
+        margin: '0 auto',
+        border: '1.5px solid #000000',
+        padding: '20px 24px',
+        boxSizing: 'border-box',
+        fontSize: '11px',
+        lineHeight: 1.35
+      }}
+    >
+      {/* 1. Header Box */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', border: '1.5px solid #000', tableLayout: 'fixed', marginBottom: '12px' }}>
         <tbody>
           <tr>
-            <td style={{ ...cell, width: '72px', textAlign: 'center' }}>
+            <td style={{ ...cell, width: '70px', textAlign: 'center', borderRight: '1.5px solid #000' }}>
               <img
                 src={tpl.customLogoUrl || isatuLogo}
                 alt="Logo"
-                style={{ width: '52px', height: '52px', objectFit: 'contain' }}
+                style={{
+                  width: `${tpl.logoWidth || 50}px`,
+                  height: `${tpl.logoWidth || 50}px`,
+                  objectFit: 'contain',
+                  transform: tpl.logoOffsetX || tpl.logoOffsetY ? `translate(${tpl.logoOffsetX || 0}px, ${tpl.logoOffsetY || 0}px)` : 'none'
+                }}
                 onError={(e) => { e.target.style.display = 'none'; }}
               />
             </td>
-            <td style={{ ...cell, textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', textTransform: 'uppercase' }}>{tpl.republicLine || 'Republic of the Philippines'}</div>
-              <div style={{ fontSize: '13px', fontWeight: 'bold' }}>{tpl.institutionName || 'ILOILO SCIENCE AND TECHNOLOGY UNIVERSITY'}</div>
-              <div style={{ fontSize: '11px', fontWeight: 'bold' }}>{tpl.campusName || 'DUMANGAS CAMPUS'}</div>
+            <td style={{ ...cell, textAlign: 'center', borderRight: '1.5px solid #000', padding: '6px 8px' }}>
+              <div style={{ fontSize: '9.5px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>{tpl.republicLine || 'Republic of the Philippines'}</div>
+              <div style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>{tpl.institutionName || 'ILOILO SCIENCE AND TECHNOLOGY UNIVERSITY'}</div>
+              <div style={{ fontSize: '10.5px', fontWeight: 'bold', textTransform: 'uppercase' }}>{tpl.campusName || 'DUMANGAS CAMPUS'}</div>
               <div style={{ fontSize: '9px' }}>{tpl.campusAddress || 'P.D. Monfort South, Dumangas, Iloilo'}</div>
-              <div style={{ fontSize: '12px', fontWeight: 'bold', marginTop: '3px' }}>{tpl.documentTitle || 'JOB REQUEST FOR REPAIR, MAINTENANCE AND CONSTRUCTION'}</div>
+              <div style={{ fontSize: '11.5px', fontWeight: 'bold', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.01em' }}>
+                {tpl.documentTitle || 'JOB REQUEST FOR REPAIR, MAINTENANCE AND CONSTRUCTION'}
+              </div>
             </td>
             <td style={{ width: '190px', padding: 0, verticalAlign: 'top' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9.5px', tableLayout: 'fixed' }}>
                 <tbody>
-                  <tr><td style={{ ...cell, fontWeight: 'bold' }}>{tpl.department || 'Department: PDAS'}</td></tr>
-                  <tr><td style={cell}>Document Code: <strong>{tpl.documentCode || 'QF-PDAS-DC-01'}</strong></td></tr>
-                  <tr><td style={cell}>Revision: {tpl.revisionNo || '00'}<br />Effective Date: {tpl.effectiveDate || 'February 3, 2025'}</td></tr>
+                  <tr><td style={{ ...cell, borderTop: 'none', borderRight: 'none', borderLeft: 'none', fontWeight: 'bold' }}>Department: PDAS</td></tr>
+                  <tr><td style={{ ...cell, borderRight: 'none', borderLeft: 'none' }}>Document Code: <strong>{tpl.documentCode || 'QF-PDAS-DC-01'}</strong></td></tr>
+                  <tr><td style={{ ...cell, borderRight: 'none', borderLeft: 'none' }}>Revision Number: {tpl.revisionNo || '00'}</td></tr>
+                  <tr><td style={{ ...cell, borderBottom: 'none', borderRight: 'none', borderLeft: 'none' }}>Effective Date: {tpl.effectiveDate || 'February 3, 2025'}</td></tr>
                 </tbody>
               </table>
             </td>
@@ -106,137 +173,235 @@ export const JobRequestPrintSheet = ({ req, customConfig = null }) => {
         </tbody>
       </table>
 
-      {/* Meta */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '10px', fontSize: '11.5px' }}>
+      {/* 2. Meta Requester Fields */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '10px', fontSize: '11px', lineHeight: '1.5', tableLayout: 'fixed' }}>
         <tbody>
           <tr>
-            <td style={{ padding: '3px 0', width: '55%', verticalAlign: 'top' }}>
-              <strong>{tpl.trackingLabel || 'Tracking Number:'}</strong> <u><strong>{tracking}</strong></u>
+            <td style={{ padding: '2px 0', width: '60%', verticalAlign: 'middle' }}>
+              <div>
+                <div><strong>Tracking Number:</strong> <span style={{ textDecoration: 'underline', fontWeight: 'bold' }}>{tracking}</span></div>
+              </div>
             </td>
-            <td style={{ padding: '3px 0', width: '45%', verticalAlign: 'top' }}>
-              <strong>{tpl.dateLabel || 'Date of Request:'}</strong> <u>{req.date || ''}</u>
+            <td style={{ padding: '2px 0', width: '40%', verticalAlign: 'middle', textAlign: 'right' }}>
+              <strong>Date of Request:</strong> <span style={{ textDecoration: 'underline' }}>{req.date ? formatDateMDY(req.date) : '________________________'}</span>
             </td>
           </tr>
           <tr>
-            <td style={{ padding: '3px 0', verticalAlign: 'top' }}>
-              <strong>{tpl.clientNameLabel || 'Name of Client:'}</strong> <u>{req.requestedBy || ''}</u>
+            <td colSpan={2} style={{ padding: '2px 0', verticalAlign: 'top' }}>
+              <strong>Name of Client:</strong> <span style={{ textDecoration: 'underline' }}>{req.requestedBy || '________________________________________________'}</span>
               {req.requesterApproved && (
-                <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10px', fontStyle: 'italic', marginTop: '2px' }}>
+                <div style={{ color: '#1e40af', fontWeight: '600', fontSize: '9px', paddingLeft: '2px', marginTop: '1px' }}>
                   ✓ Electronically signed: {req.requestedBy || 'Requester'}{req.requesterApprovedAt ? ` on ${formatGovTimestamp(req.requesterApprovedAt)}` : ''}
                 </div>
               )}
             </td>
-            <td style={{ padding: '3px 0', verticalAlign: 'top' }}></td>
           </tr>
           <tr>
-            <td style={{ padding: '3px 0', verticalAlign: 'top' }}>
-              <strong>{tpl.clientOfficeLabel || 'Office of Client:'}</strong> <u>{req.department || req.office || ''}</u>
-            </td>
-            <td style={{ padding: '3px 0', verticalAlign: 'top' }}>
-              {req.location && (
-                <span><strong>{tpl.locationLabel || 'Location:'}</strong> <u>{req.location}</u></span>
-              )}
+            <td colSpan={2} style={{ padding: '2px 0', verticalAlign: 'top' }}>
+              <strong>Office of Client:</strong> <span style={{ textDecoration: 'underline' }}>{req.location || req.department || req.office || '________________________________________________'}</span>
             </td>
           </tr>
           <tr>
-            <td style={{ padding: '3px 0', verticalAlign: 'top' }}>
-              <strong>{tpl.supervisorLabel || 'Immediate Supervisor:'}</strong> <u>{req.immediateSupervisor || ''}</u>
-              {req.supervisorApproved && (
-                <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10px', fontStyle: 'italic', marginTop: '2px' }}>
-                  ✓ Electronically approved: {req.immediateSupervisor || 'Immediate Supervisor'}{req.supervisorApprovedAt ? ` on ${formatGovTimestamp(req.supervisorApprovedAt)}` : ''}
+            <td colSpan={2} style={{ padding: '2px 0', verticalAlign: 'top' }}>
+              <strong>Immediate Supervisor:</strong> <span style={{ textDecoration: 'underline' }}>{supervisorDisplay || '________________________________________________'}</span>
+              {isSupervisorElectronicallyApproved && (
+                <div style={{ color: '#1e40af', fontWeight: '600', fontSize: '9px', paddingLeft: '2px', marginTop: '1px' }}>
+                  ✓ Electronically signed: {supervisorDisplay || 'Immediate Supervisor'}{supervisorApprovalDate ? ` on ${formatGovTimestamp(supervisorApprovalDate)}` : ''}
                 </div>
               )}
             </td>
-            <td style={{ padding: '3px 0', verticalAlign: 'top' }}></td>
           </tr>
-          {req.contactNumber && (
-            <tr>
-              <td colSpan={2} style={{ padding: '3px 0', verticalAlign: 'top' }}>
-                <strong>Contact:</strong> <u>{req.contactNumber}</u>
-              </td>
-            </tr>
-          )}
         </tbody>
       </table>
 
-      <div style={{ border: '1.5px solid #000', textAlign: 'center', fontWeight: 'bold', fontSize: '11px', padding: '3px' }}>AREAS / SCOPE OF WORKS</div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', border: '1.5px solid #000', borderTop: 'none', marginBottom: '10px' }}>
+      {/* 3. Areas / Scope of Works Header */}
+      <div style={{
+        border: '1.5px solid #000',
+        background: 'var(--bg-sunken)',
+        textAlign: 'center',
+        fontWeight: 'bold',
+        fontSize: '11px',
+        padding: '3px 0',
+        letterSpacing: '0.04em'
+      }}>
+        AREAS / SCOPE OF WORKS
+      </div>
+
+      {/* 4. 2-Column Scope of Works Table: Left [1, 3, 5], Right [2, 4, 6] */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', border: '1.5px solid #000', borderTop: 'none', marginBottom: '10px', tableLayout: 'fixed' }}>
         <tbody>
-          {[0, 2, 4].map(row => (
-            <tr key={row}>
-              {[SCOPE_SECTIONS[row], SCOPE_SECTIONS[row + 1]].map((sec, i) => (
-                <td key={sec.key} style={{ ...cell, width: '50%', borderRight: i === 0 ? '1.5px solid #000' : undefined }}>
-                  <div style={{ fontWeight: 'bold', marginBottom: '3px' }}>{sec.label}</div>
-                  {sec.options.map(opt => (
-                    <div key={opt} style={{ fontSize: '10.5px' }}>[{hasOpt(sec.key, opt) ? 'x' : ' '}] {opt}</div>
-                  ))}
-                  <div style={{ fontSize: '10.5px', marginTop: '3px' }}><strong>Description:</strong> {descOf(sec.key) || (req.category && sec.label.includes(req.category.split('/')[0].toUpperCase()) ? req.description : '') || '—'}</div>
-                  <div style={{ fontSize: '10.5px' }}><strong>Date Complied:</strong> {compliedOf(sec.key) || '—'}</div>
+          {[0, 2, 4].map(row => {
+            const leftSec = SCOPE_SECTIONS[row];
+            const rightSec = SCOPE_SECTIONS[row + 1];
+            return (
+              <tr key={row}>
+                {/* Left Trade Column */}
+                <td style={{ ...cell, width: '50%', borderRight: '1.5px solid #000', padding: '6px 8px' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '3px', textTransform: 'uppercase' }}>{leftSec.label}</div>
+                  <div style={{ paddingLeft: '8px' }}>
+                    {leftSec.options.map(opt => (
+                      <div key={opt} style={{ fontSize: '10px', lineHeight: 1.35, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>[{hasOpt(leftSec.key, opt) ? '✓' : ' '}]</span>
+                        <span>{opt}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '10px', marginTop: '4px' }}>
+                    <strong>Description of Work:</strong> <span style={{ textDecoration: 'underline' }}>{descOf(leftSec.key) || '____________________'}</span>
+                  </div>
+                  <div style={{ fontSize: '10px', marginTop: '2px' }}>
+                    <strong>Date Complied:</strong> <span style={{ textDecoration: 'underline' }}>{compliedOf(leftSec.key) || '____________________'}</span>
+                  </div>
                 </td>
-              ))}
-            </tr>
-          ))}
+
+                {/* Right Trade Column */}
+                <td style={{ ...cell, width: '50%', padding: '6px 8px' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '3px', textTransform: 'uppercase' }}>{rightSec.label}</div>
+                  <div style={{ paddingLeft: '8px' }}>
+                    {rightSec.options.map(opt => (
+                      <div key={opt} style={{ fontSize: '10px', lineHeight: 1.35, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>[{hasOpt(rightSec.key, opt) ? '✓' : ' '}]</span>
+                        <span>{opt}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '10px', marginTop: '4px' }}>
+                    <strong>Description of Work:</strong> <span style={{ textDecoration: 'underline' }}>{descOf(rightSec.key) || '____________________'}</span>
+                  </div>
+                  <div style={{ fontSize: '10px', marginTop: '2px' }}>
+                    <strong>Date Complied:</strong> <span style={{ textDecoration: 'underline' }}>{compliedOf(rightSec.key) || '____________________'}</span>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
-      {/* Action Taken */}
-      <div style={{ border: '1.5px solid #000', padding: '6px 8px', marginBottom: '10px', fontSize: '11px' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>ACTION TAKEN:</div>
-        <div>[{actionTaken.endorsedDesignTeam?.checked ? 'x' : ' '}] <strong>Endorsed to Design Team</strong> — [{actionTaken.endorsedDesignTeam?.detailedPlan ? 'x' : ' '}] Detailed Plan [{actionTaken.endorsedDesignTeam?.powBoq ? 'x' : ' '}] POW & BOQ &nbsp; Received by: <u>{actionTaken.endorsedDesignTeam?.receivedBy || '__________'}</u> Date: <u>{actionTaken.endorsedDesignTeam?.date || '____'}</u></div>
-        <div>[{actionTaken.endorsedGSMHead?.checked ? 'x' : ' '}] <strong>Endorsed to GSM Head for Work Order</strong> &nbsp; Received by: <u>{actionTaken.endorsedGSMHead?.receivedBy || req.assignedTo || '__________'}</u> Date: <u>{actionTaken.endorsedGSMHead?.date || req.date || '____'}</u></div>
-        <div>[{actionTaken.returnedToClient?.checked ? 'x' : ' '}] <strong>Returned to Client</strong> — {actionTaken.returnedToClient?.reason || 'Request cannot be done / PR / JR as per remarks'} &nbsp; Remarks: <u>{actionTaken.returnedToClient?.remarks || req.notes || 'None'}</u></div>
-        <div style={{ textAlign: 'center', marginTop: '10px' }}>
-          <div style={{ fontWeight: 'bold' }}><u>{pdasSignatory}</u></div>
-          <div style={{ fontSize: '10px' }}>{tpl.pdasHeadTitle || PDAS_HEAD_TITLE}</div>
+      {/* 5. ACTION TAKEN Section */}
+      <div style={{ border: '1.5px solid #000', padding: '7px 10px', marginBottom: '10px', fontSize: '10.5px' }}>
+        <div style={{ fontWeight: 'bold', marginBottom: '6px', textTransform: 'uppercase' }}>ACTION TAKEN:</div>
+
+        {/* Option 1: Endorsed to Design Team */}
+        <div style={{ marginBottom: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '4px' }}>
+            <div style={{ fontWeight: 'bold' }}>
+              [{actionTaken.endorsedDesignTeam?.checked ? '✓' : ' '}] Endorsed to Design Team for preparations of:
+            </div>
+            <div>
+              Received by: <span style={{ textDecoration: 'underline' }}>{actionTaken.endorsedDesignTeam?.receivedBy || '________________________'}</span> &nbsp;&nbsp; Date: <span style={{ textDecoration: 'underline' }}>{actionTaken.endorsedDesignTeam?.date ? formatDateMDY(actionTaken.endorsedDesignTeam.date) : '__________'}</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '4px' }}>
+            <div style={{ paddingLeft: '22px', fontSize: '10px' }}>
+              <div>[{actionTaken.endorsedDesignTeam?.detailedPlan ? '✓' : ' '}] Detailed Plan</div>
+              <div>[{actionTaken.endorsedDesignTeam?.powBoq ? '✓' : ' '}] Program of Works and Bill of Quantities</div>
+            </div>
+            <div style={{ fontSize: '9px', color: '#475569', textAlign: 'center', width: '220px', borderTop: '1px solid #555', paddingTop: '1px' }}>
+              Name and Signature
+            </div>
+          </div>
+        </div>
+
+        {/* Option 2: Endorsed to GSM Head */}
+        <div style={{ marginBottom: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '4px' }}>
+            <div style={{ fontWeight: 'bold' }}>
+              [{actionTaken.endorsedGSMHead?.checked || Boolean(req.assignedTo || req.assignedToId || req.assigned_to) || ['Ongoing', 'Completed'].includes(req.status) ? '✓' : ' '}] Endorsed to GSM Head for issuance of Work Order
+            </div>
+            <div>
+              Received by: <span style={{ textDecoration: 'underline' }}>{actionTaken.endorsedGSMHead?.receivedBy || req.assignedTo || '________________________'}</span> &nbsp;&nbsp; Date: <span style={{ textDecoration: 'underline' }}>{actionTaken.endorsedGSMHead?.date ? formatDateMDY(actionTaken.endorsedGSMHead.date) : (req.date ? formatDateMDY(req.date) : '__________')}</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ fontSize: '9px', color: '#475569', textAlign: 'center', width: '220px', borderTop: '1px solid #555', paddingTop: '1px' }}>
+              Name and Signature
+            </div>
+          </div>
+        </div>
+
+        {/* Option 3: Returned to Client — filled by PDAS Head / System Administrator */}
+        <div style={{ marginBottom: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '4px' }}>
+            <div style={{ fontWeight: 'bold' }}>
+              [{actionTaken.returnedToClient?.checked || req.status === 'Returned' ? '✓' : ' '}] Returned to Client for:
+            </div>
+            <div>
+              Received by: <span style={{ textDecoration: 'underline' }}>{actionTaken.returnedToClient?.receivedBy || '________________________'}</span> &nbsp;&nbsp; Date: <span style={{ textDecoration: 'underline' }}>{actionTaken.returnedToClient?.date ? formatDateMDY(actionTaken.returnedToClient.date) : '__________'}</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '4px' }}>
+            <div style={{ paddingLeft: '22px', fontSize: '10px' }}>
+              <div>[ ] Request cannot be done as per remarks</div>
+              <div>[ ] Preparation of Purchase Request (PR) for materials needed {req.replacementFlag?.isFlagged ? '(FLAGGED)' : ''}</div>
+              <div>[ ] Preparation of Job Request (JR) for procurement</div>
+            </div>
+            <div style={{ fontSize: '9px', color: '#475569', textAlign: 'center', width: '220px', borderTop: '1px solid #555', paddingTop: '1px' }}>
+              Name and Signature
+            </div>
+          </div>
+          <div style={{ fontSize: '8.5px', color: '#64748b', fontStyle: 'italic', marginTop: '3px', paddingLeft: '2px' }}>
+            * To be filled in by the PDAS Head / System Administrator after receipt of the request.
+          </div>
+        </div>
+
+        <div style={{ marginTop: '4px', fontSize: '10.5px', lineHeight: 1.5 }}>
+          <strong>Remarks:</strong>{' '}
+          <span style={{ textDecoration: 'underline' }}>
+            {req.materialsUsed || req.materials_used ? (
+              <>
+                <strong>Materials Used:</strong> {req.materialsUsed || req.materials_used}
+                {(actionTaken.returnedToClient?.remarks || req.notes || req.technicianNotes) ? (
+                  <> &nbsp;|&nbsp; <strong>Work Notes:</strong> {req.technicianNotes || actionTaken.returnedToClient?.remarks || req.notes}</>
+                ) : null}
+              </>
+            ) : (
+              actionTaken.returnedToClient?.remarks || req.notes || req.technicianNotes || '____________________________________________________________________________________'
+            )}
+          </span>
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: '16px' }}>
           {pdasApproved && pdasStamp && (
-            <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10px', fontStyle: 'italic', marginTop: '3px' }}>
-              ✓ Electronically approved: {pdasStamp}{req.adminApprovedAt ? ` on ${formatGovTimestamp(req.adminApprovedAt)}` : ''}
+            <div style={{ color: '#1e40af', fontWeight: '600', fontSize: '9px', marginBottom: '6px' }}>
+              ✓ Electronically signed: {pdasStamp}{req.adminApprovedAt ? ` on ${formatGovTimestamp(req.adminApprovedAt)}` : ''}
             </div>
           )}
+          <div style={{ fontWeight: 'bold', fontSize: '11.5px', letterSpacing: '0.02em' }}>{PDAS_HEAD_NAME}</div>
+          <div style={{ borderTop: '1px solid #000', width: '220px', margin: '2px auto 2px' }} />
+          <div style={{ fontSize: '10px', fontWeight: 'bold' }}>Head, PDAS</div>
+          <div style={{ fontSize: '9.5px', color: '#334155' }}>Director, Planning Development and Auxiliary Services</div>
         </div>
       </div>
 
-      {/* Optional Defect Photo Reference */}
-      {tpl.showDefectPhoto && req.photoUrl && (
-        <div style={{ border: '1px solid #000', padding: '6px 8px', marginBottom: '10px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <img src={req.photoUrl} alt="Defect" style={{ width: '56px', height: '56px', objectFit: 'cover', border: '1px solid #000' }} />
+      {/* 6. FINAL ACTION Section */}
+      <div style={{ border: '1.5px solid #000', padding: '7px 10px', fontSize: '10.5px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+            <span style={{ fontWeight: 'bold', textTransform: 'uppercase' }}>FINAL ACTION:</span>
+            <span>[{finalAction.status === 'Approved' || ['Approved', 'Ongoing', 'Completed'].includes(req.status) ? '✓' : ' '}] Approved</span>
+            <span>[{finalAction.status === 'Disapproved' || req.status === 'Rejected' || req.status === 'Returned' ? '✓' : ' '}] Disapproved</span>
+          </div>
           <div>
-            <strong>Attached Visual Defect Reference:</strong> {req.photoName || 'Client Photo Evidence'}
+            <strong>Remarks:</strong> <span style={{ textDecoration: 'underline' }}>{finalAction.remarks || '__________________________________'}</span>
           </div>
         </div>
-      )}
 
-      {/* Final Action */}
-      <div style={{ border: '1.5px solid #000', padding: '6px 8px', fontSize: '11px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-          <div><strong>FINAL ACTION:</strong> [{finalAction.status === 'Approved' || ['Approved', 'Ongoing', 'Completed'].includes(req.status) ? 'x' : ' '}] Approved [{finalAction.status === 'Disapproved' || req.status === 'Rejected' || req.status === 'Returned' ? 'x' : ' '}] Disapproved</div>
-          <div>Remarks: <u>{finalAction.remarks || 'N/A'}</u></div>
-        </div>
-        <div style={{ textAlign: 'center', marginTop: '10px' }}>
-          <div style={{ fontWeight: 'bold' }}><u>{approverSignatory}</u></div>
-          <div style={{ fontSize: '10px' }}>{tpl.approverTitle || APPROVER_TITLE}</div>
+        <div style={{ textAlign: 'center', marginTop: '16px' }}>
           {approverApproved && approverStamp && (
-            <div style={{ color: '#002699', fontWeight: 'bold', fontSize: '10px', fontStyle: 'italic', marginTop: '3px' }}>
-              ✓ Electronically approved: {approverStamp}{req.campusAdminApprovedAt ? ` on ${formatGovTimestamp(req.campusAdminApprovedAt)}` : ''}
+            <div style={{ color: '#1e40af', fontWeight: '600', fontSize: '9px', marginBottom: '6px' }}>
+              ✓ Electronically signed: {approverStamp}{req.campusAdminApprovedAt ? ` on ${formatGovTimestamp(req.campusAdminApprovedAt)}` : ''}
             </div>
           )}
+          <div style={{ fontWeight: 'bold', fontSize: '11.5px', letterSpacing: '0.02em' }}>{CAMPUS_ADMIN_NAME}</div>
+          <div style={{ borderTop: '1px solid #000', width: '220px', margin: '2px auto 2px' }} />
+          <div style={{ fontSize: '10px', fontWeight: 'bold' }}>{tpl.approverTitle || APPROVER_TITLE}</div>
         </div>
-        <div style={{ fontSize: '9px', textAlign: 'right', marginTop: '6px' }}>{tpl.copyDistribution || 'Copy distribution: 1 – PDAS, 1 – GSM, 1 – Client'}</div>
-        <div style={{ fontSize: '8.5px', marginTop: '6px', paddingTop: '5px', borderTop: '1px dashed #000', color: '#334155', fontStyle: 'italic', textAlign: 'center', lineHeight: 1.35 }}>
-          <strong>Notice / Disclaimer:</strong> {tpl.disclaimerNotice || 'The electronic approvals recorded on this form are internal, timestamped, auditable administrative confirmations and do not constitute legally binding digital signatures. This official document is automatically generated and archived for university facility audit, inventory, and official printing.'}
+
+        <div style={{ fontSize: '9px', textAlign: 'right', marginTop: '6px', color: '#475569' }}>
+          {tpl.copyDistribution || 'Copy distribution: 1 – PDAS, 1 – GSM, 1 – Client'}
         </div>
       </div>
-
-      {/* Verification strip — scan the hardcopy to check it against the record */}
-      {tpl.showVerificationQr !== false && qrUrl && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', border: '1px solid #000', padding: '5px 8px' }}>
-          <img src={qrUrl} alt="Verification QR" style={{ width: '56px', height: '56px' }} />
-          <div style={{ fontSize: '10px', lineHeight: 1.5 }}>
-            <div><strong>Verify this form:</strong> {tpl.verificationText || `scan to check tracking ${tracking} against the PDAS record.`}</div>
-            <div>{tpl.documentCode || 'QF-PDAS-DC-01'} • {tpl.campusName || 'ISAT U Dumangas Campus'}</div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -1,15 +1,18 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import pool from '../config/db.js';
 import { verifyToken, revokeToken, invalidateUserCache } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { auditLog } from '../utils/auditLog.js';
+import { sendPasswordResetOtpEmail, sendPasswordResetSuccessEmail } from '../utils/emailService.js';
 
 const router = Router();
 
 const loginLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 const registerLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
+const otpLimiter = rateLimit({ windowMs: 60 * 1000, max: 5 });
 
 // Phase 2: password rules — minimum 8 chars with at least one letter and number.
 function passwordError(password) {
@@ -55,29 +58,20 @@ const DUMMY_HASH = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
  * so the lock can be applied in the same statement.
  */
 async function registerFailedAttempt(user) {
-  const [rows] = await pool.query(
+  await pool.query(
     `UPDATE users
         SET failed_login_attempts = failed_login_attempts + 1,
             locked_until = CASE
-              WHEN failed_login_attempts + 1 >= ? THEN DATE_ADD(NOW(), INTERVAL ? MINUTE)
+              WHEN failed_login_attempts + 1 >= ? THEN COALESCE(locked_until, DATE_ADD(NOW(), INTERVAL ? MINUTE))
               ELSE locked_until
             END
-      WHERE id = ?
-      RETURNING failed_login_attempts`,
+      WHERE id = ?`,
     [MAX_FAILED_ATTEMPTS, LOCK_MINUTES, user.id]
-  ).catch(async () => {
-    // MariaDB does not support RETURNING on UPDATE; fall back to the atomic
-    // increment plus a read-back. The increment itself is still race-free.
-    await pool.query(
-      'UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE id = ?',
-      [user.id]
-    );
-    const [after] = await pool.query(
-      'SELECT failed_login_attempts FROM users WHERE id = ?',
-      [user.id]
-    );
-    return [after];
-  });
+  );
+  const [rows] = await pool.query(
+    'SELECT failed_login_attempts FROM users WHERE id = ?',
+    [user.id]
+  );
 
   const attempts = Number(rows?.[0]?.failed_login_attempts || 0);
   if (attempts >= MAX_FAILED_ATTEMPTS) {
@@ -97,6 +91,7 @@ router.post('/register', registerLimiter, async (req, res) => {
       firstName,
       middleName,
       lastName,
+      extName,
       email,
       password,
       role,
@@ -111,8 +106,13 @@ router.post('/register', registerLimiter, async (req, res) => {
       consentAt,
     } = req.body;
 
+    const idNumber = req.body.idNumber || req.body.id_number || req.body.idNo || null;
+
     if (!firstName || !lastName || !email || !password || !role) {
       return res.status(400).json({ message: 'First name, last name, email, password, and role are required.' });
+    }
+    if (!idNumber || !String(idNumber).trim()) {
+      return res.status(400).json({ message: 'ID number is required.' });
     }
 
     /* Data Privacy Act (RA 10173) consent. Chapter 2 states FixIT "informs users
@@ -133,7 +133,7 @@ router.post('/register', registerLimiter, async (req, res) => {
        unusable garbage. 2MB of base64 is a downscaled 800px JPEG many times over. */
     if (typeof idPhotoUrl === 'string' && idPhotoUrl.length > 2 * 1024 * 1024) {
       return res.status(413).json({
-        message: 'The ID photo is too large. Please attach a photo under 2MB.',
+        message: 'The profile photo is too large. Please attach a photo under 2MB.',
       });
     }
 
@@ -144,7 +144,20 @@ router.post('/register', registerLimiter, async (req, res) => {
 
     // Manuscript compliance: Only faculty and staff can self-register.
     // Maintenance personnel and admin accounts must be created directly by administrators.
-    const normalizedRole = String(role).toLowerCase();
+    let normalizedRole = String(role || '').trim().toLowerCase();
+    const isSupervisor = Boolean(
+      req.body.isSupervisor ||
+      req.body.is_supervisor ||
+      String(req.body.userType || '').toLowerCase() === 'supervisor' ||
+      ['supervisor', 'immediate supervisor', 'dept head', 'department head'].includes(normalizedRole)
+    );
+
+    if (['supervisor', 'immediate supervisor', 'dept head', 'department head', 'faculty member', 'teacher', 'instructor'].includes(normalizedRole)) {
+      normalizedRole = 'faculty';
+    } else if (['administrative staff', 'staff member', 'employee'].includes(normalizedRole)) {
+      normalizedRole = 'staff';
+    }
+
     if (!['faculty', 'staff'].includes(normalizedRole)) {
       return res.status(403).json({
         message: 'Self-registration is only available for Faculty and Administrative Staff. Maintenance personnel accounts are issued directly by the PDAS Administrator.',
@@ -169,12 +182,14 @@ router.post('/register', registerLimiter, async (req, res) => {
 
     const [result] = await pool.query(
       `INSERT INTO registration_requests
-        (first_name, middle_name, last_name, email, password_hash, role, department, office, contact_number, gender, address, birthday, age, id_photo_url, consent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (first_name, middle_name, last_name, ext_name, id_number, email, password_hash, role, department, office, contact_number, gender, address, birthday, age, id_photo_url, consent_at, is_supervisor)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         firstName,
         middleName || null,
         lastName,
+        extName || null,
+        String(idNumber).trim(),
         email,
         passwordHash,
         normalizedRole,
@@ -187,6 +202,7 @@ router.post('/register', registerLimiter, async (req, res) => {
         age ? Number(age) : null,
         idPhotoUrl || null,
         consentTimestamp,
+        isSupervisor ? 1 : 0,
       ]
     );
 
@@ -258,8 +274,8 @@ router.get('/registration-status', registerLimiter, async (req, res) => {
 router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password, role } = req.body;
-    if (!email || !password || !role) {
-      return res.status(400).json({ message: 'email, password, and role are required.' });
+    if (!email || !password) {
+      return res.status(400).json({ message: 'email and password are required.' });
     }
 
     const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
@@ -291,22 +307,26 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(GENERIC_FAILURE.status).json({ message: GENERIC_FAILURE.message });
     }
 
-    const roleKey = String(role).toLowerCase();
-    let requestedRoles = [roleKey];
-    if (roleKey === 'faculty_staff') {
-      // Supervisors (is_supervisor=1 designation) log in through the Faculty/Staff tab.
-      // Their DB role is 'faculty' or 'staff' — NOT 'supervisor'.
-      requestedRoles = ['faculty', 'staff'];
-    } else if (roleKey === 'admin') {
-      requestedRoles = ['admin'];
-    } else if (roleKey === 'campus_admin' || roleKey === 'campus_administrator') {
-      requestedRoles = ['campus_admin'];
-    } else if (roleKey === 'maintenance') {
-      requestedRoles = ['maintenance', 'technician'];
-    }
+    if (role && role !== 'auto') {
+      const roleKey = String(role).toLowerCase();
+      let requestedRoles = [roleKey];
+      if (roleKey === 'faculty_staff') {
+        // Supervisors (is_supervisor=1 designation) log in through the Faculty/Staff tab.
+        // Their DB role is 'faculty' or 'staff' — NOT 'supervisor'.
+        requestedRoles = ['faculty', 'staff'];
+      } else if (roleKey === 'superadmin' || roleKey === 'super_admin') {
+        requestedRoles = ['superadmin'];
+      } else if (roleKey === 'admin') {
+        requestedRoles = ['admin'];
+      } else if (roleKey === 'campus_admin' || roleKey === 'campus_administrator') {
+        requestedRoles = ['campus_admin'];
+      } else if (roleKey === 'maintenance') {
+        requestedRoles = ['maintenance', 'technician'];
+      }
 
-    if (!requestedRoles.includes(String(user.role).toLowerCase())) {
-      return res.status(403).json({ message: `This account is not authorized for the ${role} portal.` });
+      if (!requestedRoles.includes(String(user.role).toLowerCase())) {
+        return res.status(403).json({ message: `This account is not authorized for the ${role} portal.` });
+      }
     }
 
     // Successful login resets the failed-attempt counter.
@@ -326,6 +346,39 @@ router.post('/login', loginLimiter, async (req, res) => {
     const isSup = Boolean(user.is_supervisor || user.role === 'supervisor');
     user.is_supervisor = isSup ? 1 : 0;
     user.isSupervisor = isSup;
+    user.firstName = user.first_name;
+    user.middleName = user.middle_name;
+    user.lastName = user.last_name;
+    user.extName = user.ext_name;
+    user.idNumber = user.id_number || user.idNumber || '';
+    user.avatarUrl = user.id_photo_url || user.avatarUrl || '';
+    user.academicRank = user.academic_rank || null;
+    user.name = user.name || [user.first_name, user.middle_name, user.last_name, user.ext_name].filter(Boolean).join(' ').trim() || user.email;
+
+    // Resolve assigned immediate supervisor
+    user.assignedSupervisor = null;
+    if (user.supervisor_id) {
+      const [supRows] = await pool.query(
+        "SELECT id, first_name, middle_name, last_name, ext_name FROM users WHERE id = ?",
+        [user.supervisor_id]
+      );
+      if (supRows[0]) {
+        user.assignedSupervisor = [supRows[0].first_name, supRows[0].middle_name, supRows[0].last_name, supRows[0].ext_name].filter(Boolean).join(' ').trim();
+      }
+    }
+    if (!user.assignedSupervisor && user.department) {
+      const [deptSups] = await pool.query(
+        "SELECT id, first_name, middle_name, last_name, ext_name FROM users WHERE (is_supervisor = 1 OR role = 'supervisor') AND status = 'active' AND department = ? LIMIT 1",
+        [user.department]
+      );
+      if (deptSups[0]) {
+        user.assignedSupervisor = [deptSups[0].first_name, deptSups[0].middle_name, deptSups[0].last_name, deptSups[0].ext_name].filter(Boolean).join(' ').trim();
+        user.supervisor_id = deptSups[0].id;
+      }
+    }
+    user.supervisorName = user.assignedSupervisor;
+    user.immediateSupervisor = user.assignedSupervisor;
+
     res.json({ token, user });
   } catch (err) {
     console.error('POST /auth/login error:', err);
@@ -404,11 +457,19 @@ router.put('/password', verifyToken, async (req, res) => {
       [hash, user.id]
     );
 
-    // Sign this session out so the new password is required everywhere.
+    // Revoke the old token and issue a fresh JWT so the active session remains authenticated.
     const header = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-    revokeToken(token);
+    const oldToken = header.startsWith('Bearer ') ? header.slice(7) : null;
+    revokeToken(oldToken);
     invalidateUserCache(user.id);
+
+    const secret = jwtSecretOrFail(res);
+    if (!secret) return;
+    const token = jwt.sign(
+      { id: user.id, role: req.user.role, email: req.user.email },
+      secret,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
+    );
 
     // `null` was passed as the db handle, so `db.query` threw and the failure was
     // swallowed by `.catch(() => {})` — every password change went unlogged while
@@ -421,10 +482,239 @@ router.put('/password', verifyToken, async (req, res) => {
       details: 'Password changed by the account holder.'
     }).catch(() => {});
 
-    res.json({ message: 'Password changed. Please sign in again.' });
+    res.json({ message: 'Password changed successfully.', token });
   } catch (err) {
     console.error('PUT /auth/password error:', err);
     res.status(500).json({ message: 'Failed to change password.' });
+  }
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Public endpoint to request a 6-digit password reset OTP via Gmail.
+ */
+router.post('/forgot-password', otpLimiter, async (req, res) => {
+  const { email } = req.body || {};
+  if (!email || typeof email !== 'string' || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+    return res.status(400).json({ message: 'A valid email address is required.' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    // Anti-flood check: max 1 request every 60 seconds per email
+    const [recent] = await pool.query(
+      'SELECT id, created_at FROM password_resets WHERE email = ? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND) ORDER BY id DESC LIMIT 1',
+      [cleanEmail]
+    );
+    if (recent.length > 0) {
+      return res.status(429).json({ message: 'A verification code was recently dispatched. Please wait at least 60 seconds before requesting a new one.' });
+    }
+
+    // Verify user exists and is active
+    const [users] = await pool.query(
+      "SELECT id, first_name, last_name, email, status FROM users WHERE LOWER(email) = ?",
+      [cleanEmail]
+    );
+    const user = users[0];
+
+    // Generate cryptographically random 6-digit OTP
+    const otpCode = crypto.randomInt(100000, 1000000).toString();
+    const otpHash = await bcrypt.hash(otpCode, 8);
+
+    // Clear any previous reset tokens for this email
+    await pool.query('DELETE FROM password_resets WHERE email = ?', [cleanEmail]);
+
+    // Insert new 15-minute OTP
+    await pool.query(
+      'INSERT INTO password_resets (email, otp_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))',
+      [cleanEmail, otpHash]
+    );
+
+    // If account exists and is active, send the real email via Gmail SMTP
+    if (user && user.status === 'active') {
+      const recipientName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User';
+      await sendPasswordResetOtpEmail({
+        to: cleanEmail,
+        recipientName,
+        otpCode,
+      });
+
+      await auditLog(pool, {
+        actorId: user.id,
+        action: 'auth.password_reset_otp_requested',
+        entity: 'user',
+        entityId: String(user.id),
+        details: `Password reset OTP generated and emailed to ${cleanEmail}`
+      }).catch(() => {});
+    } else {
+      // Do not expose plaintext OTP in logs when SMTP is configured
+      const hasSmtp = Boolean(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
+      console.log(
+        hasSmtp
+          ? `[AUTH GMAIL OTP] Notice: Password reset requested for unregistered/inactive email ${cleanEmail}`
+          : `[AUTH GMAIL OTP] Notice: OTP generated for unregistered/inactive email ${cleanEmail} (dev fallback): ${otpCode}`
+      );
+    }
+
+    return res.json({
+      success: true,
+      message: `A 6-digit verification code has been dispatched to ${cleanEmail}. Please check your inbox and spam folder.`
+    });
+  } catch (err) {
+    console.error('POST /auth/forgot-password error:', err);
+    res.status(500).json({ message: 'Failed to process password reset request. Please try again.' });
+  }
+});
+
+/**
+ * POST /api/auth/verify-reset-code
+ * Public endpoint to verify that the 6-digit OTP is valid before showing the new password form.
+ */
+router.post('/verify-reset-code', otpLimiter, async (req, res) => {
+  const { email, otp } = req.body || {};
+
+  if (!email || typeof email !== 'string' || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+    return res.status(400).json({ message: 'A valid email address is required.' });
+  }
+  if (!otp || String(otp).trim().length !== 6) {
+    return res.status(400).json({ message: 'A 6-digit verification code is required.' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanOtp = String(otp).trim();
+
+  try {
+    const [resets] = await pool.query(
+      'SELECT id, otp_hash, attempts, expires_at FROM password_resets WHERE email = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [cleanEmail]
+    );
+    const resetRecord = resets[0];
+
+    if (!resetRecord) {
+      return res.status(400).json({ message: 'Invalid or expired verification code. Please request a new code.' });
+    }
+
+    if (resetRecord.attempts >= 5) {
+      await pool.query('DELETE FROM password_resets WHERE email = ?', [cleanEmail]);
+      return res.status(400).json({ message: 'Too many incorrect attempts. This code has been revoked. Please request a new one.' });
+    }
+
+    const otpMatches = await bcrypt.compare(cleanOtp, resetRecord.otp_hash);
+    if (!otpMatches) {
+      await pool.query('UPDATE password_resets SET attempts = attempts + 1 WHERE id = ?', [resetRecord.id]);
+      const remaining = 4 - resetRecord.attempts;
+      return res.status(400).json({
+        message: remaining > 0
+          ? `Incorrect verification code. ${remaining} attempt(s) remaining.`
+          : 'Incorrect verification code. Maximum attempts reached.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Verification code confirmed. You may now enter your new password.'
+    });
+  } catch (err) {
+    console.error('POST /auth/verify-reset-code error:', err);
+    res.status(500).json({ message: 'Failed to verify code. Please try again.' });
+  }
+});
+
+/**
+ * POST /api/auth/verify-reset-password
+ * Public endpoint to verify the 6-digit OTP and reset password.
+ */
+router.post('/verify-reset-password', otpLimiter, async (req, res) => {
+  const { email, otp, newPassword } = req.body || {};
+
+  if (!email || typeof email !== 'string' || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+    return res.status(400).json({ message: 'A valid email address is required.' });
+  }
+  if (!otp || String(otp).trim().length !== 6) {
+    return res.status(400).json({ message: 'A 6-digit verification code is required.' });
+  }
+  const pwErr = passwordError(newPassword);
+  if (pwErr) {
+    return res.status(400).json({ message: pwErr });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanOtp = String(otp).trim();
+
+  try {
+    // Find active reset token
+    const [resets] = await pool.query(
+      'SELECT id, otp_hash, attempts, expires_at FROM password_resets WHERE email = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [cleanEmail]
+    );
+    const resetRecord = resets[0];
+
+    if (!resetRecord) {
+      return res.status(400).json({ message: 'Invalid or expired verification code. Please request a new code.' });
+    }
+
+    // Brute force protection: max 5 attempts per code
+    if (resetRecord.attempts >= 5) {
+      await pool.query('DELETE FROM password_resets WHERE email = ?', [cleanEmail]);
+      return res.status(400).json({ message: 'Too many incorrect attempts. This verification code has been revoked. Please request a new one.' });
+    }
+
+    // Verify OTP
+    const otpMatches = await bcrypt.compare(cleanOtp, resetRecord.otp_hash);
+    if (!otpMatches) {
+      await pool.query('UPDATE password_resets SET attempts = attempts + 1 WHERE id = ?', [resetRecord.id]);
+      const remaining = 4 - resetRecord.attempts;
+      return res.status(400).json({
+        message: remaining > 0
+          ? `Incorrect verification code. ${remaining} attempt(s) remaining.`
+          : 'Incorrect verification code. Maximum attempts reached.'
+      });
+    }
+
+    // Check user account in database
+    const [users] = await pool.query(
+      'SELECT id, first_name, last_name, email FROM users WHERE LOWER(email) = ?',
+      [cleanEmail]
+    );
+    const user = users[0];
+    if (!user) {
+      return res.status(404).json({ message: 'User account not found.' });
+    }
+
+    // Update user password and unlock account
+    const newHash = await bcrypt.hash(String(newPassword), 10);
+    await pool.query(
+      'UPDATE users SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL WHERE id = ?',
+      [newHash, user.id]
+    );
+
+    // Delete all reset tokens for this email
+    await pool.query('DELETE FROM password_resets WHERE email = ?', [cleanEmail]);
+
+    // Invalidate user cache
+    invalidateUserCache(user.id);
+
+    // Audit log
+    await auditLog(pool, {
+      actorId: user.id,
+      action: 'auth.password_reset_completed',
+      entity: 'user',
+      entityId: String(user.id),
+      details: `Password reset successfully via Gmail OTP authentication for ${cleanEmail}`
+    }).catch(() => {});
+
+    // Send confirmation alert via Gmail
+    const recipientName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User';
+    sendPasswordResetSuccessEmail({ to: cleanEmail, recipientName }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Password reset successfully! You can now sign in with your new password.'
+    });
+  } catch (err) {
+    console.error('POST /auth/verify-reset-password error:', err);
+    res.status(500).json({ message: 'Failed to reset password. Please try again.' });
   }
 });
 

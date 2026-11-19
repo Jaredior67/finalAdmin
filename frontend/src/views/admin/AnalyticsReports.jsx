@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BarChart3, CheckCircle2, Download, Filter, RotateCcw, WifiOff, TrendingUp, Calendar } from 'lucide-react';
+import { BarChart3, CheckCircle2, Download, Filter, RotateCcw, WifiOff, TrendingUp, Calendar, Star } from 'lucide-react';
 import { useData, toLocalISODate } from '../../context/DataContext';
 import { apiGetJobRequests, apiGetEvaluations } from '../../backend/api';
 import { TableSkeleton } from '../../components/common/Skeleton';
@@ -136,6 +136,15 @@ export const AnalyticsReports = () => {
   const totalCatCount = Math.max(filteredRequisitions.length, 1);
   const filteredCompleted = filteredRequisitions.filter(r => r.status === 'Completed').length;
   const completionRate = filteredRequisitions.length > 0 ? Math.round((filteredCompleted / filteredRequisitions.length) * 100) : 0;
+
+  const allCompletedRequisitions = requisitions.filter(r => r.status === 'Completed' || r.status === 'completed');
+  const evaluatedRequisitionsCount = allCompletedRequisitions.filter(r =>
+    evaluations.some(e => e.reqId === r.id || e.controlNo === r.controlNo || (r.controlNo && e.serviceAvailed && e.serviceAvailed.includes(r.controlNo)))
+  ).length;
+  const csmCompletionRate = allCompletedRequisitions.length > 0
+    ? Math.round((evaluatedRequisitionsCount / allCompletedRequisitions.length) * 100)
+    : 100;
+  const pendingCsmFeedbackCount = Math.max(0, allCompletedRequisitions.length - evaluatedRequisitionsCount);
 
   const buildingVolume = uniqueLocations.map(loc => {
     const count = filteredRequisitions.filter(r => r.location === loc).length;
@@ -305,6 +314,20 @@ export const AnalyticsReports = () => {
             </div>
             <div style={{ fontSize: '28px', fontWeight: '700', color: evaluations.length > 0 ? '#b91c1c' : '#0f172a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{evaluations.length}</div>
             <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>ISO 25010 responses</div>
+          </div>
+
+          {/* CSM Feedback Completion Rate */}
+          <div
+            style={statCardStyle('#f59e0b')}
+            onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-hover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-subtle)'; }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>CSM Feedback Rate</span>
+              <Star size={18} color="#d97706" />
+            </div>
+            <div style={{ fontSize: '28px', fontWeight: '700', color: csmCompletionRate >= 80 ? '#047857' : '#b45309', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{csmCompletionRate}%</div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{evaluatedRequisitionsCount} of {allCompletedRequisitions.length} completed ({pendingCsmFeedbackCount} pending)</div>
           </div>
         </div>
       )}

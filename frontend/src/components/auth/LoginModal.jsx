@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { Lock, AlertCircle, UserPlus, Eye, EyeOff } from 'lucide-react';
+import { Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { useAuth, TEST_PERSONAS } from '../../context/AuthContext';
-import { RegisterModal } from './RegisterModal';
 import { Spinner } from '../ui/Spinner';
-import fixitLogo from '../../assets/fixit-official-logo.png';
+import fixitLogo from '../../assets/fixit-logo.png';
 
 export const LoginModal = () => {
   const { isLoginModalOpen, setIsLoginModalOpen, loginWithCredentials } = useAuth();
@@ -12,7 +11,6 @@ export const LoginModal = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [isRegisterOpen, setIsRegisterOpen] = useState(false);
 
   const [selectedRole, setSelectedRole] = useState('admin');
 
@@ -40,11 +38,6 @@ export const LoginModal = () => {
     } else {
       setError(res.error || 'Access restricted: Only authorized accounts can sign in.');
     }
-  };
-
-  const handleOpenRegister = () => {
-    setIsLoginModalOpen(false);
-    setIsRegisterOpen(true);
   };
 
   return (
@@ -209,38 +202,8 @@ export const LoginModal = () => {
               {isLoading ? 'Signing In…' : 'Sign In'}
             </button>
           </div>
-
-          <div style={{ marginTop: '18px', textAlign: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '14px' }}>
-            <button
-              type="button"
-              onClick={handleOpenRegister}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#001f9c',
-                fontSize: '13px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              <UserPlus size={14} />
-              Register account? Submit Student/Campus ID
-            </button>
-          </div>
         </form>
       </Modal>
-
-      <RegisterModal
-        isOpen={isRegisterOpen}
-        onClose={() => setIsRegisterOpen(false)}
-        onSwitchToLogin={() => {
-          setIsRegisterOpen(false);
-          setIsLoginModalOpen(true);
-        }}
-      />
     </>
   );
 };

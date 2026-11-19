@@ -31,13 +31,14 @@ export const WorkQueueToolbar = ({
   visibleCount,
   totalCount,
   onExport,
-  exportLabel = 'Export (CSV)'
+  exportLabel = 'Export (CSV)',
+  hideStatusFilter = false
 }) => {
   const isFiltered =
     Boolean(search) ||
     category !== 'all' ||
     urgency !== 'all' ||
-    status !== 'all' ||
+    (!hideStatusFilter && status !== 'all') ||
     assignee !== 'all' ||
     sort !== 'priority';
 
@@ -98,24 +99,26 @@ export const WorkQueueToolbar = ({
         </select>
       </div>
 
-      <div className="queue-toolbar__field">
-        <label className="queue-toolbar__label" htmlFor="queue-status">
-          Status
-        </label>
-        <select
-          id="queue-status"
-          className="queue-toolbar__control"
-          value={status}
-          onChange={(e) => onStatusChange(e.target.value)}
-        >
-          <option value="all">All statuses</option>
-          {QUEUE_STATUS_OPTIONS.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      {!hideStatusFilter && (
+        <div className="queue-toolbar__field">
+          <label className="queue-toolbar__label" htmlFor="queue-status">
+            Status
+          </label>
+          <select
+            id="queue-status"
+            className="queue-toolbar__control"
+            value={status}
+            onChange={(e) => onStatusChange(e.target.value)}
+          >
+            <option value="all">All statuses</option>
+            {QUEUE_STATUS_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="queue-toolbar__field">
         <label className="queue-toolbar__label" htmlFor="queue-staff">

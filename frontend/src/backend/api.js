@@ -1,7 +1,10 @@
 const resolveApiBase = () => {
   // 1. Explicit override via Vite env var (highest priority)
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_HOST) {
+    // VITE_API_HOST should include protocol and hostname, e.g., http://192.168.254.154
+    // Append /api if not already present
+    const base = import.meta.env.VITE_API_HOST.replace(/\/+$/,'');
+    return `${base}/api`;
   }
   if (typeof window !== 'undefined') {
     const { hostname, port, protocol } = window.location;
@@ -9,13 +12,20 @@ const resolveApiBase = () => {
     if (port === '5000') {
       return '/api';
     }
+    // Served through Vite dev server (port 5173, 5174, etc. or Vite DEV mode).
+    // Vite proxies /api to port 5000 automatically on the host. Using '/api'
+    // prevents mobile devices from failing if port 5000 is blocked by Windows Firewall.
+    const isViteDev = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) ||
+                      port === '5173' || port === '5174';
+    if (isViteDev) {
+      return '/api';
+    }
     // Served through Apache (port 80/443) in production — the backend runs
     // on the same host on port 5000. Using hostname (not "localhost") means
     // a phone on the LAN hitting http://192.168.x.x/ will call
     // http://192.168.x.x:5000/api instead of the unreachable
     // http://localhost:5000/api.
-    // For Vite dev server (port 5173) the same logic applies.
-    return `${protocol}//${hostname}:5000/api`;
+    return `http://${hostname}:5000/api`;
   }
   return 'http://localhost:5000/api';
 };
@@ -30,13 +40,15 @@ const normalizeRole = (value) => {
   if (['campus_admin', 'campus administrator', 'approver'].includes(role)) return 'campus_admin';
   if (['supervisor', 'immediate supervisor', 'dept head', 'department head'].includes(role)) return 'supervisor';
   if (['faculty', 'faculty member', 'teacher', 'instructor'].includes(role)) return 'faculty';
-  if (['staff', 'staff member', 'employee'].includes(role)) return 'staff';
+  if (['staff', 'administrative staff', 'staff member', 'employee'].includes(role)) return 'staff';
   if (['maintenance', 'technician', 'tech', 'maintenance personnel'].includes(role)) return 'maintenance';
   return role;
 };
 
 const normalizeRoleTitle = (role) => {
   switch (role) {
+    case 'superadmin':
+      return 'System Governance (Super Admin)';
     case 'admin':
       return 'PDAS Director (Admin)';
     case 'campus_admin':
@@ -44,6 +56,7 @@ const normalizeRoleTitle = (role) => {
     case 'supervisor':
       return 'Immediate Supervisor';
     case 'maintenance':
+    case 'technician':
       return 'Maintenance Personnel';
     case 'staff':
       return 'Staff Requester';
@@ -59,8 +72,10 @@ const normalizeUser = (user) => {
   const firstName = user.first_name ?? user.firstName ?? '';
   const middleName = user.middle_name ?? user.middleName ?? '';
   const lastName = user.last_name ?? user.lastName ?? '';
+  const extName = user.ext_name ?? user.extName ?? '';
   const role = normalizeRole(user.role ?? user.userType ?? user.user_type);
-  const displayName = user.name || `${firstName} ${middleName ? middleName + ' ' : ''}${lastName}`.trim() || user.email || 'User';
+  const computedName = [firstName, middleName, lastName, extName].filter(Boolean).join(' ').trim();
+  const displayName = user.name || computedName || user.email || 'User';
 
   const rawStatus = String(user.status || 'Active').trim().toLowerCase();
   const normalizedStatus = rawStatus === 'inactive' || rawStatus === 'suspended' ? 'Inactive' : 'Active';
@@ -71,6 +86,7 @@ const normalizeUser = (user) => {
     firstName,
     middleName,
     lastName,
+    extName,
     name: displayName,
     email: user.email || user.gmail || '',
     department: user.department || '',
@@ -81,6 +97,8 @@ const normalizeUser = (user) => {
     birthday: user.birthday || '',
     age: user.age || null,
     idPhotoUrl: user.id_photo_url ?? user.idPhotoUrl ?? user.idPreviewUrl ?? '',
+    avatarUrl: user.avatarUrl || user.id_photo_url || user.idPhotoUrl || '',
+    idNumber: user.id_number ?? user.idNumber ?? '',
     role,
     userType: user.userType ?? user.user_type ?? role,
     roleTitle: user.roleTitle || normalizeRoleTitle(role),
@@ -93,6 +111,7 @@ const normalizeUser = (user) => {
     // can just do Boolean(user.isSupervisor) without knowing the DB shape.
     isSupervisor: Boolean(user.is_supervisor ?? user.isSupervisor),
     is_supervisor: user.is_supervisor ?? (user.isSupervisor ? 1 : 0),
+    academicRank: user.academic_rank ?? user.academicRank ?? '',
   };
 };
 
@@ -101,12 +120,15 @@ const normalizeRegistration = (row) => {
   const firstName = row.first_name ?? row.firstName ?? '';
   const middleName = row.middle_name ?? row.middleName ?? '';
   const lastName = row.last_name ?? row.lastName ?? '';
+  const extName = row.ext_name ?? row.extName ?? '';
+  const computedName = [firstName, middleName, lastName, extName].filter(Boolean).join(' ').trim();
   return {
     ...row,
     firstName,
     middleName,
     lastName,
-    name: row.name || `${firstName} ${middleName ? middleName + ' ' : ''}${lastName}`.trim(),
+    extName,
+    name: row.name || computedName,
     gmail: row.email || row.gmail || '',
     email: row.email || row.gmail || '',
     contactNumber: row.contact_number ?? row.contactNumber ?? row.phone ?? '',
@@ -116,6 +138,7 @@ const normalizeRegistration = (row) => {
     address: row.address || '',
     birthday: row.birthday || '',
     age: row.age || null,
+    idNumber: row.id_number ?? row.idNumber ?? '',
     idPhotoUrl: row.id_photo_url ?? row.idPhotoUrl ?? row.idPreviewUrl ?? '',
     reason: row.rejection_reason ?? row.reason ?? '',
   };
@@ -130,6 +153,8 @@ export const setToken = (token) => {
   }
   localStorage.setItem(TOKEN_STORAGE_KEY, token);
 };
+
+export const setAuthToken = setToken;
 
 async function request(path, options = {}) {
   const headers = {
@@ -203,13 +228,17 @@ export const apiLogout = async () => {
 };
 
 export const apiRegister = async (regData = {}) => {
+  const isSup = Boolean(regData.isSupervisor || regData.is_supervisor || regData.userType === 'Supervisor' || regData.role === 'supervisor');
+  const rawRole = normalizeRole(regData.role ?? regData.userType ?? regData.user_type);
+  const mappedRole = (isSup || rawRole === 'supervisor') ? 'faculty' : rawRole;
   const payload = {
     firstName: regData.firstName ?? regData.first_name ?? '',
     middleName: regData.middleName ?? regData.middle_name ?? '',
     lastName: regData.lastName ?? regData.last_name ?? '',
+    idNumber: regData.idNumber ?? regData.id_number ?? null,
     email: regData.email ?? regData.gmail ?? '',
     password: regData.password ?? '',
-    role: normalizeRole(regData.role ?? regData.userType ?? regData.user_type),
+    role: mappedRole,
     department: regData.department || null,
     office: regData.office || null,
     contactNumber: regData.contactNumber ?? regData.contact_number ?? regData.phone ?? null,
@@ -220,6 +249,8 @@ export const apiRegister = async (regData = {}) => {
     idPhotoUrl: regData.idPhotoUrl ?? regData.idPreviewUrl ?? null,
     // RA 10173 consent timestamp. The server rejects registration without it.
     consentAt: regData.consentAt ?? null,
+    isSupervisor: isSup,
+    is_supervisor: isSup ? 1 : 0,
   };
 
   return request('/auth/register', {
@@ -252,6 +283,42 @@ export const apiGetUsers = async () => {
 export const apiGetMessageParticipants = async () => {
   const payload = await request('/messages/participants');
   return Array.isArray(payload) ? payload.map(normalizeUser) : [];
+};
+
+export const apiSendContactMessage = async ({ name, email, message, subject }) => {
+  return request('/messages/contact', {
+    method: 'POST',
+    body: JSON.stringify({ name, email, message, subject }),
+  });
+};
+
+export const apiSendMessage = async ({ recipientId, subject, body }) => {
+  return request('/messages', {
+    method: 'POST',
+    body: JSON.stringify({ recipientId, subject, body }),
+  });
+};
+
+export const apiGetMessages = async () => {
+  const payload = await request('/messages');
+  return Array.isArray(payload) ? payload : [];
+};
+
+export const apiGetMessageThread = async (id) => {
+  return request(`/messages/${id}`);
+};
+
+export const apiReplyMessage = async (id, body) => {
+  return request(`/messages/${id}/replies`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  });
+};
+
+export const apiMarkMessageRead = async (id) => {
+  return request(`/messages/${id}/read`, {
+    method: 'PUT',
+  });
 };
 
 export const apiGetPendingRegistrations = async () => {
@@ -313,6 +380,8 @@ export const apiCreateUser = async (userData = {}) => {
     firstName: userData.firstName ?? userData.first_name ?? '',
     middleName: userData.middleName ?? userData.middle_name ?? '',
     lastName: userData.lastName ?? userData.last_name ?? '',
+    extName: userData.extName ?? userData.ext_name ?? null,
+    idNumber: userData.idNumber ?? userData.id_number ?? null,
     email: userData.email ?? userData.gmail ?? '',
     password: userData.password ?? '',
     role: normalizeRole(userData.role ?? userData.userType ?? 'maintenance'),
@@ -324,6 +393,10 @@ export const apiCreateUser = async (userData = {}) => {
     birthday: userData.birthday || null,
     age: userData.age || null,
     idPhotoUrl: userData.idPhotoUrl || null,
+    specialization: userData.specialization || null,
+    academicRank: userData.academicRank ?? userData.academic_rank ?? null,
+    isSupervisor: Boolean(userData.isSupervisor || userData.is_supervisor || userData.role === 'supervisor'),
+    is_supervisor: (userData.isSupervisor || userData.is_supervisor || userData.role === 'supervisor') ? 1 : 0,
   };
 
   return request('/users', {
@@ -337,6 +410,8 @@ export const apiUpdateUser = async (userId, updatedFields = {}) => {
     firstName: updatedFields.firstName ?? updatedFields.first_name ?? null,
     middleName: updatedFields.middleName ?? updatedFields.middle_name ?? null,
     lastName: updatedFields.lastName ?? updatedFields.last_name ?? null,
+    extName: updatedFields.extName ?? updatedFields.ext_name ?? null,
+    idNumber: updatedFields.idNumber !== undefined ? updatedFields.idNumber : (updatedFields.id_number !== undefined ? updatedFields.id_number : undefined),
     department: updatedFields.department ?? null,
     office: updatedFields.office ?? null,
     contactNumber: updatedFields.contactNumber ?? updatedFields.contact_number ?? updatedFields.phone ?? null,
@@ -345,9 +420,19 @@ export const apiUpdateUser = async (userId, updatedFields = {}) => {
     birthday: updatedFields.birthday ?? null,
     age: updatedFields.age ?? null,
     specialization: updatedFields.specialization ?? null,
+    academicRank: updatedFields.academicRank ?? updatedFields.academic_rank ?? null,
     availabilityStatus: updatedFields.availabilityStatus ?? updatedFields.availability_status ?? null,
-    role: normalizeRole(updatedFields.role ?? updatedFields.userType ?? updatedFields.user_type ?? 'faculty'),
   };
+
+  const photoVal = updatedFields.idPhotoUrl ?? updatedFields.id_photo_url ?? updatedFields.avatarUrl;
+  if (photoVal !== undefined && photoVal !== null) {
+    payload.idPhotoUrl = photoVal;
+  }
+
+  const rawRole = updatedFields.role ?? updatedFields.userType ?? updatedFields.user_type;
+  if (rawRole !== undefined && rawRole !== null) {
+    payload.role = normalizeRole(rawRole);
+  }
 
   // Supervisor designation ("Designate as Immediate Supervisor / Program Head"
   // checkbox). Sent only when the caller passed it — a plain profile edit must
@@ -381,6 +466,13 @@ export const apiRemoveUser = async (userId) => request(`/users/${userId}`, { met
    admin-only on the server. */
 export const apiGetSupervisors = async () => {
   const payload = await request('/users/supervisors');
+  return Array.isArray(payload) ? payload.map(normalizeUser) : [];
+};
+
+// Public version — any authenticated user (faculty/staff/supervisor) can call this.
+// Used by the Immediate Supervisor dropdown on the job request form.
+export const apiGetSupervisorsList = async () => {
+  const payload = await request('/users/supervisors/list');
   return Array.isArray(payload) ? payload.map(normalizeUser) : [];
 };
 
@@ -427,8 +519,20 @@ export const apiCreatePreventiveSchedule = async (scheduleData) =>
     method: 'POST',
     body: JSON.stringify(scheduleData),
   });
+export const apiUpdatePreventiveSchedule = async (id, scheduleData) =>
+  request(`/preventive-schedules/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(scheduleData),
+  });
+export const apiCompletePreventiveSchedule = async (id, completionData) =>
+  request(`/preventive-schedules/${encodeURIComponent(id)}/complete`, {
+    method: 'POST',
+    body: JSON.stringify(completionData),
+  });
 export const apiDeletePreventiveSchedule = async (id) =>
   request(`/preventive-schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+
 
 // Job Requests API (live MySQL data for Reports & Analytics)
 export const apiGetJobRequests = async (params = {}) => {
@@ -454,9 +558,10 @@ export const apiGetJobRequestStats = async ({ archived = false } = {}) => {
 };
 
 /* Notifications API (live MySQL — replaces localStorage) */
-export const apiGetNotifications = async ({ limit = 50, offset = 0, unread = false } = {}) => {
+export const apiGetNotifications = async ({ limit = 50, offset = 0, unread = false, archived = false } = {}) => {
   const qs = new URLSearchParams({ limit, offset });
   if (unread) qs.set('unread', 'true');
+  if (archived) qs.set('archived', 'true');
   const data = await request(`/notifications?${qs}`);
   // Support both old array shape and new { notifications, unread_count } shape
   if (Array.isArray(data)) return { notifications: data, unread_count: 0 };
@@ -464,6 +569,8 @@ export const apiGetNotifications = async ({ limit = 50, offset = 0, unread = fal
 };
 export const apiMarkNotificationRead = (id) => request(`/notifications/${id}/read`, { method: 'PUT' });
 export const apiMarkAllNotificationsRead = () => request('/notifications/read-all', { method: 'PUT' });
+export const apiArchiveNotification = (id) => request(`/notifications/${id}/archive`, { method: 'PUT' });
+export const apiRestoreNotification = (id) => request(`/notifications/${id}/unarchive`, { method: 'PUT' });
 export const apiDeleteNotification = (id) => request(`/notifications/${id}`, { method: 'DELETE' });
 export const apiClearAllNotifications = () => request('/notifications', { method: 'DELETE' });
 
@@ -481,10 +588,66 @@ export const apiAdminAction = async (id, actionData) => request(`/job-requests/$
 export const apiApproverAction = async (id, actionData) => request(`/job-requests/${id}/approver-action`, { method: 'POST', body: JSON.stringify(actionData) });
 export const apiAssignTechnician = async (id, assignData) => request(`/job-requests/${id}/assign-technician`, { method: 'POST', body: JSON.stringify(assignData) });
 export const apiFlagReplacement = async (id, flagData) => request(`/job-requests/${id}/replacement-flag`, { method: 'POST', body: JSON.stringify(flagData) });
+export const apiUpdateProcurementStatus = async (id, procurementStatus) => request(`/job-requests/${id}/replacement-flag`, { method: 'PUT', body: JSON.stringify({ procurementStatus }) });
 export const apiArchiveJobRequest = async (id) => request(`/job-requests/${id}/archive`, { method: 'PUT' });
 export const apiUnarchiveJobRequest = async (id) => request(`/job-requests/${id}/unarchive`, { method: 'PUT' });
-export const apiUpdateReplacementFlag = async (id, payload) => request(`/job-requests/${id}/replacement-flag`, { method: 'PUT', body: JSON.stringify(payload) });
 export const apiGetJobRequestDocPdf = async (id) => request(`/job-requests-doc/${id}/pdf`);
+export const apiCompleteStandardForm = async (id, payload) =>
+  request(`/job-requests/${id}/complete-standard-form`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+export const apiApproveFollowUpForm = async (id, payload = {}) =>
+  request(`/job-requests/${id}/approve-follow-up`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+export const apiConfirmSignedForm = async (id, { confirmed = true, scanRef = '' } = {}) =>
+  request(`/job-requests/${encodeURIComponent(id)}/signed-form`, {
+    method: 'PUT',
+    body: JSON.stringify({ confirmed, scanRef }),
+  });
+export const apiGetJobRequestById = async (id) =>
+  request(`/job-requests/${encodeURIComponent(id)}`);
+export const apiUpdateJobRequestTrackingNo = async (id, officialTrackingNo) =>
+  request(`/job-requests/${encodeURIComponent(id)}/tracking-no`, {
+    method: 'PUT',
+    body: JSON.stringify({ officialTrackingNo }),
+  });
+export const apiUpdateJobRequestFormDetails = async (id, details = {}) =>
+  request(`/job-requests/${encodeURIComponent(id)}/form-details`, {
+    method: 'PUT',
+    body: JSON.stringify(details),
+  });
+
+// Password Reset via Gmail Security Authentication
+export const apiRequestPasswordReset = async (email) => {
+  return request('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+};
+
+export const apiVerifyResetCode = async (email, otp) => {
+  return request('/auth/verify-reset-code', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp }),
+  });
+};
+
+export const apiVerifyAndResetPassword = async (email, otp, newPassword) => {
+  return request('/auth/verify-reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp, newPassword }),
+  });
+};
+
+export const apiChangePassword = async (currentPassword, newPassword) => {
+  return request('/auth/password', {
+    method: 'PUT',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+};
 
 // The audit-trail reader lives next to the other account-facing calls above.
 

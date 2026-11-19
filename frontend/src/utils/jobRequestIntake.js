@@ -74,9 +74,22 @@ export function buildScopeOfWorks(category, description = '', selectedOptions = 
 export const composeLocation = (building, floor, room) =>
   [building, floor, room].filter(Boolean).join(' — ');
 
-/** Human label for who is filing, used in the confirmation copy. */
-export const requesterDisplayName = (requester = {}) =>
-  requester.name || 'Requester';
+/** Human label for who is filing, used in the form and confirmation copy. */
+export const requesterDisplayName = (requester = {}) => {
+  if (requester?.name && typeof requester.name === 'string' && requester.name.trim() && requester.name.trim().toLowerCase() !== 'requester') {
+    return requester.name.trim();
+  }
+  const parts = [
+    requester?.firstName || requester?.first_name,
+    requester?.middleName || requester?.middle_name,
+    requester?.lastName || requester?.last_name,
+    requester?.extName || requester?.ext_name
+  ].filter(Boolean);
+  if (parts.length > 0) {
+    return parts.join(' ').trim();
+  }
+  return requester?.email || '';
+};
 
 /* ---------------------------------------------------------------------------
    buildRequisitionPayload — the single mapping from the filled form to the
@@ -96,7 +109,8 @@ export function buildRequisitionPayload({
   isDraft = false,
   photoUrl = ''
 }) {
-  const isUrgent = requestType === 'Urgent Request';
+  const finalUrgency = urgency || form.urgency || 'Low';
+  const isUrgent = /high|urgent|emergency|critical/i.test(String(finalUrgency)) || requestType === 'Urgent Request';
 
   // The overlay always returns the three location parts alongside the composed
   // string, so a scanned room arrives here already split out.
@@ -107,7 +121,7 @@ export function buildRequisitionPayload({
     form.location?.trim() || composeLocation(building, floor, room);
 
   const description = (form.description || '').trim();
-  const category = form.category || 'Electrical';
+  const category = form.category || '';
 
   return {
     title: form.title || '',
@@ -136,10 +150,10 @@ export function buildRequisitionPayload({
         : null,
 
     category,
-    // Urgent is always High Risk; the standard path honours what was chosen.
-    urgency: isUrgent ? 'High Risk' : urgency || form.urgency || 'Medium Risk',
-    requestType,
-    isStandardFormFilled: !isUrgent,
+    // All requests are standard requests; high risk / urgent selections are prioritized
+    urgency: finalUrgency,
+    requestType: 'Standard Request',
+    isStandardFormFilled: true,
 
     immediateSupervisor: form.immediateSupervisor || '',
     scopeOfWorks: form.scopeOfWorks || buildScopeOfWorks(category, description),
@@ -152,11 +166,11 @@ export function buildRequisitionPayload({
 
     pdasFormName: '',
     requestedBy: form.requestedBy || requesterDisplayName(requester),
-    requesterEmail: requester.email || '',
-    requesterRole: requester.role || 'Faculty',
-    department: form.department || requester.department || office || 'ISAT U Dumangas',
-    contactNumber: form.contactNumber || requester.phone || '',
-    idNumber: requester.idNumber || '',
+    requesterEmail: requester?.email || '',
+    requesterRole: requester?.role || 'Faculty',
+    department: form.department || form.office || requester?.department || office || 'ISAT U Dumangas',
+    contactNumber: form.contactNumber || requester?.phone || '',
+    idNumber: requester?.idNumber || '',
 
     photoUrl: photoUrl || form.photoUrl || '',
     // The attachment's display name. It was carried in the form state and then
@@ -166,3 +180,17 @@ export function buildRequisitionPayload({
     isDraft
   };
 }
+
+/**
+ * Robust check across database & frontend fields to identify if a request is an urgent priority request.
+ */
+export const isUrgentReq = (r) => {
+  if (!r) return false;
+  return Boolean(
+    r.isUrgent === true ||
+    r.requestType === 'Urgent Request' ||
+    r.request_type === 'Urgent Request' ||
+    /high|urgent|emergency|critical/i.test(String(r.urgency || r.urgency_level || r.priority || '')) ||
+    r.category === 'Urgent Hazard'
+  );
+};

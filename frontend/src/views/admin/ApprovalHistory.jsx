@@ -1,6 +1,6 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Search, CheckCircle2, XCircle, ShieldCheck, Download, History, AlertTriangle } from 'lucide-react';
-import { toLocalISODate } from '../../context/DataContext';
+import { useData, toLocalISODate } from '../../context/DataContext';
 import { apiGetAuditLog } from '../../backend/api';
 import { Modal } from '../../components/common/Modal';
 
@@ -56,13 +56,21 @@ const mapAuditRow = (row) => ({
 });
 
 export const ApprovalHistory = () => {
+  const { ticketSearch, setTicketSearch } = useData();
   const [rows, setRows] = useState(null);
   const [loadError, setLoadError] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [localSearch, setLocalSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('all');
   // The audit log is an official decision record, so the download is gated
   // behind an explicit confirmation rather than firing on a stray click.
   const [isExportConfirmOpen, setIsExportConfirmOpen] = useState(false);
+
+  // Sync search query between top navbar and in-page search input
+  const searchTerm = localSearch || ticketSearch || '';
+  const handleSearchChange = (val) => {
+    setLocalSearch(val);
+    if (setTicketSearch) setTicketSearch(val);
+  };
 
   useEffect(() => {
     let live = true;
@@ -79,7 +87,7 @@ export const ApprovalHistory = () => {
       .catch((err) => {
         if (!live) return;
         setRows(null);
-        setLoadError(err?.message || 'The audit trail could not be loaded.');
+        setLoadError(err?.message || 'The audit log could not be loaded.');
       });
     return () => { live = false; };
   }, []);
@@ -91,15 +99,20 @@ export const ApprovalHistory = () => {
   const source = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
 
   const filteredHistory = useMemo(() => source.filter(item => {
+    const id = String(item.id || '');
     const controlNo = String(item.controlNo || '');
     const remarks = String(item.remarks || '');
     const actionBy = String(item.actionBy || '');
     const action = String(item.action || '');
+    const s = searchTerm.trim().toLowerCase();
     const matchesSearch =
-      controlNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      remarks.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      actionBy.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      String(item.rawAction || '').toLowerCase().includes(searchTerm.toLowerCase());
+      !s ||
+      id.toLowerCase().includes(s) ||
+      controlNo.toLowerCase().includes(s) ||
+      remarks.toLowerCase().includes(s) ||
+      actionBy.toLowerCase().includes(s) ||
+      action.toLowerCase().includes(s) ||
+      String(item.rawAction || '').toLowerCase().includes(s);
     const matchesAction = actionFilter === 'all' || action.toLowerCase() === actionFilter.toLowerCase();
     return matchesSearch && matchesAction;
   }), [source, searchTerm, actionFilter]);
@@ -201,7 +214,7 @@ export const ApprovalHistory = () => {
             className="search-input"
             placeholder="Search by tracking number, remark, or approver..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
           />
         </div>
 
@@ -218,7 +231,7 @@ export const ApprovalHistory = () => {
 
       <div className="content-card">
         <div className="table-responsive">
-          <table className="data-table">
+          <table className="data-table data-table-stacked">
             <thead>
               <tr>
                 <th>LOG ID</th>
@@ -239,25 +252,25 @@ export const ApprovalHistory = () => {
               ) : (
                 filteredHistory.map(log => (
                   <tr key={log.id ?? `${log.timestamp}-${log.actionBy}`}>
-                    <td style={{ fontWeight: '700', color: '#64748b' }}>
+                    <td data-label="Log ID" style={{ fontWeight: '700', color: '#64748b' }}>
                       {log.id ?? '—'}
                     </td>
-                    <td style={{ fontWeight: '700', color: '#001f9c' }}>
+                    <td data-label="Tracking Number" style={{ fontWeight: '700', color: '#001f9c' }}>
                       {log.controlNo || '—'}
                     </td>
-                    <td>
+                    <td data-label="Decision">
                       {decisionBadge(log.action)}
                     </td>
-                    <td style={{ fontWeight: '600' }}>
+                    <td data-label="Authorized By" style={{ fontWeight: '600' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <ShieldCheck size={14} color="#001f9c" />
                         {log.actionBy}
                       </div>
                     </td>
-                    <td style={{ color: '#64748b', fontSize: '12.5px' }}>
+                    <td data-label="Timestamp" style={{ color: '#64748b', fontSize: '12.5px' }}>
                       {log.timestamp}
                     </td>
-                    <td style={{ color: '#334155', maxWidth: '300px' }}>
+                    <td data-label="Admin Remarks" style={{ color: '#334155', maxWidth: '300px' }}>
                       {log.remarks}
                     </td>
                   </tr>

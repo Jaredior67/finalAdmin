@@ -160,8 +160,8 @@ await check('neither role keeps a standalone QR scanner mount', async () => {
   }
 });
 
-console.log('\nthe entry pair is identical wherever it appears');
-await check('every dashboard shows the same two buttons, in the same order', async () => {
+console.log('\nthe entry button is identical wherever it appears');
+await check('every dashboard shows the New Request button', async () => {
   const cases = {
     facultyDashboard: {
       user: { name: 'Elena Ramos', email: 'faculty@isatu.edu.ph', role: 'faculty', department: 'CEA' },
@@ -199,16 +199,11 @@ await check('every dashboard shows the same two buttons, in the same order', asy
     const btnWith = (label) =>
       new RegExp(`<button[^>]*>\\s*${label}\\s*</button>`).test(text);
 
-    // The pair, in this order. "New Request" opens the chooser overlay in
-    // place; "Scan QR" opens the standard form already scanning.
-    const scanAt = text.search(/<button[^>]*>\s*Scan QR\s*<\/button>/);
+    // "New Request" is the single entry action — QR scanning is embedded in
+    // the form itself (Step 1 · Location) so a separate header Scan QR button
+    // is redundant and has been removed.
     const newAt = text.search(/<button[^>]*>\s*New Request\s*<\/button>/);
-
-    if (scanAt === -1) throw new Error(`${role} is missing the Scan QR button`);
     if (newAt === -1) throw new Error(`${role} is missing the New Request button`);
-    if (scanAt > newAt) {
-      throw new Error(`${role} shows New Request before Scan QR; the order must match`);
-    }
 
     // The two request types live inside the chooser, which is closed while the
     // page renders, so neither may survive as a header button. The launcher
@@ -237,7 +232,7 @@ await check('the Faculty portal renders neither entry button', async () => {
     })
   );
   const text = html.replace(/<svg[\s\S]*?<\/svg>/g, '');
-  for (const label of ['Scan QR', 'New Request']) {
+  for (const label of ['New Request']) {
     if (new RegExp(`<button[^>]*>\\s*${label}\\s*</button>`).test(text)) {
       throw new Error(`the portal still renders a "${label}" button`);
     }
@@ -251,9 +246,6 @@ await check('"New Request" opens the chooser overlay rather than a route', async
   }
   if (!/onClick=\{intake\.openChooser\}/.test(intakeSrc)) {
     throw new Error('the New Request button does not open the chooser');
-  }
-  if (!/onClick=\{intake\.requestScan\}/.test(intakeSrc)) {
-    throw new Error('the Scan QR button does not park a scan intent');
   }
   // Choosing a type must swap this overlay for that form, not stack them.
   if (!/setIsChooserOpen\(false\)/.test(intakeSrc)) {

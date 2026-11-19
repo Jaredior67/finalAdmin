@@ -20,23 +20,20 @@ import {
   Printer,
   Clock,
   CheckCircle2,
-  QrCode,
-  Plus
+  Plus,
+  MapPin
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { Modal } from './Modal';
 import { JobRequestFormOverlay } from './JobRequestFormOverlay';
-import { UrgentIssueReport } from './UrgentIssueReport';
 import { JobRequestPrintSheet } from './JobRequestPrintSheet';
+import { PrintPortal } from './PrintPortal';
+import { printDocument } from '../../utils/print';
 import { QrCodeScannerModal } from './QrCodeScannerModal';
 import { buildBuildingIndex, joinLocation } from './JobRequestLocationStep';
 import { buildRequisitionPayload, requesterDisplayName } from '../../utils/jobRequestIntake';
 
-/* The ticket lifecycle, shown as a neutral reference under the launcher. No
-   stage is highlighted: before submission no ticket exists, so there is no real
-   status to report. The per-ticket tracker on the open-requests list is what
-   highlights actual progress. These are the literal status values the rest of
-   the app uses, so the reference cannot drift from the workflow. */
+/* The ticket lifecycle, shown as a neutral reference under the launcher. */
 export const REQUEST_LIFECYCLE = [
   'Pending',
   'Under Review',
@@ -46,27 +43,13 @@ export const REQUEST_LIFECYCLE = [
   'Completed'
 ];
 
-/* The request date, as a local calendar day. toISOString() is UTC, so for the
-   eight hours after midnight at UTC+8 it would stamp a request with the
-   PREVIOUS day's date — and this is the date printed on the official
-   QF-PDAS-DC-01 form. */
 const todayISO = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
 
-const launcherCard = (tone) => ({
-  display: 'flex', flexDirection: 'column', alignItems: 'center',
-  justifyContent: 'center', gap: '12px', padding: '28px 20px',
-  background: tone.bg, border: `2px solid ${tone.border}`, borderRadius: '14px',
-  cursor: 'pointer', transition: 'all 0.15s', textAlign: 'center',
-  onMouseEnter: (e) => { e.currentTarget.style.background = tone.hover; e.currentTarget.style.borderColor = tone.hoverBorder; },
-  onMouseLeave: (e) => { e.currentTarget.style.background = tone.bg; e.currentTarget.style.borderColor = tone.border; }
-});
-
 /* ---------------------------------------------------------------------------
-   useRequestIntake — all of the flow's state in one place, so the header
-   buttons, the launcher cards and the dialogs can never disagree.
+   useRequestIntake — all of the flow's state in one place.
    --------------------------------------------------------------------------- */
 export function useRequestIntake({
   requester = {},
@@ -77,80 +60,117 @@ export function useRequestIntake({
   const {
     addRequisition,
     campusLocations,
-    pendingScanIntent,
-    setPendingScanIntent
+    pendingScannedLocation,
+    setPendingScannedLocation
   } = useData();
 
   const [isStandardOpen, setIsStandardOpen] = useState(false);
-  const [isUrgentOpen, setIsUrgentOpen] = useState(false);
-  const [isChooserOpen, setIsChooserOpen] = useState(false);
-  const [isEntryScanOpen, setIsEntryScanOpen] = useState(false);
   const [isPrintOpen, setIsPrintOpen] = useState(false);
+  const [isScanQrOpen, setIsScanQrOpen] = useState(false);
+  const [isChooserOpen, setIsChooserOpen] = useState(false);
+  const [pendingScanIntent, setPendingScanIntent] = useState(false);
+  const [autoOpenScanner, setAutoOpenScanner] = useState(false);
   const [requestType, setRequestType] = useState('Standard Request');
-  const [urgency, setUrgency] = useState('Medium Risk');
+  const [urgency, setUrgency] = useState('');
   const [filed, setFiled] = useState(null);
 
-  /* The room read by "Scan QR". Location is step 1 of the form and is
-     deliberately blank unless chosen or scanned — never guessed — so the tag is
-     parked here and folded into the draft the moment the form opens. */
+  /* Location pre-filled from a QR URL deep-link (?qr= param on page load)
+     or from an in-app camera scan. */
   const [entryLocation, setEntryLocation] = useState(null);
 
-  /* "New Request" opens this first: the two ways to file, and nothing else.
-     Picking one swaps the chooser for that form — one overlay at a time. */
-  const openChooser = () => setIsChooserOpen(true);
+  const openScanQr = () => {
+    openStandard({ autoScan: true });
+  };
 
-  const openStandard = () => {
+  /* Header hand-off: screens with a Scan QR button message the intake flow
+     to open the Standard Form directly with in-form location scanning active. */
+  const requestScan = () => setPendingScanIntent(true);
+
+  const closeScanQr = () => {
+    setIsScanQrOpen(false);
+    setAutoOpenScanner(false);
+  };
+
+  const handleScanSuccess = (scanData) => {
+    setIsScanQrOpen(false);
+    setAutoOpenScanner(false);
+    if (!scanData) return;
+    const resolvedEntry = {
+      building: scanData.building || '',
+      floor: scanData.floor || '',
+      room: scanData.room || '',
+      location: scanData.location || joinLocation(scanData.building, scanData.floor, scanData.room),
+      qrCodeRef: scanData.qrCodeRef || ''
+    };
+    setEntryLocation(resolvedEntry);
+    setIsStandardOpen(true);
+  };
+
+  const clearEntryLocation = () => setEntryLocation(null);
+
+  const openStandard = ({ autoScan = false } = {}) => {
     setIsChooserOpen(false);
     setRequestType('Standard Request');
-    setUrgency('Medium Risk');
+    setAutoOpenScanner(Boolean(autoScan));
     setIsStandardOpen(true);
+  };
+
+  // Direct unified intake: clicking New Request opens the Standard Form directly
+  // with zero chooser split between Standard and Urgent.
+  const openChooser = () => {
+    setIsChooserOpen(false);
+    openStandard({ autoScan: false });
   };
 
   const openUrgent = () => {
     setIsChooserOpen(false);
-    setRequestType('Urgent Request');
-    setUrgency('High Risk');
-    setIsUrgentOpen(true);
+    setRequestType('Standard Request');
+    setUrgency('High');
+    openStandard({ autoScan: false });
   };
 
   const closeAll = () => {
     setIsStandardOpen(false);
-    setIsUrgentOpen(false);
-    setIsChooserOpen(false);
-    setIsEntryScanOpen(false);
     setIsPrintOpen(false);
+    setIsScanQrOpen(false);
+    setIsChooserOpen(false);
+    setAutoOpenScanner(false);
     setEntryLocation(null);
   };
 
   const resetIntake = () => {
     setRequestType('Standard Request');
-    setUrgency('Medium Risk');
+    setUrgency('');
+    setAutoOpenScanner(false);
   };
 
-  /* "Scan QR" opens a SCANNER, not a form. Only the camera comes up; the
-     standard form follows once a room has been read, already carrying that
-     location. Cancelling the scan leaves the dashboard having started nothing —
-     which is the point of not putting the 1240px form on screen behind a 620px
-     scanner. */
+  /* QR URL deep-link: a ?qr= param was detected on page load and the resolved
+     location was parked in DataContext. Directly open the Standard Form with that
+     room pre-detected! */
+  useEffect(() => {
+    if (!pendingScannedLocation) return;
+    const loc = pendingScannedLocation;
+    setPendingScannedLocation(null);  // consume immediately
+    setEntryLocation({
+      building: loc.building || '',
+      floor: loc.floor || '',
+      room: loc.room || '',
+      location: joinLocation(loc.building, loc.floor, loc.room),
+      qrCodeRef: loc.qrCodeRef || ''
+    });
+    setRequestType('Standard Request');
+    setUrgency('');
+    setAutoOpenScanner(false);
+    setIsStandardOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingScannedLocation]);
+
+  /* Open the form with in-form scanner active when a header button asked for it */
   useEffect(() => {
     if (!pendingScanIntent) return;
     setPendingScanIntent(false);
-    setIsEntryScanOpen(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    openStandard({ autoScan: true });
   }, [pendingScanIntent]);
-
-  /* One scan is the whole hand-off: the camera closes and the form opens with
-     the room already filled in. */
-  const submitEntryScan = (scanData) => {
-    setEntryLocation({
-      building: scanData.building,
-      floor: scanData.floor,
-      room: scanData.room,
-      location: joinLocation(scanData.building, scanData.floor, scanData.room)
-    });
-    setIsEntryScanOpen(false);
-    openStandard();
-  };
 
   const file = async (payload, { print = false } = {}) => {
     const created = await addRequisition(payload);
@@ -162,22 +182,20 @@ export function useRequestIntake({
     return created;
   };
 
-  /* A fresh QF-PDAS-DC-01 draft. Location is filled ONLY by the tag read by
-     "Scan QR"; otherwise it stays blank, because it is step 1 of the flow and
-     must be chosen or scanned, never guessed. */
   const draft = () => ({
     date: todayISO(),
     requestedBy: requesterDisplayName(requester),
-    department: requester.department || office || '',
+    department: requester?.department || office || '',
     building: entryLocation?.building || '',
     floor: entryLocation?.floor || '',
     room: entryLocation?.room || '',
-    location: entryLocation?.location || '',
-    immediateSupervisor: '',
-    contactNumber: requester.phone || '',
+    location: entryLocation?.location || joinLocation(entryLocation?.building, entryLocation?.floor, entryLocation?.room),
+    qrCodeRef: entryLocation?.qrCodeRef || '',
+    immediateSupervisor: requester?.assignedSupervisor || requester?.supervisorName || requester?.immediateSupervisor || '',
+    contactNumber: requester?.phone || '',
     title: '',
-    category: 'Electrical',
-    urgency: requestType === 'Urgent Request' ? 'High Risk' : urgency,
+    category: '',
+    urgency: urgency || 'Low',
     description: '',
     controlNo: null
   });
@@ -185,14 +203,13 @@ export function useRequestIntake({
   const submitStandard = (edited, printAfter = false) => {
     const payload = buildRequisitionPayload({
       form: edited,
-      requestType,
-      urgency,
+      requestType: 'Standard Request',
+      urgency: edited.urgency || urgency,
       requester,
       office,
       isDraft: Boolean(edited.isDraft)
     });
     if (payload.isDraft) {
-      // A draft is not filed, so it gets no confirmation and no print sheet.
       closeAll();
       resetIntake();
       if (onFiled) onFiled(null, { draft: true });
@@ -201,48 +218,47 @@ export function useRequestIntake({
     file(payload, { print: printAfter });
   };
 
-  /* Urgent is a fast path: location + hazard type only. The full QF-PDAS-DC-01
-     becomes a same-day follow-up task, not a gate. */
-  const submitUrgent = (report) =>
-    file(
-      buildRequisitionPayload({
-        form: {
-          title: report.issueType,
-          description: [report.issueType, report.notes].filter(Boolean).join(' — '),
-          building: report.building,
-          floor: report.floor,
-          room: report.room,
-          location: report.location,
-          category: 'Urgent Hazard',
-          requestedBy: report.requesterName,
-          department: report.requesterDepartment
-        },
-        requestType: 'Urgent Request',
-        requester,
-        office
-      })
-    );
+  const submitUrgent = (edited, printAfter = false) => {
+    const payload = buildRequisitionPayload({
+      form: edited,
+      requestType: 'Urgent Request',
+      urgency: edited.urgency || urgency || 'High',
+      requester,
+      office,
+      isDraft: Boolean(edited.isDraft)
+    });
+    if (payload.isDraft) {
+      closeAll();
+      resetIntake();
+      if (onFiled) onFiled(null, { draft: true });
+      return;
+    }
+    file(payload, { print: printAfter });
+  };
 
   return {
     requestType,
     urgency,
+    setUrgency,
     isStandardOpen,
-    isUrgentOpen,
+    isUrgentOpen: false,
     isChooserOpen,
-    isEntryScanOpen,
     isPrintOpen,
+    isScanQrOpen,
+    autoOpenScanner,
+    entryLocation,
+    clearEntryLocation,
+    openScanQr,
+    requestScan,
+    closeScanQr,
+    handleScanSuccess,
     filed,
     buildingIndex: buildBuildingIndex(campusLocations || []),
     requesterName: requesterDisplayName(requester),
-    requesterDepartment: requester.department || office || '',
+    requesterDepartment: requester?.department || office || '',
     openChooser,
     openStandard,
     openUrgent,
-    /* "Scan QR" parks the intent; the effect above opens the entry scanner, and
-       submitEntryScan hands the room on to the form. Identical from any
-       dashboard that mounts the host. */
-    requestScan: () => setPendingScanIntent(true),
-    submitEntryScan,
     openPrint: () => setIsPrintOpen(true),
     closeAll,
     clearFiled: () => setFiled(null),
@@ -254,35 +270,11 @@ export function useRequestIntake({
 }
 
 /* ---------------------------------------------------------------------------
-   RequestIntakeActions — the entry pair. Every role gets these two buttons,
-   in this order, with these labels.
+   RequestIntakeActions — the single header action.
+   QR scanning is embedded in Step 1 of the form; no separate header button needed.
    --------------------------------------------------------------------------- */
 export const RequestIntakeActions = ({ intake }) => (
   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-    {/* Scan QR and New Request — the same pair, in this order, on every
-        dashboard. New Request opens the chooser here on the spot; it never
-        routes the filer to another module to pick a request type. */}
-    <button
-      type="button"
-      className="btn btn-secondary"
-      onClick={intake.requestScan}
-      title="Scan the room's QR tag and start a request for that location"
-      style={{
-        padding: '10px 18px',
-        borderRadius: '8px',
-        background: '#ffffff',
-        color: '#001f9c',
-        border: '1px solid #001f9c',
-        fontWeight: '700',
-        fontSize: '14px',
-        cursor: 'pointer',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '6px'
-      }}
-    >
-      <QrCode size={16} /> Scan QR
-    </button>
     <button
       type="button"
       className="btn btn-primary"
@@ -307,12 +299,12 @@ export const RequestIntakeActions = ({ intake }) => (
 );
 
 /* ---------------------------------------------------------------------------
-   RequestFiledConfirmation — what every filer sees after submitting.
+   RequestFiledConfirmation — unified, professional confirmation.
    --------------------------------------------------------------------------- */
 export const RequestFiledConfirmation = ({ intake, onTrack }) => {
   const rec = intake.filed;
   if (!rec) return null;
-  const isUrgent = rec.requestType === 'Urgent Request';
+  const isPriority = /high|urgent|emergency|critical/i.test(String(rec.urgency || rec.urgency_level || ''));
 
   return (
     <div className="animate-scale-in" style={{ textAlign: 'center', padding: '36px 16px' }}>
@@ -327,7 +319,7 @@ export const RequestFiledConfirmation = ({ intake, onTrack }) => {
       </div>
 
       <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', marginBottom: '8px' }}>
-        Request filed
+        Job Request Filed Successfully
       </h2>
 
       <div style={{
@@ -335,48 +327,39 @@ export const RequestFiledConfirmation = ({ intake, onTrack }) => {
         color: '#001f9c', fontWeight: '800', padding: '6px 14px', borderRadius: '8px',
         fontSize: '14px', marginBottom: '12px'
       }}>
-        Reference {rec.controlNo || rec.id}
+        Tracking Reference: {rec.controlNo || rec.id}
       </div>
 
+      {isPriority && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: '6px',
+          background: '#fff1f2', border: '1px solid #fecdd3', color: '#991b1b',
+          padding: '5px 14px', borderRadius: '9999px', fontSize: '12.5px', fontWeight: '700',
+          marginBottom: '16px'
+        }}>
+          <AlertTriangle size={15} color="#dc2626" />
+          High / Urgent Priority — Tagged for expedited triage &amp; dispatch
+        </div>
+      )}
+
       <div style={{
-        background: isUrgent ? '#fff1f2' : '#eff6ff',
-        border: `1px solid ${isUrgent ? '#fecdd3' : '#bfdbfe'}`,
-        borderRadius: '12px', padding: '16px', maxWidth: '580px',
+        background: '#eff6ff',
+        border: '1px solid #bfdbfe',
+        borderRadius: '12px', padding: '16px 20px', maxWidth: '580px',
         margin: '0 auto 24px auto', textAlign: 'left', fontSize: '13px', color: '#1e293b'
       }}>
-        {isUrgent ? (
-          <>
-            <div style={{ fontWeight: '800', color: '#9f1239', marginBottom: '6px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <AlertTriangle size={16} color="#dc2626" />
-              Urgent alert sent
-            </div>
-            <div style={{ color: '#881337', lineHeight: 1.6 }}>
-              PDAS has been notified. Maintenance is on its way; the target response
-              is 2 hours.
-              <br /><br />
-              Before the end of the day, complete the standard form, have your
-              Immediate Supervisor sign it in wet ink, and bring the hardcopy to
-              the PDAS office.
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ fontWeight: '800', color: '#1e40af', marginBottom: '6px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <FileText size={16} color="#001f9c" />
-              What happens next
-            </div>
-            {/* An ordered list rather than three bold-led sentences. The
-                numbering carries the sequence, so the labels do not have to. */}
-            <ol style={{ margin: 0, paddingLeft: '1.1em', color: '#334155', lineHeight: 1.6 }}>
-              <li>Print the QF-PDAS-DC-01 form.</li>
-              <li>Have your Immediate Supervisor sign the hardcopy in wet ink.</li>
-              <li>Bring the signed hardcopy to the PDAS office.</li>
-            </ol>
-            <div style={{ color: '#b91c1c', fontWeight: '700', marginTop: '8px' }}>
-              The hardcopy must be signed and checked by PDAS before the work can start.
-            </div>
-          </>
-        )}
+        <div style={{ fontWeight: '800', color: '#1e40af', marginBottom: '8px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <FileText size={16} color="#001f9c" />
+          Official Review &amp; Dispatch Process
+        </div>
+        <ol style={{ margin: 0, paddingLeft: '1.2em', color: '#334155', lineHeight: 1.65 }}>
+          <li>Your Immediate Supervisor receives an in-app notification to review and electronically endorse your request.</li>
+          <li>The PDAS Director reviews the scope and materials, then forwards it for final campus approval.</li>
+          <li>Once approved, a work order is dispatched to maintenance. You will receive in-app notifications upon completion.</li>
+        </ol>
+        <div style={{ color: '#047857', fontWeight: '700', marginTop: '10px', fontSize: '12.5px' }}>
+          All approvals are handled electronically in FixIT. You can view or print the pre-filled official QF-PDAS-DC-01 form anytime.
+        </div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -403,59 +386,7 @@ export const RequestFiledConfirmation = ({ intake, onTrack }) => {
 };
 
 /* ---------------------------------------------------------------------------
-   RequestChooserCards — the two ways to file, as cards. Rendered by the
-   "New Request" chooser and by the page panel, so the choice reads the same
-   wherever it was opened. The subtitles under each title stay: they are what
-   tells the two options apart at a glance.
-   --------------------------------------------------------------------------- */
-const RequestChooserCards = ({ intake, style }) => (
-  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', ...style }}>
-    <button
-      type="button"
-      onClick={intake.openStandard}
-      style={launcherCard({ bg: '#eff4ff', border: '#bfdbfe', hover: '#dbeafe', hoverBorder: '#93c5fd' })}
-    >
-      <div style={{
-        width: '56px', height: '56px', borderRadius: '14px',
-        background: '#001f9c', color: '#ffffff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center'
-      }}>
-        <FileText size={28} />
-      </div>
-      <div>
-        <div style={{ fontSize: '15px', fontWeight: '800', color: '#001f9c' }}>Standard Request</div>
-        <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px' }}>
-          Scan the room tag or pick the location
-        </div>
-      </div>
-    </button>
-
-    <button
-      type="button"
-      onClick={intake.openUrgent}
-      style={launcherCard({ bg: '#fff1f2', border: '#fecdd3', hover: '#ffe4e6', hoverBorder: '#fda4af' })}
-    >
-      <div style={{
-        width: '56px', height: '56px', borderRadius: '14px',
-        background: '#dc2626', color: '#ffffff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center'
-      }}>
-        <AlertTriangle size={28} />
-      </div>
-      <div>
-        <div style={{ fontSize: '15px', fontWeight: '800', color: '#9f1239' }}>Report Urgent Issue</div>
-        <div style={{ fontSize: '12px', color: '#7f1d1d', marginTop: '4px' }}>
-          Location and type of hazard only
-        </div>
-      </div>
-    </button>
-  </div>
-);
-
-/* ---------------------------------------------------------------------------
-   RequestIntakePanel — the optional page body. The confirmation takes over once
-   something has been filed; otherwise it shows the same two cards the
-   "New Request" chooser shows, plus the neutral lifecycle reference.
+   RequestIntakePanel — page panel launcher & status tracking.
    --------------------------------------------------------------------------- */
 export const RequestIntakePanel = ({
   intake,
@@ -471,7 +402,44 @@ export const RequestIntakePanel = ({
 
   return (
     <>
-      <RequestChooserCards intake={intake} style={{ marginBottom: '16px' }} />
+      <div
+        onClick={intake.openStandard}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '16px', padding: '20px 24px', background: '#eff6ff',
+          border: '1.5px solid #bfdbfe', borderRadius: '12px', cursor: 'pointer',
+          marginBottom: '16px', transition: 'all 0.15s'
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.background = '#e0e7ff'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#bfdbfe'; e.currentTarget.style.background = '#eff6ff'; }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{
+            width: '48px', height: '48px', borderRadius: '12px',
+            background: '#001f9c', color: '#ffffff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+          }}>
+            <FileText size={24} />
+          </div>
+          <div>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: '#001f9c' }}>
+              Standard Job Request Form (QF-PDAS-DC-01)
+            </div>
+            <div style={{ fontSize: '13px', color: '#475569', marginTop: '2px' }}>
+              {intake.entryLocation
+                ? `Location pre-set to: ${intake.entryLocation.building} — ${intake.entryLocation.room}`
+                : 'Click to open and file a comprehensive facility maintenance or repair request.'}
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="btn btn-primary"
+          style={{ whiteSpace: 'nowrap', padding: '10px 18px', fontWeight: '700' }}
+        >
+          <Plus size={16} /> File Request
+        </button>
+      </div>
 
       <div style={{ background: 'var(--bg-sunken)', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px 20px' }}>
         <div style={{ fontSize: '13px', color: '#475569', marginBottom: '10px' }}>
@@ -503,25 +471,41 @@ export const RequestIntakePanel = ({
    --------------------------------------------------------------------------- */
 export const RequestIntake = ({ intake, allowActionTaken = false }) => (
   <>
-    {/* "New Request" lands here: the two ways to file, opened in place. Picking
-        one closes this and swaps in that form, so only one overlay is ever up. */}
-    <Modal
-      isOpen={intake.isChooserOpen}
-      onClose={intake.closeAll}
-      title="New Request"
-      maxWidth="560px"
-    >
-      <RequestChooserCards intake={intake} />
-    </Modal>
-
-    {/* The entry scanner — the ONLY thing "Scan QR" opens. The form follows in
-        submitEntryScan, so the 1240px form and the 620px scanner never stand on
-        screen together. */}
-    <QrCodeScannerModal
-      isOpen={intake.isEntryScanOpen}
-      onClose={intake.closeAll}
-      onScanSuccess={intake.submitEntryScan}
-    />
+    {intake.isChooserOpen && (
+      <Modal
+        isOpen={intake.isChooserOpen}
+        onClose={intake.closeAll}
+        title="New Request"
+        maxWidth="560px"
+      >
+        <div style={{ display: 'grid', gap: '12px' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={intake.openStandard}
+            style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '16px 18px' }}
+          >
+            <FileText size={20} style={{ color: '#001f9c', flexShrink: 0 }} />
+            <span style={{ display: 'block' }}>
+              <strong style={{ display: 'block', color: '#0f172a', fontSize: '14px' }}>Standard Request</strong>
+              <span style={{ fontSize: '12.5px', color: '#64748b' }}>File the full QF-PDAS-DC-01 job request form.</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={intake.openUrgent}
+            style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '16px 18px' }}
+          >
+            <AlertTriangle size={20} style={{ color: '#b91c1c', flexShrink: 0 }} />
+            <span style={{ display: 'block' }}>
+              <strong style={{ display: 'block', color: '#0f172a', fontSize: '14px' }}>Report Urgent Issue</strong>
+              <span style={{ fontSize: '12.5px', color: '#64748b' }}>Flag an urgent issue for immediate attention.</span>
+            </span>
+          </button>
+        </div>
+      </Modal>
+    )}
 
     <JobRequestFormOverlay
       isOpen={intake.isStandardOpen}
@@ -529,22 +513,20 @@ export const RequestIntake = ({ intake, allowActionTaken = false }) => (
       initialReq={intake.draft()}
       allowActionTaken={allowActionTaken}
       allowFinalAction={false}
-      title={
-        intake.requestType === 'Urgent Request'
-          ? 'Urgent Request Form (QF-PDAS-DC-01)'
-          : 'Job Request Form (QF-PDAS-DC-01)'
-      }
-      onSave={(edited) => intake.submitStandard(edited, false)}
-      onSaveAndPrint={(edited) => intake.submitStandard(edited, true)}
+      autoOpenScanner={intake.autoOpenScanner}
+      title="Job Request Form (QF-PDAS-DC-01)"
+      onSave={(edited) => (
+        intake.requestType === 'Urgent Request' ? intake.submitUrgent : intake.submitStandard
+      )(edited, false)}
+      onSaveAndPrint={(edited) => (
+        intake.requestType === 'Urgent Request' ? intake.submitUrgent : intake.submitStandard
+      )(edited, true)}
     />
 
-    <UrgentIssueReport
-      isOpen={intake.isUrgentOpen}
-      onClose={intake.closeAll}
-      onSubmit={intake.submitUrgent}
-      buildingIndex={intake.buildingIndex}
-      requesterName={intake.requesterName}
-      requesterDepartment={intake.requesterDepartment}
+    <QrCodeScannerModal
+      isOpen={intake.isScanQrOpen}
+      onClose={intake.closeScanQr}
+      onScanSuccess={intake.handleScanSuccess}
     />
 
     <Modal
@@ -555,13 +537,13 @@ export const RequestIntake = ({ intake, allowActionTaken = false }) => (
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
           <span style={{ fontSize: '12px', color: '#64748b' }}>
-            Control number (issued when the work order is assigned, after final approval): {intake.filed?.controlNo || 'PENDING'}
+            Control number: {intake.filed?.controlNo || 'PENDING'}
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button type="button" className="btn btn-secondary btn-sm" onClick={intake.closeAll}>
               Close
             </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => window.print()}>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => printDocument()}>
               <Printer size={15} /> Print / Save PDF
             </button>
           </div>
@@ -571,10 +553,10 @@ export const RequestIntake = ({ intake, allowActionTaken = false }) => (
       {intake.filed && <JobRequestPrintSheet req={intake.filed} />}
     </Modal>
 
-    {intake.filed && intake.isPrintOpen && (
-      <div className="jr-print-only" aria-hidden="true">
+    {intake.filed && (
+      <PrintPortal active={intake.isPrintOpen}>
         <JobRequestPrintSheet req={intake.filed} />
-      </div>
+      </PrintPortal>
     )}
   </>
 );

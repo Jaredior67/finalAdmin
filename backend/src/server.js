@@ -4,12 +4,12 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { verifyDbConnection } from './config/db.js';
+import pool, { verifyDbConnection } from './config/db.js';
 
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import lookupRoutes from './routes/lookupRoutes.js';
-import requisitionRoutes from './routes/requisitionRoutes.js';
+import requisitionRoutes, { checkAndRemindOverdueUrgentRequests } from './routes/requisitionRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import evaluationRoutes from './routes/evaluationRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
@@ -43,9 +43,13 @@ if (configuredOrigins.length === 0) {
 app.use(cors({
   origin: (origin, callback) => {
     // No Origin header: same-origin navigation, curl, or a server-side call.
-    // Nothing is being read cross-site, so there is nothing to leak.
     if (!origin) return callback(null, true);
+    // Allow localhost and local loopback
     if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+    // Allow private local area network IPs (Wi-Fi, mobile hotspot, LAN)
+    if (/^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin)) {
       return callback(null, true);
     }
     if (configuredOrigins.includes(origin)) {
@@ -73,7 +77,7 @@ app.use((req, res, next) => {
     'style-src \'self\' \'unsafe-inline\' https://fonts.googleapis.com; ' +
     'font-src \'self\' https://fonts.gstatic.com data:; ' +
     'img-src \'self\' data: https:; ' +
-    'connect-src \'self\' http://localhost:* http://127.0.0.1:* https://localhost:*;'
+    'connect-src \'self\' http://localhost:* http://127.0.0.1:* https://localhost:* http://192.168.*:* http://10.*:* http://172.*:*;'
   );
   next();
 });
@@ -183,6 +187,10 @@ async function startWithRetry(attempt = 1) {
       // Schedule automated preventive maintenance reminder checks every 6 hours
       runAutomatedPreventiveReminders();
       setInterval(runAutomatedPreventiveReminders, 6 * 60 * 60 * 1000);
+
+      // Check urgent requests standard form 24h deadline every 15 minutes
+      checkAndRemindOverdueUrgentRequests(pool).catch(() => {});
+      setInterval(() => checkAndRemindOverdueUrgentRequests(pool).catch(() => {}), 15 * 60 * 1000);
     });
   } catch (err) {
     console.error(`[server] Startup attempt ${attempt}/${MAX_RETRIES} failed: ${err.message}`);

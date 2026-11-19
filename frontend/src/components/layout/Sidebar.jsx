@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   Menu,
-  LogOut
+  LogOut,
+  X,
+  History
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { superAdminNavigation } from '../../navigation/superAdminNavigation';
 import { adminNavigation } from '../../navigation/adminNavigation';
 import { facultyNavigation } from '../../navigation/facultyNavigation';
 import { maintenanceNavigation } from '../../navigation/maintenanceNavigation';
@@ -14,46 +17,48 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { buildMyQueue } from '../maintenance/queueConfig';
 import { filterMyRequests } from '../../utils/myRequests';
 
+
 const SECTION_LABEL = {
   fontSize: '10px',
   fontWeight: '700',
-  color: '#94a3b8',
+  color: '#798dbd',
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
-  paddingLeft: '8px',
+  paddingLeft: '12px',
 };
 
-export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCollapse }) => {
-  const { currentUser, logout, isAdmin, isCampusAdmin, isSupervisor, isMaintenance, isFacultyOrStaff } = useAuth();
-  const { unreadMessagesCount, pendingApprovals, pendingRegistrationsCount, requisitions } = useData();
+export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCollapse, mobileOpen = false, onCloseMobile = null }) => {
+  const { currentUser, logout, isSuperAdmin, isAdmin, isCampusAdmin, isSupervisor, isMaintenance, isFacultyOrStaff } = useAuth();
+  const { unreadMessagesCount, pendingApprovals, pendingRegistrationsCount, requisitions, notifications } = useData();
 
-  // Collapse control can live in the navbar or the sidebar header — the
-  // setter is passed down so the toggle stays on one organized row.
+  // Collapse control can live in the navbar or the sidebar header
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const setCollapsed = onToggleCollapse || setInternalCollapsed;
   const isCollapsed = onToggleCollapse ? collapsed : internalCollapsed;
+  const effectiveCollapsed = isCollapsed && !mobileOpen;
   const [isSignOutConfirmOpen, setIsSignOutConfirmOpen] = useState(false);
 
-  // Stay functional when the user zooms the browser in: zooming shrinks the
-  // effective CSS viewport, so collapse to icons on narrow widths. Manual
-  // toggles are never overridden.
+  // Auto-collapse only on desktop/tablet widths (between 768px and 1100px)
   useEffect(() => {
     const onResize = () => {
-      if (window.innerWidth < 1100) setCollapsed(true);
+      if (window.innerWidth >= 768 && window.innerWidth < 1100) {
+        setCollapsed(true);
+      }
     };
     onResize();
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setCollapsed]);
 
-  const workspaceName = isCampusAdmin
-    ? 'CAMPUS ADMIN'
-    : isMaintenance
-      ? 'MAINTENANCE'
-      : isFacultyOrStaff
-        ? (isSupervisor ? 'FACULTY & STAFF (SUPERVISOR)' : 'FACULTY & STAFF')
-        : 'PDAS ADMIN';
+  const workspaceName = isSuperAdmin
+    ? 'System Administration'
+    : isCampusAdmin
+      ? 'Campus Administration'
+      : isMaintenance
+        ? 'Facility Maintenance'
+        : isFacultyOrStaff
+          ? (isSupervisor ? 'Immediate Supervisor' : 'Faculty & Staff Portal')
+          : 'PDAS Facility Management';
 
   // Counts for Dynamic Badges
   const pendingCampusAdminApprovalsCount = (requisitions || []).filter(r =>
@@ -74,18 +79,23 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
   // derive the ticket set from the same shared helper.
   const techQueue = buildMyQueue(requisitions, currentUser);
   const techActiveCount = techQueue.filter(r => r.status !== 'Completed').length;
-  const replacementCount = (requisitions || []).filter(r => r.replacementFlag?.isFlagged || r.maintenanceFlag?.type === 'Disposal').length;
+  const replacementCount = techQueue.filter(r => r.replacementFlag?.isFlagged || r.maintenanceFlag?.type === 'Disposal').length;
+
+  const unreadNotificationsCount = (Array.isArray(notifications) ? notifications : [])
+    .filter(n => n && typeof n === 'object' && n.unread).length;
 
   // badgeKey -> count, so nav items stay declarative instead of nested ternaries
   const maintenanceBadges = {
     techActiveCount: techActiveCount || null,
     replacementCount: replacementCount || null,
-    unreadMessagesCount: unreadMessagesCount || null
+    unreadMessagesCount: unreadMessagesCount || null,
+    unreadNotificationsCount: unreadNotificationsCount || null,
+    unreadNotifications: unreadNotificationsCount || null
   };
   const badgeFor = (item) => (item.badgeKey ? maintenanceBadges[item.badgeKey] ?? null : null);
 
   const renderNavList = (items) => (
-    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
       {items.map((item) => {
         const isActive = activeTab === item.id;
         const Icon = item.icon;
@@ -95,41 +105,62 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
             role="button"
             tabIndex={0}
             title={item.label}
-            onClick={() => onTabChange(item.id)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onTabChange(item.id); }}
-            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+            className={`sidebar-nav-item ${isActive ? 'is-active' : ''}`}
+            onClick={() => {
+              onTabChange(item.id);
+              if (onCloseMobile) onCloseMobile();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                onTabChange(item.id);
+                if (onCloseMobile) onCloseMobile();
+              }
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: isCollapsed ? 'center' : 'space-between',
-              padding: isCollapsed ? '8px 0' : '7px 10px',
-              borderRadius: '7px',
+              justifyContent: effectiveCollapsed ? 'center' : 'space-between',
+              padding: effectiveCollapsed ? '9px 0' : '8px 12px',
+              borderRadius: '8px',
               cursor: 'pointer',
-              background: isActive ? '#001f9c' : 'transparent',
-              color: isActive ? '#ffffff' : '#475569',
+              background: isActive ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
+              color: isActive ? '#ffffff' : '#c5d2eb',
               fontWeight: isActive ? '600' : '500',
-              fontSize: '12.5px',
+              fontSize: '13px',
               lineHeight: 1.25,
-              transition: 'background 0.14s, color 0.14s',
-              border: isActive ? '1px solid #001f9c' : '1px solid transparent',
+              position: 'relative',
+              boxShadow: isActive ? 'inset 0 1px 0 rgba(255, 255, 255, 0.1)' : 'none',
+              border: 'none',
+              transition: 'background 0.15s ease, color 0.15s ease'
+            }}
+            onMouseEnter={(e) => {
+              if (!isActive) {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                e.currentTarget.style.color = '#ffffff';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isActive) {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#c5d2eb';
+              }
             }}
           >
-            <span style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
-              <span style={{ display: 'flex', alignItems: 'center', color: isActive ? '#ffffff' : '#64748b', flexShrink: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              <span className="nav-icon" style={{ display: 'flex', alignItems: 'center', color: isActive ? '#ffffff' : '#8da2c9', flexShrink: 0 }}>
                 <Icon size={16} strokeWidth={isActive ? 2.2 : 2} />
               </span>
-              {!isCollapsed && (
+              {!effectiveCollapsed && (
                 <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
               )}
             </span>
-            {!isCollapsed && item.badge ? (
+            {!effectiveCollapsed && item.badge ? (
               <span style={{
-                backgroundColor: isActive ? '#ffffff' : (item.badgeColor || '#d97706'),
-                color: isActive ? '#001f9c' : '#ffffff',
-                fontSize: '10.5px',
-                fontWeight: '700',
-                padding: '1px 6px',
+                backgroundColor: '#f59e0b',
+                color: '#071746',
+                fontSize: '11px',
+                fontWeight: '800',
+                padding: '1px 7px',
                 borderRadius: '999px',
                 lineHeight: '1.4',
                 flexShrink: 0,
@@ -145,79 +176,136 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
 
   const renderSection = (label, content, marginTop = false) => (
     <>
-      {!isCollapsed && (
+      {!effectiveCollapsed && (
         <div style={{ ...SECTION_LABEL, marginTop: marginTop ? '14px' : '0', marginBottom: '6px' }}>
           {label}
         </div>
       )}
-      {marginTop && isCollapsed && <div style={{ height: '10px' }} />}
+      {marginTop && effectiveCollapsed && <div style={{ height: '10px' }} />}
       {content}
     </>
   );
 
   return (
-    <aside className={`app-sidebar ${isCollapsed ? 'is-collapsed' : ''}`}>
-      {/* Workspace header: workspace label + hamburger toggle */}
-      <div style={{
-        flexShrink: 0,
-        padding: isCollapsed ? '8px 0' : '8px 10px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: isCollapsed ? 'center' : 'space-between',
-        borderBottom: '1px solid #f1f5f9',
-      }}>
-        {!isCollapsed && (
-          <span style={{ fontSize: '10px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            {workspaceName}
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={() => setCollapsed(!isCollapsed)}
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          style={{
-            background: 'var(--bg-sunken)',
-            border: '1px solid #e2e8f0',
-            borderRadius: '6px',
-            width: '26px',
-            height: '26px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#475569',
-            cursor: 'pointer',
-          }}
-        >
-          <Menu size={14} />
-        </button>
-      </div>
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {mobileOpen && (
+        <div
+          className="sidebar-backdrop is-visible"
+          onClick={onCloseMobile}
+          aria-hidden="true"
+        />
+      )}
+      <aside className={`app-sidebar ${effectiveCollapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
+        {/* Sidebar top header bar with collapse toggle */}
+        <div style={{
+          flexShrink: 0,
+          padding: effectiveCollapsed ? '8px 6px' : '8px 12px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: effectiveCollapsed ? 'center' : 'flex-end',
+          minHeight: '40px',
+        }}>
+          {/* Collapse/expand toggle */}
+          <button
+            type="button"
+            onClick={() => setCollapsed(!isCollapsed)}
+            aria-label={effectiveCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={effectiveCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: 'none',
+              borderRadius: '6px',
+              width: '26px',
+              height: '26px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#c5d2eb',
+              cursor: 'pointer',
+              flexShrink: 0,
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; }}
+          >
+            <Menu size={14} />
+          </button>
 
-      {/* Scrollable Navigation Body — bottom padding keeps the last item visible above Sign Out */}
-      <div style={{
-        flex: 1,
-        minHeight: 0,
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        padding: isCollapsed ? '8px 6px 16px 6px' : '10px 8px 16px 8px',
-        display: 'flex',
-        flexDirection: 'column',
-      }}>
+          {/* Mobile close button */}
+          {mobileOpen && (
+            <button
+              type="button"
+              onClick={onCloseMobile}
+              aria-label="Close navigation menu"
+              title="Close menu"
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: 'none',
+                borderRadius: '8px',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                cursor: 'pointer',
+                marginLeft: '8px'
+              }}
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+
+        {/* Scrollable Navigation Body */}
+        <div style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: effectiveCollapsed ? '8px 6px 16px 6px' : '10px 8px 16px 8px',
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
         {/* Role-Based Navigation Sections */}
-        {isCampusAdmin && (
+        {isSuperAdmin && (
           <>
-            {renderSection('Executive Approvals', renderNavList(campusAdminNavigation.approvals.map(item => ({
+            {renderSection('Overview', renderNavList(superAdminNavigation.overview))}
+            {renderSection('Administration', renderNavList(superAdminNavigation.administration.map(item => ({
               ...item,
-              badge: item.badgeKey === 'pendingCampusAdminApprovalsCount' ? (pendingCampusAdminApprovalsCount || null) : null
-            }))))}
-            {renderSection('Approvals', renderNavList(campusAdminNavigation.management.map(item => ({
+              badge: item.badgeKey === 'pendingRegistrationsCount' ? (pendingRegistrationsCount || null) : null
+            }))), true)}
+            {renderSection('Management', renderNavList(superAdminNavigation.system.map(item => ({
               ...item,
-              badge: item.badgeKey === 'unreadMessagesCount' ? (unreadMessagesCount || null) : null
+              badge: item.badgeKey === 'unreadMessagesCount'
+                ? (unreadMessagesCount || null)
+                : item.badgeKey === 'unreadNotificationsCount'
+                  ? (unreadNotificationsCount || null)
+                  : null
             }))), true)}
           </>
         )}
 
-        {isAdmin && !isCampusAdmin && (
+        {isCampusAdmin && (
+          <>
+            {renderSection('Overview', renderNavList(campusAdminNavigation.approvals.map(item => ({
+              ...item,
+              badge: item.badgeKey === 'pendingCampusAdminApprovalsCount' ? (pendingCampusAdminApprovalsCount || null) : null
+            }))))}
+            {renderSection('Management', renderNavList(campusAdminNavigation.management.map(item => ({
+              ...item,
+              badge: item.badgeKey === 'unreadMessagesCount'
+                ? (unreadMessagesCount || null)
+                : item.badgeKey === 'unreadNotificationsCount'
+                  ? (unreadNotificationsCount || null)
+                  : null
+            }))), true)}
+          </>
+        )}
+
+        {isAdmin && !isCampusAdmin && !isSuperAdmin && (
           <>
             {renderSection('Overview', renderNavList(adminNavigation.operations.slice(0, 1)))}
             {renderSection('Operations', renderNavList(adminNavigation.operations.slice(1).map(item => ({
@@ -230,9 +318,11 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
                 ? (pendingRegistrationsCount || null)
                 : item.badgeKey === 'unreadMessagesCount'
                   ? (unreadMessagesCount || null)
-                  : item.badgeKey === 'replacementCount'
-                    ? (replacementCount || null)
-                    : null
+                  : item.badgeKey === 'unreadNotificationsCount'
+                    ? (unreadNotificationsCount || null)
+                    : item.badgeKey === 'replacementCount'
+                      ? (replacementCount || null)
+                      : null
             }))), true)}
           </>
         )}
@@ -242,7 +332,7 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
             {/* Supervisor queue — shown above own requests when designated */}
             {isSupervisor && (
               <>
-                {renderSection('Supervisor Queue', renderNavList([
+                {renderSection('Immediate Supervisor Queue', renderNavList([
                   {
                     id: 'supervisor-queue',
                     label: 'My Supervisees\u2019 Requests',
@@ -253,29 +343,41 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
                 ]))}
               </>
             )}
-            {renderSection(isSupervisor ? 'My Own Requests' : 'Overview', renderNavList(facultyNavigation.requisition.slice(0, 1)), isSupervisor)}
-            {renderSection('Requests', renderNavList(facultyNavigation.requisition.slice(1).map(item => ({
+            {isSupervisor
+              ? renderNavList(facultyNavigation.requisition.slice(0, 1))
+              : renderSection('Overview', renderNavList(facultyNavigation.requisition.slice(0, 1)))}
+            {renderSection('Operations', renderNavList(facultyNavigation.requisition.slice(1).map(item => ({
               ...item,
-              badge: item.badgeKey === 'facultyActiveTicketsCount'
+              badge: item.id === 'faculty-history' || item.badgeKey === 'facultyActiveTicketsCount'
                 ? (facultyActiveTicketsCount || null)
                 : item.badgeKey === 'replacementCount'
                   ? (replacementCount || null)
                   : null
             }))), true)}
-            {renderSection('Services', renderNavList(facultyNavigation.campus.map(item => ({
+            {renderSection('Management', renderNavList(facultyNavigation.campus.map(item => ({
               ...item,
-              badge: item.badgeKey === 'unreadMessagesCount' ? (unreadMessagesCount || null) : null
+              badge: item.badgeKey === 'unreadMessagesCount'
+                ? (unreadMessagesCount || null)
+                : item.badgeKey === 'unreadNotificationsCount'
+                  ? (unreadNotificationsCount || null)
+                  : null
             }))), true)}
           </>
         )}
 
         {isMaintenance && (
           <>
+            {maintenanceNavigation.overview && (
+              renderSection('Overview', renderNavList(maintenanceNavigation.overview.map(item => ({
+                ...item,
+                badge: badgeFor(item)
+              }))))
+            )}
             {renderSection('Operations', renderNavList(maintenanceNavigation.operations.map(item => ({
               ...item,
               badge: badgeFor(item)
-            }))))}
-            {renderSection('Support', renderNavList(maintenanceNavigation.facility.map(item => ({
+            }))), !!maintenanceNavigation.overview)}
+            {renderSection('Management', renderNavList(maintenanceNavigation.facility.map(item => ({
               ...item,
               badge: badgeFor(item)
             }))), true)}
@@ -283,46 +385,56 @@ export const Sidebar = ({ activeTab, onTabChange, collapsed = false, onToggleCol
         )}
       </div>
 
-      {/* Sidebar Bottom Action Bar — always pinned at bottom */}
-      <div style={{ flexShrink: 0, padding: '10px 8px', borderTop: '1px solid #f1f5f9', background: '#ffffff' }}>
-        <button
-          type="button"
-          onClick={() => setIsSignOutConfirmOpen(true)}
-          title="Sign Out"
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: isCollapsed ? 'center' : 'flex-start',
-            gap: '9px',
-            padding: isCollapsed ? '8px 0' : '7px 10px',
-            borderRadius: '7px',
-            border: '1px solid #fecaca',
-            background: '#fef2f2',
-            color: '#dc2626',
-            fontSize: '12.5px',
-            fontWeight: '600',
-            cursor: 'pointer',
-          }}
-        >
-          <LogOut size={15} />
-          {!isCollapsed && <span>Sign Out</span>}
-        </button>
-      </div>
+        {/* Sidebar Bottom Action Bar — pinned at bottom matching prototype */}
+        <div style={{ flexShrink: 0, padding: '10px 8px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', background: 'transparent' }}>
+          <button
+            type="button"
+            onClick={() => setIsSignOutConfirmOpen(true)}
+            title="Sign Out"
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
+              gap: '9px',
+              padding: effectiveCollapsed ? '8px 0' : '8px 12px',
+              borderRadius: '8px',
+              border: 'none',
+              background: 'transparent',
+              color: '#c5d2eb',
+              fontSize: '13px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = '#ef4444';
+              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = '#c5d2eb';
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <LogOut size={16} />
+            {!effectiveCollapsed && <span>Sign out</span>}
+          </button>
+        </div>
 
-      {/* Sign Out Confirmation Modal */}
-      <ConfirmDialog
-        isOpen={isSignOutConfirmOpen}
-        onClose={() => setIsSignOutConfirmOpen(false)}
-        onConfirm={() => {
-          setIsSignOutConfirmOpen(false);
-          logout();
-        }}
-        title="Sign Out of FixIT?"
-        message="Are you sure you want to end your current session? You will need to sign back in to access facility management features."
-        confirmText="Sign Out"
-        isDanger={true}
-      />
-    </aside>
+        {/* Sign Out Confirmation Modal */}
+        <ConfirmDialog
+          isOpen={isSignOutConfirmOpen}
+          onClose={() => setIsSignOutConfirmOpen(false)}
+          onConfirm={() => {
+            setIsSignOutConfirmOpen(false);
+            logout();
+          }}
+          title="Sign Out of FixIT?"
+          message="Are you sure you want to end your current session? You will need to sign back in to access facility management features."
+          confirmText="Sign Out"
+          isDanger={true}
+        />
+      </aside>
+    </>
   );
 };

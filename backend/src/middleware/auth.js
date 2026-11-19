@@ -46,6 +46,9 @@ async function loadCurrentUser(id) {
     isSupervisor: isSup,
     email: row.email,
     name: [row.first_name, row.last_name].filter(Boolean).join(' ') || row.email,
+    first_name: row.first_name || '',
+    last_name: row.last_name || '',
+    firstName: row.first_name || '',
     lastName: row.last_name || '',
     department: row.department || '',
     status: row.status

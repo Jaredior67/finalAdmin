@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Wrench, CheckSquare, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, Wrench, CheckSquare, ShieldAlert, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { apiUpdateMyAvailability } from '../../backend/api';
 import { PageHeader } from '../../components/common/PageHeader';
 import { PageTransition } from '../../components/common/PageTransition';
-import { ChartsRow, DonutCard, BarCard } from '../../components/common/DashboardCharts';
 import { QueueViewCards } from '../../components/maintenance/QueueViewCards';
 import { WorkQueueToolbar } from '../../components/maintenance/WorkQueueToolbar';
 import { WorkOrderCard } from '../../components/maintenance/WorkOrderCard';
 import { WorkOrderDialogs } from '../../components/maintenance/WorkOrderDialogs';
+import { ChartsRow, DonutCard, BarCard } from '../../components/common/DashboardCharts';
 import {
   QUEUE_VIEWS,
   LEGACY_TAB_VIEW,
@@ -43,29 +42,15 @@ const EMPTY_FLAG_FORM = {
    views, the toolbar underneath holds every filter on a single horizontal
    row, and one shared card list renders whichever view is selected.
    ========================================================================== */
-export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
-  const { currentUser, updateCurrentUser } = useAuth();
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-  const dutyStatus = currentUser?.availabilityStatus || 'available';
-
-  const handleDutyStatusChange = async (nextStatus) => {
-    setIsUpdatingStatus(true);
-    try {
-      await apiUpdateMyAvailability(nextStatus);
-      if (updateCurrentUser) {
-        updateCurrentUser({ availabilityStatus: nextStatus });
-      }
-    } catch (err) {
-      console.error('Failed to update duty status:', err);
-    } finally {
-      setIsUpdatingStatus(false);
-    }
-  };
+export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange, initialView }) => {
+  const { currentUser } = useAuth();
+  const isHistoryView = activeTab === 'tech-history';
 
   const {
     requisitions,
     updateRequisitionStatus,
     updateRequisitionForm,
+    fetchRequisitionDetail,
     raiseMaintenanceFlag,
     raiseReplacementFlag,
     evaluations,
@@ -78,31 +63,43 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
   const technicianName = currentUser?.name || 'Mark Villanueva (Lead Specialist)';
 
   /* ---- View (saved queue) state, with legacy tab ids mapped in ---- */
-  const [viewId, setViewId] = useState(() => LEGACY_TAB_VIEW[activeTab] || 'all');
+  const [viewId, setViewId] = useState(() => (isHistoryView ? 'completed' : initialView || LEGACY_TAB_VIEW[activeTab] || 'all'));
 
   useEffect(() => {
+    if (isHistoryView) {
+      setViewId('completed');
+      return;
+    }
+    if (initialView) {
+      setViewId(initialView);
+      return;
+    }
     const legacyView = LEGACY_TAB_VIEW[activeTab];
     if (legacyView) {
       setViewId(legacyView);
-      // Normalise the tab so the retired screens stop being separately addressable.
-      onTabChange?.('tech-tasks');
+      if (activeTab === 'tech-emergency') {
+        onTabChange?.('tech-tasks');
+      }
     }
-  }, [activeTab, onTabChange]);
+  }, [activeTab, initialView, isHistoryView, onTabChange]);
 
   // Deep link: a clicked notification stores its ticket ref here
   useEffect(() => {
     if (!focusedTicketRef) return;
-    const refStr = String(focusedTicketRef || '').trim();
+    if (!requisitions || requisitions.length === 0) return;
+    const refStr = String(focusedTicketRef || '').trim().toLowerCase();
     const found = (requisitions || []).find(r =>
-      String(r.controlNo || '') === refStr ||
-      String(r.id || '') === refStr ||
-      String(r.ticket_no || '') === refStr
+      String(r.controlNo || '').toLowerCase() === refStr ||
+      String(r.id || '').toLowerCase() === refStr ||
+      String(r.ticket_no || '').toLowerCase() === refStr ||
+      String(r.id_raw || '').toLowerCase() === refStr ||
+      String(r.officialTrackingNo || '').toLowerCase() === refStr
     );
     if (found) {
       setActiveTask(found);
       setDialog('detail');
+      setFocusedTicketRef(null);
     }
-    setFocusedTicketRef(null);
   }, [focusedTicketRef, requisitions, setFocusedTicketRef]);
 
   /* ---- Filters (search is shared with the global navbar search) ---- */
@@ -118,9 +115,14 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
     setActionMessage('');
     // The saved views overlap the status filter — keep the two in sync so the
     // toolbar can never contradict the view the technician is looking at.
-    if (nextView === 'completed') setStatusFilter('completed');
-    else if (nextView === 'in-progress') setStatusFilter('ongoing');
-    else if (statusFilter === 'completed' || statusFilter === 'ongoing') setStatusFilter('all');
+    if (nextView === 'completed') {
+      setStatusFilter('completed');
+      setSortOrder('newest'); // History tab defaults to most-recent-first
+    } else if (nextView === 'in-progress') {
+      setStatusFilter('ongoing');
+    } else {
+      if (statusFilter === 'completed' || statusFilter === 'ongoing') setStatusFilter('all');
+    }
   };
 
   // The navbar search box and this toolbar are the same field — one query,
@@ -148,6 +150,7 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
 
   const [targetStatus, setTargetStatus] = useState('Ongoing');
   const [technicianNotes, setTechnicianNotes] = useState('');
+  const [materialsUsed, setMaterialsUsed] = useState('');
   const [completionPhoto, setCompletionPhoto] = useState(null);
 
   const [flagType, setFlagType] = useState('Replacement');
@@ -239,21 +242,27 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
 
 
   /* ---- Actions ---- */
-  const handleQuickStartWork = (task) => {
-    const logNote = `Technician ${technicianName} started on-site maintenance assessment at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
-    updateRequisitionStatus(task.id, 'Ongoing', technicianName, logNote);
-    setActionMessage(`${task.controlNo || task.id} work started successfully.`);
+  const handleQuickStartWork = async (task) => {
+    try {
+      const logNote = `Technician ${technicianName} started on-site maintenance assessment at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
+      await updateRequisitionStatus(task.id, 'Ongoing', technicianName, logNote);
+      setActionMessage(`${task.controlNo || task.id} work started successfully.`);
+    } catch (err) {
+      console.error('Failed to start work:', err);
+      setActionMessage(`Failed to start work: ${err.message || 'Unknown error'}`);
+    }
   };
 
   const handleOpenStatusDialog = (task) => {
     setActiveTask(task);
     setTargetStatus(task.status === 'Pending' || task.status === 'Approved' ? 'Ongoing' : task.status);
     setTechnicianNotes(task.notes || '');
+    setMaterialsUsed(task.materialsUsed || '');
     setCompletionPhoto(task.completionPhotoUrl || null);
     setDialog('status');
   };
 
-  const handleSaveTaskStatus = () => {
+  const handleSaveTaskStatus = async () => {
     if (!activeTask) return;
     // Completed records are locked — the service record must stay immutable.
     if (activeTask.status === 'Completed') {
@@ -264,12 +273,24 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
 
     const finalNotes = technicianNotes || `Work performed on-site by ${technicianName}.`;
 
-    updateRequisitionStatus(activeTask.id, targetStatus, technicianName, finalNotes);
-    if (completionPhoto) {
-      updateRequisitionForm(activeTask.id, { completionPhotoUrl: completionPhoto });
+    try {
+      await updateRequisitionStatus(
+        activeTask.id,
+        targetStatus,
+        technicianName,
+        finalNotes,
+        materialsUsed,
+        completionPhoto || undefined
+      );
+      if (completionPhoto) {
+        await updateRequisitionForm(activeTask.id, { completionPhotoUrl: completionPhoto });
+      }
+      setActionMessage(`${activeTask.controlNo || activeTask.id} work log saved successfully.`);
+      setDialog(null);
+    } catch (err) {
+      console.error('Failed to update task status:', err);
+      setActionMessage(`Error saving status: ${err.message || 'Unknown error'}`);
     }
-    setActionMessage(`${activeTask.controlNo || activeTask.id} work log saved successfully.`);
-    setDialog(null);
   };
 
   const handleOpenFlagDialog = (task) => {
@@ -288,7 +309,7 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
     setDialog('flag');
   };
 
-  const handleSubmitFlag = (e) => {
+  const handleSubmitFlag = async (e) => {
     e.preventDefault();
     if (!activeTask) return;
     if (
@@ -302,30 +323,48 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
       currentUser?.roleTitle || 'Lead Specialist'
     })`;
 
-    if (flagType === 'Replacement') {
-      raiseReplacementFlag(activeTask.id, {
-        reason: flagForm.reason,
-        itemSpecs: flagForm.itemSpecs,
-        flaggedBy
-      });
-    } else {
-      raiseMaintenanceFlag(activeTask.id, {
-        type: flagType,
-        reason: flagForm.reason,
-        scheduledWork: flagForm.scheduledWork,
-        scheduledDate: flagForm.scheduledDate,
-        scheduledTime: flagForm.scheduledTime,
-        flaggedBy
-      });
-    }
+    try {
+      if (flagType === 'Replacement') {
+        await raiseReplacementFlag(activeTask.id, {
+          reason: flagForm.reason,
+          itemSpecs: flagForm.itemSpecs,
+          flaggedBy
+        });
+      } else {
+        await raiseMaintenanceFlag(activeTask.id, {
+          type: flagType,
+          reason: flagForm.reason,
+          scheduledWork: flagForm.scheduledWork,
+          scheduledDate: flagForm.scheduledDate,
+          scheduledTime: flagForm.scheduledTime,
+          flaggedBy
+        });
+      }
 
-    setActionMessage(`${activeTask.controlNo || activeTask.id} outcome flag submitted to the Director.`);
-    setDialog(null);
+      setActionMessage(`${activeTask.controlNo || activeTask.id} outcome flag submitted to the Director. You may now view or print the PDF Flag Report.`);
+      setDialog(null);
+    } catch (err) {
+      console.error('Failed to submit flag:', err);
+      setActionMessage(`Error submitting flag: ${err.message || 'Unknown error'}`);
+    }
   };
 
-  const handleViewTicket = (task) => {
+  const handleViewTicket = async (task) => {
     setActiveTask(task);
     setDialog('detail');
+    if (fetchRequisitionDetail) {
+      const full = await fetchRequisitionDetail(task.id_raw ?? task.id);
+      if (full) setActiveTask(prev => (prev && (prev.id === task.id || prev.id_raw === task.id_raw) ? { ...prev, ...full } : prev));
+    }
+  };
+
+  const handlePrintFlagReport = async (task) => {
+    setActiveTask(task);
+    setDialog('flag-report');
+    if (fetchRequisitionDetail) {
+      const full = await fetchRequisitionDetail(task.id_raw ?? task.id);
+      if (full) setActiveTask(prev => (prev && (prev.id === task.id || prev.id_raw === task.id_raw) ? { ...prev, ...full } : prev));
+    }
   };
 
   /* ---- Export whatever the technician is currently looking at ---- */
@@ -361,189 +400,174 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
         .join(',')
     );
 
-    const csv = 'data:text/csv;charset=utf-8,' + [headers.map(quote).join(','), ...rows].join('\n');
+    const csvContent = '\uFEFF' + [headers.map(quote).join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = encodeURI(csv);
+    link.href = url;
     link.download = `ISATU_WorkQueue_${activeView.label.replace(/\s+/g, '')}_${new Date()
       .toISOString()
       .slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   /* ---- Render ---- */
   return (
     <PageTransition>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingTop: '16px', fontFamily: "'Inter', Verdana, Geneva, Tahoma, sans-serif" }}>
-      <PageHeader
-        breadcrumbs={['Field Operations', 'Work Queue']}
-        title="Maintenance Work Queue"
-        description="ISAT U Dumangas Campus — Technical Operations & Work Dispatch"
-        action={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Duty Status:</span>
-            <select
-              value={dutyStatus}
-              onChange={(e) => handleDutyStatusChange(e.target.value)}
-              disabled={isUpdatingStatus}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '8px',
-                fontSize: '12.5px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                border: dutyStatus === 'available' ? '1px solid #a7f3d0' : dutyStatus === 'busy' ? '1px solid #fde68a' : '1px solid #fecaca',
-                background: dutyStatus === 'available' ? '#ecfdf5' : dutyStatus === 'busy' ? '#fffbeb' : '#fef2f2',
-                color: dutyStatus === 'available' ? '#047857' : dutyStatus === 'busy' ? '#b45309' : '#b91c1c',
-                outline: 'none',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-              }}
-            >
-              <option value="available">🟢 Available for Dispatch</option>
-              <option value="busy">🟡 Busy · On Field Job</option>
-              <option value="off_duty">🔴 Off Duty · Break / Shift Ended</option>
-            </select>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontFamily: "'Inter', Verdana, Geneva, Tahoma, sans-serif" }}>
+        <PageHeader
+          style={{ marginBottom: '0' }}
+          breadcrumbs={isHistoryView ? ['Field Operations', 'Request History'] : ['Field Operations', 'Work Queue']}
+          title={isHistoryView ? 'Request History' : 'Maintenance Work Queue'}
+          description={
+            isHistoryView
+              ? 'Comprehensive record of completed maintenance and facility work orders'
+              : 'ISAT U Dumangas Campus — Technical Operations & Work Dispatch'
+          }
+        />
+
+        {/* Workload statistics for this technician's queue */}
+        {!isHistoryView && (
+          <ChartsRow isEmpty={myQueue.length === 0}>
+            <DonutCard
+              title="Work Order Priority"
+              icon="priority"
+              list={myQueue}
+              pick={(r) => r.urgency}
+              palette="urgency"
+              unit="ORDERS"
+            />
+            <DonutCard
+              title="Work Order Status"
+              icon="status"
+              list={myQueue}
+              pick={(r) => r.status}
+              palette="status"
+              unit="ORDERS"
+            />
+            <BarCard
+              title="Work Orders by Category"
+              icon="category"
+              list={myQueue}
+              pick={(r) => r.category}
+              colorPick={(r) => r.status}
+              colorPalette="status"
+            />
+          </ChartsRow>
+        )}
+
+        {/* Queue View Switcher Cards — shown on Work Queue only, omitted on Request History */}
+        {!isHistoryView && (
+          <QueueViewCards activeView={viewId} counts={viewCounts} onViewChange={handleViewChange} />
+        )}
+
+        {actionMessage && (
+          <div className="queue-banner" role="status">
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <CheckCircle2 size={18} aria-hidden="true" />
+              {actionMessage}
+            </span>
+            <button type="button" className="queue-banner__dismiss" onClick={() => setActionMessage('')}>
+              Dismiss
+            </button>
           </div>
-        }
-      />
+        )}
 
-      {actionMessage && (
-        <div className="queue-banner" role="status">
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-            <CheckCircle2 size={18} aria-hidden="true" />
-            {actionMessage}
-          </span>
-          <button type="button" className="queue-banner__dismiss" onClick={() => setActionMessage('')}>
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {/* Saved views: horizontal cards that switch the queue and act as KPIs */}
-      <QueueViewCards activeView={viewId} counts={viewCounts} onViewChange={handleViewChange} />
-
-      {/* Safety protocol — only relevant while working the urgent queue */}
-      {viewId === 'urgent' && viewTaskCount > 0 && (
-        <div className="queue-safety">
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
-            <ShieldAlert size={22} color="#e11d48" style={{ flexShrink: 0, marginTop: '2px' }} aria-hidden="true" />
-            <div>
-              <div className="queue-safety__title">
-                Immediate safety response required — {viewTaskCount} urgent or high-risk work order
-                {viewTaskCount === 1 ? '' : 's'}
-              </div>
-              <div className="queue-safety__body">
-                {activeView.title} · these carry a 2-hour response target. Attend in priority order.
+        {/* Safety protocol — only relevant while working the urgent queue */}
+        {!isHistoryView && viewId === 'urgent' && viewTaskCount > 0 && (
+          <div className="queue-safety">
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
+              <ShieldAlert size={22} color="#e11d48" style={{ flexShrink: 0, marginTop: '2px' }} aria-hidden="true" />
+              <div>
+                <div className="queue-safety__title">
+                  Immediate safety response required — {viewTaskCount} urgent or high-risk work order
+                  {viewTaskCount === 1 ? '' : 's'}
+                </div>
+                <div className="queue-safety__body">
+                  {activeView.title} · these carry a 2-hour response target. Attend in priority order.
+                </div>
               </div>
             </div>
-          </div>
-          <div className="queue-safety__steps">
-            {[
-              'Isolate breaker or valve',
-              'Cordon off the work area',
-              'Notify the Director on status'
-            ].map((step, i) => (
-              <div className="queue-safety__step" key={step}>
-                <CheckSquare size={14} aria-hidden="true" /> {i + 1}. {step}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Statistics — Priority and Category breakdowns. (The Status donut was removed
-          as QueueViewCards above already shows active/in-progress/urgent/completed breakdown).
-          Clicking priority or category filters the queue directly. */}
-      <ChartsRow
-        isEmpty={myQueue.length === 0}
-        emptyTitle="Work order statistics"
-        emptyCopy="No work orders in your queue yet."
-      >
-        <DonutCard
-          title="Work Order Priority"
-          icon="priority"
-          list={myQueue}
-          pick={(r) => r.urgency}
-          palette="urgency"
-          unit="WORK ORDERS"
-          onSegmentClick={(label) => {
-            const lower = String(label).toLowerCase();
-            if (lower.includes('urgent') || lower.includes('high') || lower.includes('emergency')) {
-              handleViewChange('urgent');
-            } else {
-              handleViewChange('in-progress');
-            }
-          }}
-        />
-        <BarCard
-          title="Work Orders by Category"
-          icon="category"
-          list={myQueue}
-          pick={(r) => r.category}
-          colorPick={(r) => r.status}
-          colorPalette="status"
-          totalLabel="work orders"
-          onBarClick={(cat) => {
-            setCategoryFilter(cat);
-            handleViewChange('all');
-          }}
-        />
-      </ChartsRow>
-
-      {/* The queue itself: one toolbar, one card list, every view */}
-      <section
-        className="content-card queue-card"
-        id="work-queue-panel"
-        role="tabpanel"
-        aria-labelledby={`queue-tab-${activeView.id}`}
-        aria-label={activeView.title}
-      >
-        <div className="queue-card__head">
-          <div style={{ minWidth: 0 }}>
-            <h2 className="queue-card__title">
-              {activeView.title} ({viewTaskCount})
-            </h2>
-          </div>
-        </div>
-
-        <WorkQueueToolbar
-          search={searchTerm}
-          onSearchChange={handleSearchChange}
-          category={categoryFilter}
-          onCategoryChange={setCategoryFilter}
-          urgency={urgencyFilter}
-          onUrgencyChange={setUrgencyFilter}
-          status={statusFilter}
-          onStatusChange={setStatusFilter}
-          assignee={assigneeFilter}
-          onAssigneeChange={setAssigneeFilter}
-          assignees={assignees}
-          sort={sortOrder}
-          onSortChange={setSortOrder}
-          onReset={handleResetFilters}
-          visibleCount={visibleTasks.length}
-          totalCount={viewTaskCount}
-          onExport={handleExportCSV}
-          exportLabel={viewId === 'completed' ? 'Export Logs (CSV)' : 'Export (CSV)'}
-        />
-
-        <div className="queue-list">
-          {visibleTasks.length === 0 ? (
-            <div className="queue-empty">
-              <Wrench size={32} style={{ margin: '0 auto', opacity: 0.4 }} aria-hidden="true" />
-              <div className="queue-empty__title">
-                {viewTaskCount === 0
-                  ? `Nothing in the ${activeView.label} queue right now`
-                  : `No ${activeView.label.toLowerCase()} work orders match these filters`}
-              </div>
-              <div className="queue-empty__hint">
-                {viewTaskCount === 0
-                  ? 'Try another queue view above, or check back after the next dispatch.'
-                  : 'Adjust the search, category, urgency, status, or staff filter to widen the results.'}
-              </div>
+            <div className="queue-safety__steps">
+              {[
+                'Isolate breaker or valve',
+                'Cordon off the work area',
+                'Notify the Director on status'
+              ].map((step, i) => (
+                <div className="queue-safety__step" key={step}>
+                  <CheckSquare size={14} aria-hidden="true" /> {i + 1}. {step}
+                </div>
+              ))}
             </div>
-          ) : (
+          </div>
+        )}
+
+        {/* The queue itself: one toolbar, one card list, every view */}
+        <section
+          className="content-card queue-card"
+          id="work-queue-panel"
+          role="tabpanel"
+          aria-labelledby={`queue-tab-${activeView.id}`}
+          aria-label={isHistoryView ? 'Request History' : activeView.title}
+        >
+          <div className="queue-card__head">
+            <div style={{ minWidth: 0 }}>
+              <h2 className="queue-card__title">
+                {isHistoryView ? 'Completed Work Orders' : activeView.title} ({visibleTasks.length})
+              </h2>
+              {isHistoryView && (
+                <p className="queue-card__subtitle">
+                  Verified repair and maintenance logs filed across campus facilities
+                </p>
+              )}
+            </div>
+          </div>
+
+          <WorkQueueToolbar
+            search={searchTerm}
+            onSearchChange={handleSearchChange}
+            category={categoryFilter}
+            onCategoryChange={setCategoryFilter}
+            urgency={urgencyFilter}
+            onUrgencyChange={setUrgencyFilter}
+            status={statusFilter}
+            onStatusChange={setStatusFilter}
+            assignee={assigneeFilter}
+            onAssigneeChange={setAssigneeFilter}
+            assignees={assignees}
+            sort={sortOrder}
+            onSortChange={setSortOrder}
+            onReset={handleResetFilters}
+            visibleCount={visibleTasks.length}
+            totalCount={viewTaskCount}
+            onExport={handleExportCSV}
+            exportLabel={isHistoryView || viewId === 'completed' ? 'Export Logs (CSV)' : 'Export (CSV)'}
+            hideStatusFilter={isHistoryView}
+          />
+
+          <div className="queue-list">
+            {visibleTasks.length === 0 ? (
+              <div className="queue-empty">
+                <Wrench size={32} style={{ margin: '0 auto', opacity: 0.4 }} aria-hidden="true" />
+                <div className="queue-empty__title">
+                  {isHistoryView
+                    ? 'No completed work history found'
+                    : viewTaskCount === 0
+                    ? `Nothing in the ${activeView.label} queue right now`
+                    : `No ${activeView.label.toLowerCase()} work orders match these filters`}
+                </div>
+                <div className="queue-empty__hint">
+                  {isHistoryView
+                    ? 'Resolved and signed-off maintenance requests will automatically appear here.'
+                    : viewTaskCount === 0
+                    ? 'Try another queue view above, or check back after the next dispatch.'
+                    : 'Adjust the search, category, urgency, status, or staff filter to widen the results.'}
+                </div>
+              </div>
+            ) : (
             visibleTasks.map((task) => (
               <WorkOrderCard
                 key={task.id}
@@ -553,6 +577,7 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
                 onUpdateStatus={handleOpenStatusDialog}
                 onFlagOutcome={handleOpenFlagDialog}
                 onViewTicket={handleViewTicket}
+                onPrintFlagReport={handlePrintFlagReport}
               />
             ))
           )}
@@ -567,6 +592,8 @@ export const WorkQueue = ({ activeTab = 'tech-tasks', onTabChange }) => {
         onTargetStatusChange={setTargetStatus}
         technicianNotes={technicianNotes}
         onTechnicianNotesChange={setTechnicianNotes}
+        materialsUsed={materialsUsed}
+        onMaterialsUsedChange={setMaterialsUsed}
         completionPhoto={completionPhoto}
         onCompletionPhotoChange={setCompletionPhoto}
         onSaveStatus={handleSaveTaskStatus}

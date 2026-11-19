@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { Bell, LogOut, ChevronDown, Settings, Search } from 'lucide-react';
+import { Bell, LogOut, ChevronDown, Settings, Search, Menu, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { NotificationDrawer } from './NotificationDrawer';
 import { Modal } from '../common/Modal';
 import { SettingsModal } from '../common/SettingsModal';
-import fixitLogo from '../../assets/fixit-official-logo.png';
+import fixitLogo from '../../assets/fixit-logo.png';
 
-export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed = false }) => {
+export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed = false, onToggleMobileMenu = null }) => {
   const { currentUser, logout, setIsLoginModalOpen } = useAuth();
   const { notifications, ticketSearch, setTicketSearch } = useData();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -26,16 +26,27 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed
   };
 
   return (
-    <header className={`top-navbar${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`} style={{ height: '64px', background: '#ffffff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', position: 'sticky', top: 0, zIndex: 100 }}>
-      {/* Left Brand Section: sidebar toggle + FixIT logo + ISAT U Dumangas Campus */}
-      <div className="navbar-brand-section" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', minWidth: 0, width: 'auto', maxWidth: '240px', marginLeft: '-4px' }}>
+    <header className={`top-navbar${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`}>
+      {/* Left Brand Section: Hamburger (on mobile) + FixIT logo + ISAT U Dumangas Campus */}
+      <div className="navbar-brand-section">
+        {onToggleMobileMenu && (
+          <button
+            type="button"
+            className="mobile-menu-toggle-btn"
+            onClick={onToggleMobileMenu}
+            aria-label="Open navigation menu"
+            title="Open navigation menu"
+          >
+            <Menu size={20} />
+          </button>
+        )}
         <img
           src={fixitLogo}
           alt="FixIT Logo"
           className="navbar-brand-mark"
           onError={(e) => { e.target.src = '/fixit-official-logo.png'; }}
         />
-        <div className="navbar-brand-text" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignSelf: 'center', whiteSpace: 'nowrap', lineHeight: 1.15, minWidth: 0, overflow: 'hidden', flex: '1 1 auto' }}>
+        <div className="navbar-brand-text">
           <span style={{ fontSize: '10.5px', fontWeight: '800', color: '#001f9c', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', width: '100%', lineHeight: 1.2 }}>
             ISAT U Dumangas Campus
           </span>
@@ -46,8 +57,8 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed
       </div>
 
       {/* Global Search Bar */}
-      <div className="navbar-search-bar" style={{ flex: '1', maxWidth: '400px', margin: '0 24px', position: 'relative' }}>
-        <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+      <div className="navbar-search-bar" style={{ position: 'relative', maxWidth: '380px' }}>
+        <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
         <input
           type="text"
           value={ticketSearch || ''}
@@ -58,7 +69,7 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed
             width: '100%',
             height: '38px',
             paddingLeft: '38px',
-            paddingRight: '12px',
+            paddingRight: ticketSearch ? '34px' : '64px',
             borderRadius: '8px',
             border: '1px solid #cbd5e1',
             background: 'var(--bg-sunken)',
@@ -67,13 +78,60 @@ export const Navbar = ({ onSearch = null, onNavigateTab = null, sidebarCollapsed
             outline: 'none',
             transition: 'all 0.15s'
           }}
-          onFocus={(e) => { e.target.style.background = '#ffffff'; e.target.style.borderColor = '#001f9c'; }}
+          onFocus={(e) => { e.target.style.background = '#ffffff'; e.target.style.borderColor = '#071746'; }}
           onBlur={(e) => { e.target.style.background = 'var(--bg-sunken)'; e.target.style.borderColor = '#cbd5e1'; }}
         />
+        {!ticketSearch && (
+          <span style={{
+            position: 'absolute',
+            right: '10px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: '11px',
+            fontWeight: '600',
+            color: '#94a3b8',
+            background: 'var(--bg-card)',
+            border: '1px solid #cbd5e1',
+            padding: '1px 5px',
+            borderRadius: '4px',
+            pointerEvents: 'none',
+            lineHeight: 1.2
+          }}>
+            Ctrl K
+          </span>
+        )}
+        {ticketSearch ? (
+          <button
+            type="button"
+            onClick={() => {
+              setTicketSearch('');
+              if (onSearch) onSearch('');
+            }}
+            aria-label="Clear search"
+            title="Clear search"
+            style={{
+              position: 'absolute',
+              right: '8px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              padding: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '50%'
+            }}
+          >
+            <X size={14} />
+          </button>
+        ) : null}
       </div>
 
       {/* Right Controls */}
-      <div className="navbar-actions-section" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+      <div className="navbar-actions-section">
         {/* Notification Bell */}
         <div style={{ position: 'relative' }}>
           <button 

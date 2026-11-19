@@ -16,9 +16,10 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const BASE = process.env.API_BASE || 'http://127.0.0.1:5000/api';
-const ADMIN = { email: process.env.ADMIN_EMAIL || 'adminisatu.edu.ph@gmail.com', password: process.env.ADMIN_PASSWORD || 'admin123' };
-const FACULTY = { email: 'faculty@isatu.edu.ph', password: 'faculty123' };
-const APPROVER = { email: 'campusadmin@isatu.edu.ph', password: process.env.CAMPUS_ADMIN_PASSWORD || 'admin123' };
+const ADMIN = { email: process.env.ADMIN_EMAIL || 'admin@gmail.com', password: process.env.ADMIN_PASSWORD || 'admin123' };
+const FACULTY = { email: 'faculty@gmail.com', password: 'faculty123' };
+const SUPERVISOR = { email: 'supervisor@gmail.com', password: 'supervisor123' };
+const APPROVER = { email: 'campusadmin@gmail.com', password: process.env.CAMPUS_ADMIN_PASSWORD || 'admin123' };
 
 let pass = 0;
 let fail = 0;
@@ -47,9 +48,10 @@ const call = async (path, { method = 'GET', body, token } = {}) => {
 };
 
 const login = async (who) => {
+  const role = who === ADMIN ? 'admin' : who === APPROVER ? 'campus_admin' : who === SUPERVISOR ? 'faculty_staff' : 'faculty';
   const { status, json } = await call('/auth/login', {
     method: 'POST',
-    body: { ...who, role: who === ADMIN ? 'admin' : who === APPROVER ? 'campus_admin' : 'faculty' }
+    body: { ...who, role }
   });
   if (status !== 200) throw new Error(`login failed for ${who.email}: ${json?.message || status}`);
   return json.token;
@@ -82,6 +84,7 @@ console.log('\n=== Review chain, end to end ===\n');
 
 const adminToken = await login(ADMIN);
 const facultyToken = await login(FACULTY);
+const supervisorToken = await login(SUPERVISOR);
 
 /* 0. The approver account must exist for step 3. Reported rather than fatal, so
       the earlier steps still run and the failure is visible. */
@@ -119,31 +122,27 @@ check('a faculty request is filed', filed.status === 201 && Boolean(ticketId),
 
 if (ticketId) {
   const initial = await readRow(ticketId);
-  /* Nobody has a Supervisor assigned in this database, so filing auto-confirms
-     the supervisory step (manuscript: the requester's confirmation doubles as
-     the supervisory confirmation when there is no Supervisor) and hands the
-     request straight to PDAS. */
-  check('the filed request is already past the supervisory step',
-    initial?.status === 'Under Review' && initial?.supervisor_approved === 1,
+  check('the filed request enters Pending status awaiting supervisor',
+    initial?.status === 'Pending' && initial?.supervisor_approved === 0,
     `status ${initial?.status}, supervisor_approved ${initial?.supervisor_approved}`);
 
-  const [[autoRow]] = await db.query(
-    'SELECT action, details FROM audit_log WHERE entity_id = ? AND action = ? ORDER BY id DESC LIMIT 1',
-    [ticketId, 'request.supervisor.auto_confirmed']
-  );
-  check('the auto-confirmation is stated in the audit log',
-    Boolean(autoRow && autoRow.details),
-    `no request.supervisor.auto_confirmed row for ticket ${ticketId}`);
-
   /* The supervisory level belongs to a designated Supervisor. A PDAS
-     administrator used to pass this gate on role alone, so one account could
-     perform two of the three approval levels itself. */
-  const asSupervisor = await call(`/job-requests/${ticketId}/supervisor-action`, {
+     administrator cannot perform this step. */
+  const asAdmin = await call(`/job-requests/${ticketId}/supervisor-action`, {
     method: 'POST', token: adminToken, body: { action: 'approve', remarks: 'Chain test: admin impersonating a supervisor.' }
   });
   check('the System Administrator cannot perform the supervisory level',
-    asSupervisor.status === 403,
-    `http ${asSupervisor.status} "${asSupervisor.json?.message}"`);
+    asAdmin.status === 403,
+    `http ${asAdmin.status} "${asAdmin.json?.message}"`);
+
+  /* 1b. The designated supervisor endorses the request to move to Under Review. */
+  const supEndorse = await call(`/job-requests/${ticketId}/supervisor-action`, {
+    method: 'POST', token: supervisorToken, body: { action: 'approve', remarks: 'Chain test: supervisor endorsed.' }
+  });
+  const rowAfterSup = await readRow(ticketId);
+  check('the Supervisor endorses the request to Under Review',
+    supEndorse.status === 200 && rowAfterSup?.status === 'Under Review' && rowAfterSup?.supervisor_approved === 1,
+    `http ${supEndorse.status} "${supEndorse.json?.message}" | status: ${rowAfterSup?.status}, supervisor_approved: ${rowAfterSup?.supervisor_approved}`);
 
   /* 2. Admin opens it for review. */
   const review = await call(`/job-requests/${ticketId}/admin-action`, {
