@@ -3148,11 +3148,19 @@ input:checked + .toggle-slider:before {
   background: #ffffff;
 }
 
-.qr-label__code img {
+.qr-label__code img,
+.qr-label__code svg {
   width: 31mm;
   height: 31mm;
   display: block;
+}
+
+.qr-label__code img {
   image-rendering: pixelated;
+}
+
+.qr-label__code svg {
+  shape-rendering: crispEdges;
 }
 
 .qr-label__code-empty {

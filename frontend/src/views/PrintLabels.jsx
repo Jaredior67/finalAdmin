@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-  Printer, QrCode, Search, Building2, MapPin, Tag,
+  Printer, Search, Building2, MapPin, Tag,
   Plus, Edit2, Trash2, Layers, LayoutGrid, Table as TableIcon,
   CheckSquare, Square, Copy, Check, ChevronDown,
   ZoomIn, ZoomOut, RotateCcw, Download
@@ -9,8 +9,48 @@ import { useData } from '../context/DataContext';
 import { Modal } from '../components/common/Modal';
 import { PrintPortal } from '../components/common/PrintPortal';
 import { QrLabelPrintSheet } from '../components/common/QrLabelPrintSheet';
+import { RealQrCode, generateQrPngDataUrl } from '../components/common/RealQrCode';
 import { getSystemQrUrl } from '../utils/qrLocationResolver';
 import { printDocument } from '../utils/print';
+
+const FLOOR_CODE_MAP = [
+  [/basement/i, 'B'],
+  [/roof|penthouse/i, 'R'],
+  [/outdoor/i, 'O'],
+  [/ground/i, 'G'],
+  [/1st|first/i, '1'],
+  [/2nd|second/i, '2'],
+  [/3rd|third/i, '3'],
+  [/4th|fourth/i, '4']
+];
+
+function buildSuggestedQrTag(
+  building,
+  bldgShort,
+  floor,
+  room,
+  existingLocations = [],
+  { deterministic = false } = {}
+) {
+  const short = bldgShort || (building ? building.split(' ')[0] : 'BLDG');
+  const cleanShort = short.toUpperCase().replace(/[^A-Z0-9]/g, '') || 'BLDG';
+  const roomText = String(room || '');
+  const roomDigits = (roomText.match(/\d+/g) || []).join('');
+  const cleanRoom =
+    (roomDigits || roomText.replace(/[^A-Z0-9]/gi, '')).slice(0, 4).toUpperCase() ||
+    (deterministic ? 'RM' : String(Math.floor(100 + Math.random() * 900)));
+  const floorDigit = (FLOOR_CODE_MAP.find(([re]) => re.test(String(floor || ''))) || [null, 'G'])[1];
+  const base = `ISATU-${cleanShort}-${floorDigit}-${cleanRoom}`;
+
+  const taken = new Set(existingLocations.map((l) => String(l.qrCodeRef || '').toUpperCase()));
+  let tag = base;
+  let n = 2;
+  while (taken.has(tag)) {
+    tag = `${base}-${n}`;
+    n += 1;
+  }
+  return tag;
+}
 
 export const PrintLabels = () => {
   const { 
@@ -66,8 +106,9 @@ export const PrintLabels = () => {
   const allLocations = useMemo(() => {
     const list = campusLocations || [];
     const map = new Map();
-    list.forEach(loc => map.set(loc.qrCodeRef, loc));
-    
+    const keyOf = (loc) => loc.qrCodeRef || loc.id || `${loc.building}|${loc.floor}|${loc.room}`;
+    list.forEach(loc => map.set(keyOf(loc), loc));
+
     requisitions.forEach(req => {
       if (req.qrCodeRef && !map.has(req.qrCodeRef)) {
         map.set(req.qrCodeRef, {
@@ -82,64 +123,6 @@ export const PrintLabels = () => {
     });
     return Array.from(map.values());
   }, [campusLocations, requisitions]);
-
-  /* Real, scannable QR images for the printed tags.
-     The label drew the lucide <QrCode /> glyph — a decorative square pattern no
-     camera can decode — directly above a "SCAN ME" caption, so a printed tag
-     told people to scan something that was not a QR code. The scanner accepts a
-     raw `qrCodeRef` string (QrCodeScannerModal.parseQrText, direct match), so
-     encoding that value is all a working tag needs. */
-  const [qrImages, setQrImages] = useState({});
-
-  useEffect(() => {
-    let live = true;
-    const targets = allLocations.filter((loc) => loc.qrCodeRef);
-    if (targets.length === 0) {
-      setQrImages({});
-      return () => { live = false; };
-    }
-    import('qrcode')
-      .then((m) => {
-        const toDataURL = (m.default || m).toDataURL;
-        return Promise.all(
-          targets.map(async (loc) => {
-            try {
-              const qrUrl = getSystemQrUrl(loc.qrCodeRef);
-              const url = await toDataURL(qrUrl, {
-                // 480px keeps the printed 31mm tag sharp at ~300 DPI while
-                // staying modest in memory for a full campus registry.
-                width: 480,
-                margin: 1,
-                errorCorrectionLevel: 'M'
-              });
-              return [loc.qrCodeRef, url];
-            } catch {
-              return [loc.qrCodeRef, null];
-            }
-          })
-        );
-      })
-      .then((pairs) => { if (live) setQrImages(Object.fromEntries(pairs)); })
-      .catch(() => { if (live) setQrImages({}); });
-    return () => { live = false; };
-  }, [allLocations]);
-
-  // Live preview of the tag being typed in the registration modal, so the admin
-  // sees the exact code that will be printed rather than a decorative glyph.
-  const [previewQr, setPreviewQr] = useState('');
-  useEffect(() => {
-    const value = (formData.qrCodeRef || '').trim();
-    if (!value) {
-      setPreviewQr('');
-      return () => {};
-    }
-    let live = true;
-    import('qrcode')
-      .then((m) => (m.default || m).toDataURL(getSystemQrUrl(value), { width: 200, margin: 1, errorCorrectionLevel: 'M' }))
-      .then((url) => { if (live) setPreviewQr(url); })
-      .catch(() => { if (live) setPreviewQr(''); });
-    return () => { live = false; };
-  }, [formData.qrCodeRef]);
 
   // Unique list of registered buildings for filtering and dropdowns
   const uniqueBuildings = useMemo(() => {
@@ -225,33 +208,13 @@ export const PrintLabels = () => {
 
   // Auto-generate QR Tag helper
   const handleAutoGenerateQR = () => {
-    const short = formData.bldgShort || (formData.building ? formData.building.split(' ')[0] : 'BLDG');
-    const cleanShort = short.toUpperCase().replace(/[^A-Z0-9]/g, '') || 'BLDG';
-    // Prefer the room number ("Room 302" -> "302") because it is what staff
-    // read on the door; fall back to the first alphanumerics of the name.
-    const roomDigits = (formData.room.match(/\d+/g) || []).join('');
-    const cleanRoom = (roomDigits || formData.room.replace(/[^A-Z0-9]/gi, '')).slice(0, 4).toUpperCase() || String(Math.floor(100 + Math.random() * 900));
-    const floorMap = [
-      [/basement/i, 'B'],
-      [/roof|penthouse/i, 'R'],
-      [/outdoor/i, 'O'],
-      [/ground/i, 'G'],
-      [/1st|first/i, '1'],
-      [/2nd|second/i, '2'],
-      [/3rd|third/i, '3'],
-      [/4th|fourth/i, '4']
-    ];
-    const floorDigit = (floorMap.find(([re]) => re.test(formData.floor)) || [null, 'G'])[1];
-    const base = `ISATU-${cleanShort}-${floorDigit}-${cleanRoom}`;
-
-    // Never hand out a tag that is already printed on another door.
-    const taken = new Set(allLocations.map((l) => String(l.qrCodeRef || '').toUpperCase()));
-    let tag = base;
-    let n = 2;
-    while (taken.has(tag)) {
-      tag = `${base}-${n}`;
-      n += 1;
-    }
+    const tag = buildSuggestedQrTag(
+      formData.building,
+      formData.bldgShort,
+      formData.floor,
+      formData.room,
+      allLocations
+    );
     setFormData(prev => ({ ...prev, qrCodeRef: tag }));
   };
 
@@ -267,11 +230,16 @@ export const PrintLabels = () => {
       return;
     }
 
-    let finalQrRef = formData.qrCodeRef.trim();
-    if (!finalQrRef) {
-      const short = formData.bldgShort || formData.building.split(' ')[0] || 'BLDG';
-      finalQrRef = `ISATU-${short.toUpperCase().replace(/[^A-Z0-9]/g, '')}-${Date.now().toString().slice(-4)}`;
-    }
+    const finalQrRef =
+      formData.qrCodeRef.trim() ||
+      buildSuggestedQrTag(
+        formData.building,
+        formData.bldgShort,
+        formData.floor,
+        formData.room,
+        allLocations,
+        { deterministic: true }
+      );
 
     if (editingLoc) {
       updateCampusLocation(editingLoc.id || editingLoc.qrCodeRef, {
